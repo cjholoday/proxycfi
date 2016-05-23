@@ -10,10 +10,10 @@ class Verifier:
 
     def judge(self):
         """Returns true iff the file object is CDI compliant
-
+        
         Wrapper for Verifier.verify
         """
-
+        
         # find main in function_list
         # verify(main)
         pass # TODO
@@ -29,9 +29,9 @@ if __name__ == "__main__":
     
     # gather_exec_sections
     # gather_functions for each exec_section
-
+    
     # verifier.judge()
-
+    
     pass # TODO
 
 
