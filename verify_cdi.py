@@ -1,4 +1,5 @@
 import elfparse
+import sys
 
 # functor used to avoid excessive parameter passing
 class Verifier:
@@ -23,15 +24,22 @@ class Verifier:
         
         pass # TODO
 
-
 if __name__ == "__main__":
-    # open file
+    if len(sys.argv) != 2:
+        print 'Usage: python verify_cdi <filename>'
     
-    # gather_exec_sections
-    # gather_functions for each exec_section
+    binary = open(sys.argv[1], 'rb')
+    exec_sections = elfparse.gather_exec_sections(binary)
     
-    # verifier.judge()
+    functions = []
+    for section in exec_sections:
+        functions += elfparse.gather_functions(binary, section)
     
-    pass # TODO
+    verifier = Verifier(binary, exec_sections, functions)
+    
+    if verifier.judge():
+        sys.exit(0)
+    else:
+        sys.exit(1)
 
 
