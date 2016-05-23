@@ -15,9 +15,22 @@ class Verifier:
         Wrapper for Verifier.verify
         """
         
-        # find main in function_list
-        # verify(main)
-        pass # TODO
+        # find main in function_list TODO
+        
+        try:
+            # verify(main) TODO
+            return True
+        
+        except IndirectJump:
+            raise # TODO
+        except IntraInstructionJump:
+            raise # TODO
+        except IntraFunctionCall:
+            raise # TODO
+        except OutOfObjectJump:
+            raise # TODO
+        
+        return False
 
     def verify(self, function):
         """Recursively verifies that function is CDI compliant"""
@@ -42,4 +55,29 @@ if __name__ == "__main__":
     else:
         sys.exit(1)
 
+#############################
+# Exception Types
+#############################
+
+class Error(Exception):
+    pass
+
+class InsecureJump(Error):
+    def __init__(self, section, function, site_address, jump_address):
+        self.section = section
+        self.function = function
+        self.site_address = site_address
+        self.jump_address = jump_address
+
+class IndirectJump(InsecureJump):
+    """Exception for unconstrained indirect jump"""
+
+class IntraInstructionJump(InsecureJump):
+    """Exception for jump pointing to the middle of an instruction"""
+
+class IntraFunctionCall(InsecureJump):
+    """Exception for a call-instruction pointing to the middle of a function"""
+
+class OutOfObjectJump(InsecureJump):
+    """Exception for a jump out of the same code object"""
 
