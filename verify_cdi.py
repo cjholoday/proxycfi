@@ -69,6 +69,8 @@ if __name__ == "__main__":
     
     binary = open(sys.argv[1], 'rb')
     exec_sections = elfparse.gather_exec_sections(binary)
+
+    functions = elfparse.gather_functions(binary, exec_sections)
     verifier = Verifier(binary, exec_sections, functions)
     
     if verifier.judge():
