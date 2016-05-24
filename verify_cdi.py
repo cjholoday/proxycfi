@@ -3,11 +3,11 @@ import sys
 
 # functor used to avoid excessive parameter passing
 class Verifier:
-    def __init__(self, file_object, exec_sections, function_list):
+    def __init__(self, file_object, exec_sections, function_list, plt_addresses):
         self.binary = file_object
         self.exec_sections = exec_sections
         self.function_list = function_list
-        call_number = 0 # unique identifier for each function
+        self.plt_addresses = plt_addresses
 
     def judge(self):
         """Returns true iff the file object is CDI compliant
@@ -15,27 +15,44 @@ class Verifier:
         Wrapper for Verifier.verify
         """
         
-        # find main in function_list TODO
+        # find main in function_list (TODO)
         
         try:
             # verify(main) TODO
-            return True
         
-        except IndirectJump:
-            raise # TODO
-        except IntraInstructionJump:
-            raise # TODO
-        except IntraFunctionCall:
-            raise # TODO
-        except OutOfObjectJump:
-            raise # TODO
+        except InsecureJump as err:
+            err.print_debug_info()
+            raise
+
+        # check that no jumps go to middle of instruction (TODO)
+        # verify shared library portion (TODO)
+        # verify .init, _start, etc. (TODO)
         
-        return False
+        return True
 
     def verify(self, function):
         """Recursively verifies that function is CDI compliant"""
         
+        calls, jumps, instruction_addresses = inspect(function)
+        
+        # check that call target first instruction of some function
+        
+        # check that each jump goes to a function in this code object
+        # store the outgoing address of the jump with the function it points to
+        
+        # recursively analyze functions that are called by this function
+        
         pass # TODO
+
+    def inspect(self, function):
+        """Returns a list of calls, jumps, and valid instr addresses as tuple
+        
+        Raises IndirectJump if there are any indirect jumps
+        """
+        
+        pass # TODO
+        return [], [], []
+
 
 #############################
 # Exception Types
@@ -51,17 +68,40 @@ class InsecureJump(Error):
         self.site_address = site_address
         self.jump_address = jump_address
 
+    def print_debug_info(self):
+        pass # TODO
+
 class IndirectJump(InsecureJump):
     """Exception for unconstrained indirect jump"""
+    
+    def print_debug_info(self):
+        super(InsecureJump, self).print_debug_info()
+        pass # TODO
 
 class IntraInstructionJump(InsecureJump):
     """Exception for jump pointing to the middle of an instruction"""
+    
+    def print_debug_info(self):
+        super(InsecureJump, self).print_debug_info()
+        pass # TODO
 
 class IntraFunctionCall(InsecureJump):
     """Exception for a call-instruction pointing to the middle of a function"""
+    
+    def print_debug_info(self):
+        super(InsecureJump, self).print_debug_info()
+        pass # TODO
 
 class OutOfObjectJump(InsecureJump):
     """Exception for a jump out of the same code object"""
+    
+    def print_debug_info(self):
+        super(InsecureJump, self).print_debug_info()
+        pass # TODO
+
+#############################
+# Script
+#############################
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
@@ -71,7 +111,7 @@ if __name__ == "__main__":
     exec_sections = elfparse.gather_exec_sections(binary)
 
     functions = elfparse.gather_functions(binary, exec_sections)
-    verifier = Verifier(binary, exec_sections, functions)
+    verifier = Verifier(binary, exec_sections, functions, []) # TODO plt_addresses
     
     if verifier.judge():
         sys.exit(0)
