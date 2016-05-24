@@ -1,5 +1,6 @@
 import subprocess
 import sys
+import re
 
 class ExecSection:
     def __init__(self, name, size, file_offset, virtual_address, index):
@@ -77,8 +78,27 @@ def gather_functions(binary, exec_section):
     exec_sections should be a list of ExecSections
     binary should be a file object for the executable being analyzed
     """
-    
-    pass # TODO
+    functions = []
+    try:
+            symbols = subprocess.check_output("readelf -s "+binary.name, stderr=subprocess.STDOUT, shell=True)
+    except subprocess.CalledProcessError as e:
+            print e.output
+
+    for symbol in symbols.splitlines():
+        column = symbol.split()
+        if len(column) > 3:
+            if column[3] == "FUNC":
+                offset = 0
+                in_ex_sec = False
+                for es in exec_section:
+                    ind = column[6]
+                    section_index = re.search(r"\d+(\.\d+)?", es.elf_index).group(0)
+                    if ind == section_index:
+                        in_ex_sec = True
+                        offset = int(column[1], 16) - int(es.virtual_address, 16)
+                if in_ex_sec:
+                    functions.append(Function(column[7],column[2],offset,column[1]))
+    return functions
 
 #############################
 # Helper Functions
