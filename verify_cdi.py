@@ -69,13 +69,6 @@ if __name__ == "__main__":
     
     binary = open(sys.argv[1], 'rb')
     exec_sections = elfparse.gather_exec_sections(binary)
-    print len(exec_sections)
-    '''functions = []
-    for section in exec_sections:
-        functions += elfparse.gather_functions(binary, section)'''
-    functions = elfparse.gather_functions(binary, exec_sections)
-    for f in functions:
-    	print f.name, f.file_offset
     verifier = Verifier(binary, exec_sections, functions)
     
     if verifier.judge():
