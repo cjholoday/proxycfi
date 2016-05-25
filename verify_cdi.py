@@ -30,8 +30,9 @@ class Verifier:
         
         # find main in function_list (TODO)
         try:
+            pass
             # verify(main) TODO
-            verify(main)
+            
         except InsecureJump as err:
             err.print_debug_info()
             raise
