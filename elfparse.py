@@ -27,6 +27,11 @@ class Function:
         return (virtual_address >= self.virtual_address and 
                 virtual_address < self.virtual_address + self.size)
 
+class plt_addresses:
+    """plt addresses"""
+    def __init__(self, arg):
+        self.arg = arg
+        
 def gather_exec_sections(binary):
     """Outputs a list of the executable sections found in file object <binary>
     """
@@ -64,8 +69,8 @@ def gather_exec_sections(binary):
     return exec_sections
 
 
-def gather_functions(binary, exec_section):
-    """Outputs a list of functions from the ExecSection object passed
+def gather_functions(binary, exec_sections):
+    """Outputs a list of functions from the ExecSections passed
     
     exec_sections should be a list of ExecSections
     binary should be a file object for the executable being analyzed
@@ -82,7 +87,7 @@ def gather_functions(binary, exec_section):
             if column[3] == "FUNC":
                 offset = 0
                 in_ex_sec = False
-                for es in exec_section:
+                for es in exec_sections:
                     ind = column[6]
                     section_index = re.search(r"\d+(\.\d+)?", es.elf_index).group(0)
                     if ind == section_index:
@@ -91,6 +96,32 @@ def gather_functions(binary, exec_section):
                 if in_ex_sec:
                     functions.append(Function(column[7],column[2],offset,column[1]))
     return functions
+
+    
+def gather_plts(binary):
+    """ Outputs list of plt entries in a given binary
+    binary should be a file object for the executable being analyzed
+    """
+    plts = []
+    try:
+            sections = subprocess.check_output("readelf -S "+binary.name, stderr=subprocess.STDOUT, shell=True)
+    except subprocess.CalledProcessError as e:
+            print e.output
+    found_plt = False
+    start_address = 0
+    size = 0
+    for section in sections.splitlines():
+        column = section.split()
+
+        if found_plt:
+            size = column[0]
+            break
+        if len(column) > 1:
+            if column[1] == ".plt":
+                start_address = column[3]
+                found_plt = True
+    
+    return start_address, size
 
 #############################
 # Helper Functions

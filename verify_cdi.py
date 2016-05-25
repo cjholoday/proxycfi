@@ -9,27 +9,6 @@ class Verifier:
         self.function_list = function_list
         self.plt_addresses = plt_addresses
 
-    def judge(self):
-        """Returns true iff the file object is CDI compliant
-        
-        Wrapper for Verifier.verify
-        """
-        
-        # find main in function_list (TODO)
-        
-        try:
-            # verify(main) TODO
-        
-        except InsecureJump as err:
-            err.print_debug_info()
-            raise
-
-        # check that no jumps go to middle of instruction (TODO)
-        # verify shared library portion (TODO)
-        # verify .init, _start, etc. (TODO)
-        
-        return True
-
     def verify(self, function):
         """Recursively verifies that function is CDI compliant"""
         
@@ -43,7 +22,27 @@ class Verifier:
         # recursively analyze functions that are called by this function
         
         pass # TODO
+    def judge(self):
+        """Returns true iff the file object is CDI compliant
+        
+        Wrapper for Verifier.verify
+        """
+        
+        # find main in function_list (TODO)
+        try:
+            # verify(main) TODO
+            verify(main)
+        except InsecureJump as err:
+            err.print_debug_info()
+            raise
 
+        # check that no jumps go to middle of instruction (TODO)
+        # verify shared library portion (TODO)
+        # verify .init, _start, etc. (TODO)
+        
+        return True
+
+ 
     def inspect(self, function):
         """Returns a list of calls, jumps, and valid instr addresses as tuple
         
@@ -111,6 +110,8 @@ if __name__ == "__main__":
     exec_sections = elfparse.gather_exec_sections(binary)
 
     functions = elfparse.gather_functions(binary, exec_sections)
+    plt_start_addr, plt_size = elfparse.gather_plts(binary)
+    # print plt_start_addr, plt_size 
     verifier = Verifier(binary, exec_sections, functions, []) # TODO plt_addresses
     
     if verifier.judge():
