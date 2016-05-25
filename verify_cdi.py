@@ -3,11 +3,13 @@ import sys
 
 # functor used to avoid excessive parameter passing
 class Verifier:
-    def __init__(self, file_object, exec_sections, function_list, plt_addresses):
+    def __init__(self, file_object, exec_sections, function_list, plt_start_addr,
+            plt_size):
         self.binary = file_object
         self.exec_sections = exec_sections
         self.function_list = function_list
-        self.plt_addresses = plt_addresses
+        self.plt_start_addr = plt_start_addr
+        self.plt_size = plt_size
 
     def verify(self, function):
         """Recursively verifies that function is CDI compliant"""
@@ -112,8 +114,9 @@ if __name__ == "__main__":
 
     functions = elfparse.gather_functions(binary, exec_sections)
     plt_start_addr, plt_size = elfparse.gather_plts(binary)
-    # print plt_start_addr, plt_size 
-    verifier = Verifier(binary, exec_sections, functions, []) # TODO plt_addresses
+
+    verifier = Verifier(binary, exec_sections, functions, plt_start_addr, 
+            plt_size)
     
     if verifier.judge():
         sys.exit(0)
