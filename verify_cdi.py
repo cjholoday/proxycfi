@@ -20,11 +20,11 @@ class Verifier:
     def verify(self, function):
         """Recursively verifies that function is CDI compliant"""
         
-        calls, jumps, instruction_addresses = self.inspect(function)
+        # calls, jumps,loops, instruction_addresses = self.inspect(function,self.plt_start_addr, self.plt_size)
 
-        for addr in calls:
-            if containing_function(addr).virtual_address != addr:
-                raise 
+        # for addr in calls:
+        #     if containing_function(addr).virtual_address != addr:
+        #         raise 
         
         
         
@@ -123,7 +123,7 @@ class Verifier:
             # address in whitespace between functions
             return None
  
-    def inspect(self, function):
+    def inspect(self, function,plt_start_addr, plt_size):
         """Returns a list of calls, jumps, and valid instr addresses as tuple
         
         Raises IndirectJump if there are any indirect jumps
@@ -132,13 +132,16 @@ class Verifier:
         calls = []
         loops = []
         addresses = []
+        plt_calls = []
 
         jmp_list = ["jo","jno","jb","jnae","jc","jnb","jae","jnc","jz","je","jnz",
-                "jne","jbe","jna","jnbe","ja","js"]
+                "jne","jbe","jna","jnbe","ja","js","jns","jp","jpe","jnp","jpo","jl",
+                "jnge","jnl","jge","jle","jng","jnle","jg","jecxz","jrcxz","jmp","jmpe"]
          
-        call_list = ["call"]
+        call_list = ["call","callf","sysenter","syscall"]
 
         loop_list = ["loopz","loopnz", "loope","loopne", "loop"]
+        
         file = open(self.binary.name, 'rb')
         file.seek(function.file_offset)
         buff = file.read(int(function.size))
@@ -150,11 +153,17 @@ class Verifier:
             if i.mnemonic in jmp_list:
                 jmps.append(i.op_str)
             elif i.mnemonic in call_list:
-                calls.append(i.op_str)
+                addr = int(i.op_str,16)
+                if addr >= int(plt_start_addr,16) & addr <= int(plt_start_addr, 16) + int(plt_size,16):
+                    if (addr - int(plt_start_addr, 16)) % 0x10 != 0:
+                        raise
+
+                else:
+                    calls.append(i.op_str)
             elif i.mnemonic in loop_list:
                 loops.append(i.op_str)
 
-        print len(jmps),len(calls),len(loops),len(addresses)
+        print len(jmps),len(calls),len(loops),len(addresses), len(plt_calls)
 
         return jmps,calls,loops,addresses
 
@@ -227,8 +236,7 @@ if __name__ == "__main__":
     verifier = Verifier(binary, exec_sections, functions, plt_start_addr, 
             plt_size)
 
-    for f in functions:
-        print f.name, f.virtual_address
+    
 
     if verifier.judge():
         sys.exit(0)
