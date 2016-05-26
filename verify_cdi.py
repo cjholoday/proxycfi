@@ -1,5 +1,6 @@
 import elfparse
 import sys
+from operator import attrgetter
 
 # functor used to avoid excessive parameter passing
 class Verifier:
@@ -7,16 +8,18 @@ class Verifier:
             plt_size):
         self.binary = file_object
         self.exec_sections = exec_sections
-        self.function_list = function_list
         self.plt_start_addr = plt_start_addr
         self.plt_size = plt_size
+        
+        self.function_list = sorted(function_list, 
+                key=attrgetter('virtual_address'))
 
     def verify(self, function):
         """Recursively verifies that function is CDI compliant"""
         
-        calls, jumps, instruction_addresses = inspect(function)
+        calls, jumps, instruction_addresses = self.inspect(function)
         
-        # check that call target first instruction of some function
+        
         
         # check that each jump goes to a function in this code object
         # store the outgoing address of the jump with the function it points to
@@ -27,13 +30,16 @@ class Verifier:
     def judge(self):
         """Returns true iff the file object is CDI compliant
         
-        Wrapper for Verifier.verify
+        Wrapper for Verifier.verify 
         """
         
-        # find main in function_list (TODO)
+        for f in self.function_list:
+            if f.name == 'main':
+                main = f
+                break
+
         try:
-            pass
-            # verify(main) TODO
+            self.verify(main)
             
         except InsecureJump as err:
             err.print_debug_info()
@@ -45,6 +51,68 @@ class Verifier:
         
         return True
 
+    def containing_function(self, virtual_address):
+        """Returns a function that contains the address. Otherwise, None
+        
+        Assumes the function list is sorted by virtual_address
+            (it's sorted in __init__)
+        There really is no standard library function for this purpose"""
+
+        # candidate function found by modified binary search
+        candidate = None 
+        address = int(virtual_address, 16)
+        
+        left = 0
+        right = len(self.function_list) - 1
+        
+        # modified binary search: 
+        #   invariant: left_address <= max({f | function f contains address})
+        #   'larger' functions have larger addresses
+        #   invariant only makes sense if there is a function that contains address
+
+        # while size 3 subarray or larger
+        while (right - left >= 2):
+            middle = (right + left) / 2 
+
+            if address < int(self.function_list[middle].virtual_address, 16):
+                right = middle - 1
+            elif address > int(self.function_list[middle].virtual_address, 16):
+                # maintains invariant
+                left = middle 
+            else:
+                candidate = self.function_list[middle]
+                break
+
+        # case subarray of size 0
+        if left > right:
+            candidate = None
+
+        # case subarray of size 1
+        elif left == right:
+            if address >= int(self.function_list[left].virtual_address, 16):
+                candidate = self.function_list[left]
+            else:
+                candidate = None
+
+        # case subarray size 2
+        elif left == right - 1:
+            if address >= int(self.function_list[right].virtual_address, 16):
+                candidate = self.function_list[right]
+            elif address >= int(self.function_list[left].virtual_address, 16):
+                candidate = self.function_list[left]
+            else:
+                candidate = None
+
+        # check that the address is in candidate's address range 
+        # address might be in the whitespace between functions!
+        if candidate == None:
+            # no candidate even found in the search so no containing function exists
+            return None
+        elif address < int(candidate.virtual_address, 16) + int(candidate.size, 16):
+            return candidate
+        else:
+            # address in whitespace between functions
+            return None
  
     def inspect(self, function):
         """Returns a list of calls, jumps, and valid instr addresses as tuple
@@ -117,6 +185,9 @@ if __name__ == "__main__":
 
     verifier = Verifier(binary, exec_sections, functions, plt_start_addr, 
             plt_size)
+
+    for f in functions:
+        print f.name, f.virtual_address
     
     if verifier.judge():
         sys.exit(0)
