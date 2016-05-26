@@ -132,42 +132,48 @@ class Error(Exception):
     pass
 
 class InsecureJump(Error):
-    def __init__(self, section, function, site_address, jump_address):
+    def __init__(self, section, function, site_address, jump_address, message):
         self.section = section
         self.function = function
         self.site_address = site_address
         self.jump_address = jump_address
+        self.message = message
 
     def print_debug_info(self):
-        pass # TODO
+        print 'Insecure jump details: '
+        print '\tsection: \t' + self.section.name
+        print '\tfunction: \t' + self.function.name
+        print '\tsite address: \t' + self.site_address
+        print '\tjump address: \t' + self.jump_address
+        print '\tmessage: \t' + self.message
 
 class IndirectJump(InsecureJump):
     """Exception for unconstrained indirect jump"""
     
     def print_debug_info(self):
-        super(InsecureJump, self).print_debug_info()
-        pass # TODO
+        print '--INDIRECT JUMP--'
+        InsecureJump.print_debug_info(self)
 
-class IntraInstructionJump(InsecureJump):
+class MiddleOfInstructionJump(InsecureJump):
     """Exception for jump pointing to the middle of an instruction"""
     
     def print_debug_info(self):
-        super(InsecureJump, self).print_debug_info()
-        pass # TODO
+        print '--MIDDLE OF INSTRUCTION JUMP--'
+        InsecureJump.print_debug_info(self)
 
-class IntraFunctionCall(InsecureJump):
+class MiddleOfFunctionCall(InsecureJump):
     """Exception for a call-instruction pointing to the middle of a function"""
     
     def print_debug_info(self):
-        super(InsecureJump, self).print_debug_info()
-        pass # TODO
+        print '--CALL TO MIDDLE OF FUNCTION--'
+        InsecureJump.print_debug_info(self)
 
 class OutOfObjectJump(InsecureJump):
     """Exception for a jump out of the same code object"""
     
     def print_debug_info(self):
-        super(InsecureJump, self).print_debug_info()
-        pass # TODO
+        print '--JUMP TO OUTSIDE OF OBJECT--'
+        InsecureJump.print_debug_info(self)
 
 #############################
 # Script
