@@ -18,6 +18,10 @@ class Verifier:
         """Recursively verifies that function is CDI compliant"""
         
         calls, jumps, instruction_addresses = self.inspect(function)
+
+        for addr in calls:
+            if containing_function(addr).virtual_address != addr:
+                raise 
         
         
         
@@ -161,11 +165,11 @@ class MiddleOfInstructionJump(InsecureJump):
         print '--MIDDLE OF INSTRUCTION JUMP--'
         InsecureJump.print_debug_info(self)
 
-class MiddleOfFunctionCall(InsecureJump):
-    """Exception for a call-instruction pointing to the middle of a function"""
+class InvalidFunctionCall(InsecureJump):
+    """Exception for a call instruction pointing anywhere but start of function"""
     
     def print_debug_info(self):
-        print '--CALL TO MIDDLE OF FUNCTION--'
+        print '--CALL DOESN\'T POINT TO START OF FUNCTION--'
         InsecureJump.print_debug_info(self)
 
 class OutOfObjectJump(InsecureJump):
