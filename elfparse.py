@@ -93,11 +93,12 @@ def gather_functions(binary, exec_sections):
                     if ind == section_index:
                         in_ex_sec = True
                         offset = int(column[1], 16) - int(es.virtual_address, 16)
+                        file_offset = es.file_offset + offset
                 if in_ex_sec:
-                    functions.append(Function(column[7],column[2],offset,column[1]))
+                    functions.append(Function(column[7],int(column[2]),file_offset,column[1]))
     return functions
 
-    
+
 def gather_plts(binary):
     """ Outputs list of plt entries in a given binary
     binary should be a file object for the executable being analyzed

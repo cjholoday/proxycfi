@@ -1,5 +1,7 @@
 import elfparse
 import sys
+import binascii
+from capstone import *
 
 # functor used to avoid excessive parameter passing
 class Verifier:
@@ -29,12 +31,12 @@ class Verifier:
         """
         
         # find main in function_list (TODO)
-        try:
-            # verify(main) TODO
-            verify(main)
-        except InsecureJump as err:
-            err.print_debug_info()
-            raise
+        # try:
+        #     # verify(main) TODO
+        #     verify(main)
+        # except InsecureJump as err:
+        #     err.print_debug_info()
+        #     raise
 
         # check that no jumps go to middle of instruction (TODO)
         # verify shared library portion (TODO)
@@ -48,9 +50,35 @@ class Verifier:
         
         Raises IndirectJump if there are any indirect jumps
         """
-        
-        pass # TODO
-        return [], [], []
+        jmps = []
+        calls = []
+        loops = []
+        addresses = []
+
+        jmp_list = ["jo","jno","jb","jnae","jc","jnb","jae","jnc","jz","je","jnz",
+                "jne","jbe","jna","jnbe","ja","js"]
+         
+        call_list = ["call"]
+
+        loop_list = ["loopz","loopnz", "loope","loopne", "loop"]
+        file = open(self.binary.name, 'rb')
+        file.seek(function.file_offset)
+        buff = file.read(int(function.size))
+        md = Cs(CS_ARCH_X86, CS_MODE_64)
+        for i in md.disasm(buff, int(function.virtual_address,16)):
+            addresses.append(i.address)
+            print("0x%x:\t%s\t%s" %(i.address, i.mnemonic, i.op_str))
+            addresses
+            if i.mnemonic in jmp_list:
+                jmps.append(i.op_str)
+            elif i.mnemonic in call_list:
+                calls.append(i.op_str)
+            elif i.mnemonic in loop_list:
+                loops.append(i.op_str)
+
+        print len(jmps),len(calls),len(loops),len(addresses)
+
+        return jmps,calls,loops,addresses
 
 
 #############################
@@ -113,7 +141,9 @@ if __name__ == "__main__":
     plt_start_addr, plt_size = elfparse.gather_plts(binary)
     # print plt_start_addr, plt_size 
     verifier = Verifier(binary, exec_sections, functions, []) # TODO plt_addresses
-    
+    # for f in functions:
+    #     print f.name
+    verifier.inspect(functions[8])
     if verifier.judge():
         sys.exit(0)
     else:
