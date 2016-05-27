@@ -115,14 +115,17 @@ def gather_plts(binary):
         column = section.split()
 
         if found_plt:
-            size = column[0]
+            plt_size = int(column[0],16)
+            entry_size = int(column[1], 16)
             break
         if len(column) > 1:
             if column[1] == ".plt":
-                start_address = column[3]
+                start_address = int(column[3], 16)
                 found_plt = True
-    
-    return start_address, size
+    print "plt_start_address = ", hex(start_address)
+    print "plt_size = ", hex(plt_size)
+    print "plt_entry_size = ", hex(entry_size)
+    return start_address, plt_size
 
 #############################
 # Helper Functions
