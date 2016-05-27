@@ -34,32 +34,32 @@ class Verifier:
                 target_function = self.target_function(addr)
                 if target_function == None:
                     raise InvalidFunctionCall(self.target_section(addr), function,
-                            'not calculated', addr, 'call targets no function but '
+                            '', addr, 'call targets no function but '
                             'may point to whitespace between functions')
 
                 if target_function.virtual_address != addr:
                     raise InvalidFunctionCall(self.target_section(addr),
-                            function, 'not calculated', addr)
+                            function, '', addr)
 
                 functions_called.append(target_function)
 
             for addr in loops:
                 if not function.contains_address(addr):
                     raise LoopOutOfFunction(self.target_section(addr),
-                            function, 'not calculated', addr)
+                            function, '', addr)
 
                 candidate_idx = bisect_left(instruction_addreses, addr)
                 if (candidate_idx == len(instruction_addresses) or 
                         instruction_addresses[candidate_idx] != addr):
                     raise MiddleOfInstructionLoopJump(self.target_section(addr),
-                            function, 'not calculated', addr)
+                            function, '', addr)
 
             for addr in jumps:
                 target_function = self.target_function(addr)
 
                 if target_function == None:
                     raise OutOfObjectJump(self.target_section(addr, function,
-                            'not calculated', addr, 'jump may target whitespace '
+                            '', addr, 'jump may target whitespace '
                             'between functions'))
 
                 # check that jumps back into function don't go to middle of instrs
@@ -68,7 +68,7 @@ class Verifier:
                     if (candidate_idx == len(instruction_addresses) or 
                             instruction_addresses[candidate_idx] != addr):
                         raise MiddleOfInstructionJump(self.target_section(addr),
-                                function, 'not calculated', addr, 'the rogue jump '
+                                function, '', addr, 'the rogue jump '
                                 'goes back into ' + function.name)
 
                 # handle jumps to other functions at end of depth first search
@@ -260,7 +260,8 @@ class Verifier:
                 addr = int(i.op_str,16)
                 if addr >= plt_start_addr and addr <= plt_start_addr + plt_size:
                     if (addr - plt_start_addr) % 16 != 0:
-                        raise JumpToMiddleofPLT()
+                        raise MiddleOfPltEntryJump(target_section(function.virtual_address),
+                                function, '', addr, 'plt starts at ' + hex(plt_start_addr))
 
                 else:
                     calls.append(i.op_str)
@@ -292,8 +293,7 @@ class Error(Exception):
 
 class NoMainFunction(Error):
     pass
-class JumpToMiddleofPLT(Error):
-    pass
+
 class InsecureJump(Error):
     def __init__(self, section, function, site_address, jump_address, message = ''):
         self.section = section
@@ -309,6 +309,13 @@ class InsecureJump(Error):
         print '\tsite address: \t' + self.site_address
         print '\tjump address: \t' + self.jump_address
         print '\tmessage: \t' + self.message + '\n'
+
+class MiddleOfPltEntryJump(InsecureJump):
+    """Exception for jump to middle of PLT"""
+
+    def print_debug_info(self):
+        print '--JUMP TO MIDDLE OF PLT ENTRY--'
+        InsecureJump.print_debug_info(self)
 
 class IndirectJump(InsecureJump):
     """Exception for unconstrained indirect jump"""
