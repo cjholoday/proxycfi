@@ -101,11 +101,55 @@ class Verifier:
 
         self.verify(main)
 
-        # check that no jumps go to middle of instruction (TODO)
+        # check that incoming "return" jumps are valid
+        for funct in self.function_list:
+            if not funct.verified and funct.incoming_returns:
+                self.verify(funct)
+            self.check_return_jumps_are_valid(funct)
+
         # verify shared library portion (TODO)
         # verify .init, _start, etc. (TODO)
         
         return self.secure
+
+    def check_return_jumps_are_valid(self, funct):
+        if funct.incoming_returns == []:
+            return # no returns to check!
+
+        instruction_addresses = self.instr_addresses(funct)
+
+        return_addr_iter = iter(funct.incoming_returns)
+        return_addr = return_addr_iter.next()
+
+        valid_addr_iter = '0'
+        valid_addr = '0'
+        try:
+            valid_addr_iter = iter(instruction_addresses)
+            valid_addr = valid_addr_iter.next()
+
+        except StopIteration:
+            sys.stderr.write('ERROR: A function wants to jump to ' +
+                    funct.name + ' but ' + funct.name + ' has no instructions!\n')
+            sys.exit(1)
+
+        try:
+            # python requires a while true for manual iterating...
+            while True:
+                if int(valid_addr, 16) < int(return_addr, 16):
+                    try:
+                        valid_addr = valid_addr_iter.next()
+                    except StopIteration:
+                        raise MiddleOfInstructionJump(self.target_section(funct),
+                                Function('Unknown', 0, 0, 0), 'Unknown',
+                                return_addr, 'Jump goes to ' + funct.name)
+                elif int(valid_addr, 16) > int(return_addr, 16):
+                        raise MiddleOfInstructionJump(self.target_section(funct),
+                                Function('Unknown', 0, 0, 0), 'Unknown',
+                                return_addr, 'Jump goes to ' + funct.name)
+                else: # valid_addr == return_addr
+                    return_addr = return_addr_iter.next()
+        except StopIteration:
+            pass 
 
     def target_function(self, virtual_address):
         """Returns a function that contains the address. Otherwise, None
