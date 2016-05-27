@@ -10,6 +10,12 @@ class ExecSection:
         self.virtual_address = virtual_address
         self.elf_index = index
 
+    def contains_address(self, virtual_address):
+        assert virtual_address > 0
+        
+        return (virtual_address >= self.virtual_address and 
+                virtual_address < self.virtual_address + self.size)
+
 class Function:
     def __init__(self, name, size, file_offset, virtual_address):
         self.name = name
