@@ -122,6 +122,16 @@ class Verifier:
         else:
             # address in whitespace between functions
             return None
+    
+    def containing_section(self, virtual_address):
+        """Returns section that the virtual_address is in
+        
+        Inefficient, but suitable for our purposes"""
+
+        for sect in self.exec_sections:
+            if sect.contains_address(virtual_address):
+                return sect
+        return None
  
     def inspect(self, function,plt_start_addr, plt_size):
         """Returns a list of calls, jumps, and valid instr addresses as tuple
@@ -219,13 +229,20 @@ class OutOfObjectJump(InsecureJump):
         print '--JUMP TO OUTSIDE OF OBJECT--'
         InsecureJump.print_debug_info(self)
 
+class LoopOutOfFunction(InsecureJump):
+    """Exception for a loop jump that points out of the function it's in"""
+
+    def print_debug_info(self):
+        print '--LOOP JUMP TO OUT OF FUNCTION--'
+        InsecureJump.print_debug_info(self)
+
 #############################
 # Script
 #############################
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
-        print 'Usage: python verify_cdi <filename>'
+        print 'Usage: python verify_cdi.py <filename>'
     
     binary = open(sys.argv[1], 'rb')
     exec_sections = elfparse.gather_exec_sections(binary)
