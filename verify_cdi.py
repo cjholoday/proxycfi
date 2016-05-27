@@ -200,9 +200,9 @@ class Verifier:
                 jmps.append(i.op_str)
             elif i.mnemonic in call_list:
                 addr = int(i.op_str,16)
-                if addr >= int(plt_start_addr,16) & addr <= int(plt_start_addr, 16) + int(plt_size,16):
-                    if (addr - int(plt_start_addr, 16)) % 0x10 != 0:
-                        raise
+                if addr >= plt_start_addr and addr <= plt_start_addr + plt_size:
+                    if (addr - plt_start_addr) % 16 != 0:
+                        raise JumpToMiddleofPLT()
 
                 else:
                     calls.append(i.op_str)
@@ -223,7 +223,8 @@ class Error(Exception):
 
 class NoMainFunction(Error):
     pass
-
+class JumpToMiddleofPLT(Error):
+    pass
 class InsecureJump(Error):
     def __init__(self, section, function, site_address, jump_address, message):
         self.section = section
