@@ -164,6 +164,7 @@ class Verifier:
 
         # check that the address is in candidate's address range 
         # address might be in the whitespace between functions!
+        print "candidate.virtual_address, candidate.size",candidate.virtual_address, candidate.size
         if candidate == None:
             # no candidate even found in the search so no containing function exists
             return None
@@ -183,7 +184,7 @@ class Verifier:
                 return sect
         return None
  
-    def inspect(self, function,plt_start_addr, plt_size):
+    def inspect(self, function, plt_start_addr, plt_size):
         """Returns a list of calls, jumps, and valid instr addresses as tuple
         
         Raises IndirectJump if there are any indirect jumps
@@ -226,7 +227,18 @@ class Verifier:
         
         return jmps,calls,loops,addresses
 
-
+    def instr_addresses(self, function):
+        """Returns a list of valid instr addresses for a function
+        
+        """
+        addresses = []
+        file = open(self.binary.name, 'rb')
+        file.seek(function.file_offset)
+        buff = file.read(int(function.size))
+        md = Cs(CS_ARCH_X86, CS_MODE_64)
+        for i in md.disasm(buff, int(function.virtual_address,16)):
+            addresses.append(i.address)
+        return addresses
 #############################
 # Exception Types
 #############################
@@ -309,11 +321,11 @@ if __name__ == "__main__":
 
     functions = elfparse.gather_functions(binary, exec_sections)
     plt_start_addr, plt_size = elfparse.gather_plts(binary)
-
+    
     verifier = Verifier(binary, exec_sections, functions, plt_start_addr, 
             plt_size, False)
 
-    
+    print len(verifier.instr_addresses(functions[8]))
 
     if verifier.judge():
         sys.exit(0)
