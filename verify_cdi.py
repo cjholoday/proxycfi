@@ -1,3 +1,4 @@
+import bisect
 import elfparse
 import sys
 import binascii
@@ -8,57 +9,92 @@ from operator import attrgetter
 # functor used to avoid excessive parameter passing
 class Verifier:
     def __init__(self, file_object, exec_sections, function_list, plt_start_addr,
-            plt_size):
+            plt_size, exit_on_insecurity = True):
         self.binary = file_object
         self.exec_sections = exec_sections
         self.plt_start_addr = plt_start_addr
         self.plt_size = plt_size
+        self.exit_on_insecurity = exit_on_insecurity
+        self.secure = True # secure until proven otherwise
         
         self.function_list = sorted(function_list, 
                 key=attrgetter('virtual_address'))
 
     def verify(self, function):
         """Recursively verifies that function is CDI compliant"""
-        
-        # calls, jumps,loops, instruction_addresses = self.inspect(function,self.plt_start_addr, self.plt_size)
 
-        # for addr in calls:
-        #     if containing_function(addr).virtual_address != addr:
-        #         raise 
-        
-        
-        
-        # check that each jump goes to a function in this code object
-        # store the outgoing address of the jump with the function it points to
-        
-        # recursively analyze functions that are called by this function
-        
-        pass # TODO
+        function.verified = True
+
+        try:
+            calls, jumps, loops, instruction_addresses = self.inspect(function,
+                    self.plt_start_addr, self.plt_size)
+            functions_called = []
+
+            for addr in calls:
+                function_of_addr = self.containing_function(addr)
+                if function_of_addr.virtual_address != addr:
+                    raise InvalidFunctionCall(self.containing_section(addr),
+                            function, 'not calculated', addr, None)
+
+                functions_called.append(function_of_addr)
+
+            for addr in loops:
+                candidate_idx = bisect_left(instruction_addreses, addr)
+                if (candidate_idx == len(instruction_addresses) or 
+                        instruction_addresses[candidate_idx] != addr):
+                    raise LoopOutOfFunction(self.containing_section(addr),
+                            function, 'not calculated', addr, None)
+
+            for addr in jumps:
+                target_function = self.containing_function(addr)
+                if target_function == None:
+                    raise OutOfObjectJump(self.containing_section(addr, function,
+                            'not calculated', addr, 'jump may target whitespace'
+                            'between functions'))
+                # check that jumps back into function don't go to middle of instrs
+                elif target_function == function:
+                    candidate_idx = bisect.bisect_left(instruction_addresses, addr)
+                    if (candidate_idx == len(instruction_addresses) or 
+                            instruction_addresses[candidate_idx] != addr):
+                        raise MiddleOfInstructionJump(self.containing_section(addr),
+                                function, 'not calculated', addr, 'the rogue jump'
+                                'is from ' + function.name)
+
+                # handle jumps to other functions at end of depth first search
+                else:
+                    target_function.incoming_returns.append(addr)
+
+        except InsecureJump as err:
+            self.secure = False
+            err.print_debug_info()
+            if self.exit_on_insecurity:
+                raise
+
+        for funct in functions_called:
+            if not funct.verified:
+                verify(funct)
+
     def judge(self):
         """Returns true iff the file object is CDI compliant
         
         Wrapper for Verifier.verify 
         """
-        
 
+        main = None
         for f in self.function_list:
             if f.name == 'main':
                 main = f
                 break
+        else:
+            raise NoMainFunction()
 
-        try:
-            self.verify(main)
-            
-        except InsecureJump as err:
-            err.print_debug_info()
-            raise
-
+        self.verify(main)
 
         # check that no jumps go to middle of instruction (TODO)
         # verify shared library portion (TODO)
         # verify .init, _start, etc. (TODO)
         
-        return True
+        return self.secure
 
     def containing_function(self, virtual_address):
         """Returns a function that contains the address. Otherwise, None
@@ -185,6 +221,9 @@ class Verifier:
 class Error(Exception):
     pass
 
+class NoMainFunction(Error):
+    pass
+
 class InsecureJump(Error):
     def __init__(self, section, function, site_address, jump_address, message):
         self.section = section
@@ -251,7 +290,7 @@ if __name__ == "__main__":
     plt_start_addr, plt_size = elfparse.gather_plts(binary)
 
     verifier = Verifier(binary, exec_sections, functions, plt_start_addr, 
-            plt_size)
+            plt_size, False)
 
     
 
