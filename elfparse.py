@@ -11,10 +11,10 @@ class ExecSection:
         self.elf_index = index
 
     def contains_address(self, virtual_address):
-        assert virtual_address > 0
+        assert int(virtual_address, 16) > 0
         
-        return (virtual_address >= self.virtual_address and 
-                virtual_address < self.virtual_address + self.size)
+        return (int(virtual_address, 16) >= int(self.virtual_address, 16) and 
+                int(virtual_address, 16) < int(self.virtual_address, 16) + self.size)
 
 class Function:
     def __init__(self, name, size, file_offset, virtual_address):
@@ -22,16 +22,16 @@ class Function:
         self.size = size
         self.file_offset = file_offset
         self.virtual_address = virtual_address
-        verified = False
+        self.verified = False
 
         # virtual addresses of all "return" jumps to this function
         self.incoming_returns = []
     
     def contains_address(self, virtual_address):
-        assert virtual_address > 0
+        assert int(virtual_address, 16) > 0
         
-        return (virtual_address >= self.virtual_address and 
-                virtual_address < self.virtual_address + self.size)
+        return (int(virtual_address, 16) >= int(self.virtual_address, 16) and 
+                int(virtual_address, 16) < int(self.virtual_address, 16) + self.size)
 
 class plt_addresses:
     """plt addresses"""
