@@ -33,26 +33,26 @@ class Verifier:
             for addr in calls:
                 target_function = self.target_function(addr)
                 if target_function == None:
-                    raise InvalidFunctionCall(self.target_section(addr, function,
+                    raise InvalidFunctionCall(self.target_section(addr), function,
                             'not calculated', addr, 'call targets no function but '
-                            'may point to whitespace between functions'))
+                            'may point to whitespace between functions')
 
                 if target_function.virtual_address != addr:
                     raise InvalidFunctionCall(self.target_section(addr),
-                            function, 'not calculated', addr, None)
+                            function, 'not calculated', addr)
 
                 functions_called.append(target_function)
 
             for addr in loops:
                 if not function.contains_address(addr):
                     raise LoopOutOfFunction(self.target_section(addr),
-                            function, 'not calculated', addr, None)
+                            function, 'not calculated', addr)
 
                 candidate_idx = bisect_left(instruction_addreses, addr)
                 if (candidate_idx == len(instruction_addresses) or 
                         instruction_addresses[candidate_idx] != addr):
                     raise MiddleOfInstructionLoopJump(self.target_section(addr),
-                            function, 'not calculated', addr, None)
+                            function, 'not calculated', addr)
 
             for addr in jumps:
                 target_function = self.target_function(addr)
@@ -208,11 +208,10 @@ class Verifier:
 
         # check that the address is in candidate's address range 
         # address might be in the whitespace between functions!
-        print "candidate.virtual_address, candidate.size",candidate.virtual_address, candidate.size
         if candidate == None:
             # no candidate even found in the search so no containing function exists
             return None
-        elif address < int(candidate.virtual_address, 16) + int(candidate.size, 16):
+        elif address < int(candidate.virtual_address, 16) + candidate.size:
             return candidate
         else:
             # address in whitespace between functions
@@ -296,7 +295,7 @@ class NoMainFunction(Error):
 class JumpToMiddleofPLT(Error):
     pass
 class InsecureJump(Error):
-    def __init__(self, section, function, site_address, jump_address, message):
+    def __init__(self, section, function, site_address, jump_address, message = ''):
         self.section = section
         self.function = function
         self.site_address = site_address
@@ -309,7 +308,7 @@ class InsecureJump(Error):
         print '\tfunction: \t' + self.function.name
         print '\tsite address: \t' + self.site_address
         print '\tjump address: \t' + self.jump_address
-        print '\tmessage: \t' + self.message
+        print '\tmessage: \t' + self.message + '\n'
 
 class IndirectJump(InsecureJump):
     """Exception for unconstrained indirect jump"""
