@@ -31,42 +31,53 @@ class Verifier:
             functions_called = []
 
             for addr in calls:
-                function_of_addr = self.containing_function(addr)
-                if function_of_addr.virtual_address != addr:
-                    raise InvalidFunctionCall(self.containing_section(addr),
+                target_function = self.target_function(addr)
+                if target_function == None:
+                    raise InvalidFunctionCall(self.target_section(addr, function,
+                            'not calculated', addr, 'call targets no function but '
+                            'may point to whitespace between functions'))
+
+                if target_function.virtual_address != addr:
+                    raise InvalidFunctionCall(self.target_section(addr),
                             function, 'not calculated', addr, None)
 
-                functions_called.append(function_of_addr)
+                functions_called.append(target_function)
 
             for addr in loops:
+                if not function.contains_address(addr):
+                    raise LoopOutOfFunction(self.target_section(addr),
+                            function, 'not calculated', addr, None)
+
                 candidate_idx = bisect_left(instruction_addreses, addr)
                 if (candidate_idx == len(instruction_addresses) or 
                         instruction_addresses[candidate_idx] != addr):
-                    raise LoopOutOfFunction(self.containing_section(addr),
+                    raise MiddleOfInstructionLoopJump(self.target_section(addr),
                             function, 'not calculated', addr, None)
 
             for addr in jumps:
-                target_function = self.containing_function(addr)
+                target_function = self.target_function(addr)
+
                 if target_function == None:
-                    raise OutOfObjectJump(self.containing_section(addr, function,
-                            'not calculated', addr, 'jump may target whitespace'
+                    raise OutOfObjectJump(self.target_section(addr, function,
+                            'not calculated', addr, 'jump may target whitespace '
                             'between functions'))
+
                 # check that jumps back into function don't go to middle of instrs
                 elif target_function == function:
                     candidate_idx = bisect.bisect_left(instruction_addresses, addr)
                     if (candidate_idx == len(instruction_addresses) or 
                             instruction_addresses[candidate_idx] != addr):
-                        raise MiddleOfInstructionJump(self.containing_section(addr),
-                                function, 'not calculated', addr, 'the rogue jump'
-                                'is from ' + function.name)
+                        raise MiddleOfInstructionJump(self.target_section(addr),
+                                function, 'not calculated', addr, 'the rogue jump '
+                                'goes back into ' + function.name)
 
                 # handle jumps to other functions at end of depth first search
                 else:
                     target_function.incoming_returns.append(addr)
 
-        except InsecureJump as err:
+        except InsecureJump as insecurity:
             self.secure = False
-            err.print_debug_info()
+            insecurity.print_debug_info()
             if self.exit_on_insecurity:
                 raise
 
@@ -96,11 +107,14 @@ class Verifier:
         
         return self.secure
 
-    def containing_function(self, virtual_address):
+    def target_function(self, virtual_address):
         """Returns a function that contains the address. Otherwise, None
         
         Assumes the function list is sorted by virtual_address
             (it's sorted in __init__)
+        Note that addresses can be in whitespace between functions, if addr
+        is in one of these whitespace areas, None will be returned
+
         There really is no standard library function for this purpose"""
 
         # candidate function found by modified binary search
@@ -159,7 +173,7 @@ class Verifier:
             # address in whitespace between functions
             return None
     
-    def containing_section(self, virtual_address):
+    def target_section(self, virtual_address):
         """Returns section that the virtual_address is in
         
         Inefficient, but suitable for our purposes"""
@@ -274,6 +288,13 @@ class LoopOutOfFunction(InsecureJump):
 
     def print_debug_info(self):
         print '--LOOP JUMP TO OUT OF FUNCTION--'
+        InsecureJump.print_debug_info(self)
+
+class MiddleOfInstructionLoopJump(InsecureJump):
+    """Exception for a loop jump that points to the middle of an instruction"""
+
+    def print_debug_info(self):
+        print '--LOOP JUMP POINTS TO MIDDLE OF INSTRUCTION--'
         InsecureJump.print_debug_info(self)
 
 #############################
