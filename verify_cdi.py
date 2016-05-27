@@ -208,7 +208,7 @@ class Verifier:
         buff = file.read(int(function.size))
         md = Cs(CS_ARCH_X86, CS_MODE_64)
         for i in md.disasm(buff, int(function.virtual_address,16)):
-            addresses.append(i.address)
+            addresses.append(hex(int(i.address)))
             print("0x%x:\t%s\t%s" %(i.address, i.mnemonic, i.op_str))
             addresses
             if i.mnemonic in jmp_list:
@@ -237,7 +237,8 @@ class Verifier:
         buff = file.read(int(function.size))
         md = Cs(CS_ARCH_X86, CS_MODE_64)
         for i in md.disasm(buff, int(function.virtual_address,16)):
-            addresses.append(i.address)
+            addresses.append(hex(int(i.address)))
+            
         return addresses
 #############################
 # Exception Types
@@ -324,8 +325,6 @@ if __name__ == "__main__":
     
     verifier = Verifier(binary, exec_sections, functions, plt_start_addr, 
             plt_size, False)
-
-    print len(verifier.instr_addresses(functions[8]))
 
     if verifier.judge():
         sys.exit(0)
