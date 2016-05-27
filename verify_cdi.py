@@ -223,8 +223,7 @@ class Verifier:
             elif i.mnemonic in loop_list:
                 loops.append(i.op_str)
 
-        print len(jmps),len(calls),len(loops),len(addresses), len(plt_calls)
-
+        
         return jmps,calls,loops,addresses
 
 

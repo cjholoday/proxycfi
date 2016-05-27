@@ -128,9 +128,7 @@ def gather_plts(binary):
             if column[1] == ".plt":
                 start_address = int(column[3], 16)
                 found_plt = True
-    print "plt_start_address = ", hex(start_address)
-    print "plt_size = ", hex(plt_size)
-    print "plt_entry_size = ", hex(entry_size)
+
     return start_address, plt_size
 
 #############################
