@@ -2,6 +2,7 @@ import bisect
 import elfparse
 import sys
 import binascii
+import types
 from capstone import *
 from operator import attrgetter
 
@@ -83,7 +84,7 @@ class Verifier:
 
         for funct in functions_called:
             if not funct.verified:
-                verify(funct)
+                self.verify(funct)
 
     def judge(self):
         """Returns true iff the file object is CDI compliant
@@ -135,14 +136,14 @@ class Verifier:
         try:
             # python requires a while true for manual iterating...
             while True:
-                if int(valid_addr, 16) < int(return_addr, 16):
+                if valid_addr < return_addr:
                     try:
                         valid_addr = valid_addr_iter.next()
                     except StopIteration:
                         raise MiddleOfInstructionJump(self.target_section(funct),
                                 Function('Unknown', 0, 0, 0), 'Unknown',
                                 return_addr, 'Jump goes to ' + funct.name)
-                elif int(valid_addr, 16) > int(return_addr, 16):
+                elif valid_addr > return_addr:
                         raise MiddleOfInstructionJump(self.target_section(funct),
                                 Function('Unknown', 0, 0, 0), 'Unknown',
                                 return_addr, 'Jump goes to ' + funct.name)
@@ -163,7 +164,7 @@ class Verifier:
 
         # candidate function found by modified binary search
         candidate = None 
-        address = int(virtual_address, 16)
+        address = virtual_address
         
         left = 0
         right = len(self.function_list) - 1
@@ -177,9 +178,9 @@ class Verifier:
         while (right - left >= 2):
             middle = (right + left) / 2 
 
-            if address < int(self.function_list[middle].virtual_address, 16):
+            if address < self.function_list[middle].virtual_address:
                 right = middle - 1
-            elif address > int(self.function_list[middle].virtual_address, 16):
+            elif address > self.function_list[middle].virtual_address:
                 # maintains invariant
                 left = middle 
             else:
@@ -192,16 +193,16 @@ class Verifier:
 
         # case subarray of size 1
         elif left == right:
-            if address >= int(self.function_list[left].virtual_address, 16):
+            if address >= self.function_list[left].virtual_address:
                 candidate = self.function_list[left]
             else:
                 candidate = None
 
         # case subarray size 2
         elif left == right - 1:
-            if address >= int(self.function_list[right].virtual_address, 16):
+            if address >= self.function_list[right].virtual_address:
                 candidate = self.function_list[right]
-            elif address >= int(self.function_list[left].virtual_address, 16):
+            elif address >= self.function_list[left].virtual_address:
                 candidate = self.function_list[left]
             else:
                 candidate = None
@@ -211,7 +212,7 @@ class Verifier:
         if candidate == None:
             # no candidate even found in the search so no containing function exists
             return None
-        elif address < int(candidate.virtual_address, 16) + candidate.size:
+        elif address < candidate.virtual_address + candidate.size:
             return candidate
         else:
             # address in whitespace between functions
@@ -228,7 +229,7 @@ class Verifier:
         return None
  
     def inspect(self, function, plt_start_addr, plt_size):
-        """Returns a list of calls, jumps, and valid instr addresses as tuple
+        """Returns a list of calls, jumps, loop addresses, and valid instr addresses as tuple
         
         Raises IndirectJump if there are any indirect jumps
         """
@@ -250,12 +251,12 @@ class Verifier:
         file.seek(function.file_offset)
         buff = file.read(int(function.size))
         md = Cs(CS_ARCH_X86, CS_MODE_64)
-        for i in md.disasm(buff, int(function.virtual_address,16)):
-            addresses.append(hex(int(i.address)))
+        for i in md.disasm(buff, function.virtual_address):
+            addresses.append(int(i.address))
             print("0x%x:\t%s\t%s" %(i.address, i.mnemonic, i.op_str))
             addresses
             if i.mnemonic in jmp_list:
-                jmps.append(i.op_str)
+                jmps.append(int(i.op_str, 16))
             elif i.mnemonic in call_list:
                 addr = int(i.op_str,16)
                 if addr >= plt_start_addr and addr <= plt_start_addr + plt_size:
@@ -264,12 +265,12 @@ class Verifier:
                                 function, '', addr, 'plt starts at ' + hex(plt_start_addr))
 
                 else:
-                    calls.append(i.op_str)
+                    calls.append(int(i.op_str, 16))
             elif i.mnemonic in loop_list:
-                loops.append(i.op_str)
+                loops.append(int(i.op_str, 16))
 
         
-        return jmps,calls,loops,addresses
+        return calls, jmps, loops, addresses
 
     def instr_addresses(self, function):
         """Returns a list of valid instr addresses for a function
@@ -301,6 +302,12 @@ class InsecureJump(Error):
         self.site_address = site_address
         self.jump_address = jump_address
         self.message = message
+
+        if type(self.site_address) is types.IntType:
+            self.site_address = hex(self.site_address)
+            
+        if type(self.jump_address) is types.IntType:
+            self.jump_address = hex(self.jump_address)
 
     def print_debug_info(self):
         print 'Insecure jump details: '
