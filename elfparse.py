@@ -46,11 +46,6 @@ class Function:
         return (virtual_address >= self.virtual_address and 
                 virtual_address < self.virtual_address + self.size)
 
-class plt_addresses:
-    """plt addresses"""
-    def __init__(self, arg):
-        self.arg = arg
-        
 def gather_exec_sections(binary):
     """Outputs a list of the executable sections found in file object <binary>
     """
@@ -96,9 +91,9 @@ def gather_functions(binary, exec_sections):
     """
     functions = []
     try:
-            symbols = subprocess.check_output("readelf -s "+binary.name, stderr=subprocess.STDOUT, shell=True)
+        symbols = subprocess.check_output(['readelf', '-s', binary.name])
     except subprocess.CalledProcessError as e:
-            print e.output
+        print e.output
 
     for symbol in symbols.splitlines():
         column = symbol.split()
@@ -124,9 +119,9 @@ def gather_plts(binary):
     """
     plts = []
     try:
-            sections = subprocess.check_output("readelf -S "+binary.name, stderr=subprocess.STDOUT, shell=True)
+        sections = subprocess.check_output(['readelf', '-S', binary.name])
     except subprocess.CalledProcessError as e:
-            print e.output
+        print e.output
     found_plt = False
     start_address = 0
     size = 0
