@@ -124,6 +124,7 @@ def gather_plts(binary):
         print e.output
     found_plt = False
     start_address = 0
+    plt_size = 0
     size = 0
     for section in sections.splitlines():
         column = section.split()

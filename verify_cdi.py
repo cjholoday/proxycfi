@@ -27,9 +27,9 @@ class Verifier:
         function.verified = True
 
         try:
+            functions_called = []
             calls, jumps, loops, instruction_addresses = self.inspect(function,
                     self.plt_start_addr, self.plt_size)
-            functions_called = []
 
             for addr in calls:
                 target_function = self.target_function(addr)
@@ -258,7 +258,11 @@ class Verifier:
             if i.mnemonic in jmp_list:
                 jmps.append(int(i.op_str, 16))
             elif i.mnemonic in call_list:
-                addr = int(i.op_str,16)
+                try:
+                    addr = int(i.op_str,16)
+                except ValueError: # if not immediate, indirect!
+                    raise IndirectJump(self.target_section(int(i.address)),
+                            function, int(i.address), i.op_str)
                 if addr >= plt_start_addr and addr <= plt_start_addr + plt_size:
                     if (addr - plt_start_addr) % 16 != 0:
                         raise MiddleOfPltEntryJump(target_section(function.virtual_address),
