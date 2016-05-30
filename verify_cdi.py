@@ -256,7 +256,12 @@ class Verifier:
             print("0x%x:\t%s\t%s" %(i.address, i.mnemonic, i.op_str))
             addresses
             if i.mnemonic in jmp_list:
-                jmps.append(int(i.op_str, 16))
+                try:
+                    addr = int(i.op_str,16)
+                except ValueError: # if not immediate, indirect!
+                    raise IndirectJump(self.target_section(int(i.address)),
+                            function, int(i.address), i.op_str)
+                jmps.append(addr)
             elif i.mnemonic in call_list:
                 try:
                     addr = int(i.op_str,16)
