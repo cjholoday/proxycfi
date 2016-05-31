@@ -281,8 +281,12 @@ class Verifier:
                     else:
                         jmps.append(addr)
                 except ValueError:
-                    raise IndirectJump(self.target_section(function.virtual_address),
+                    if self.exit_on_insecurity:
+                        raise IndirectJump(self.target_section(function.virtual_address),
                                 function, hex(int(i.address)), i.op_str, 'Indirect Jmp/Jcc')
+                    else:
+                        IndirectJump(self.target_section(function.virtual_address),
+                                function, hex(int(i.address)), i.op_str, 'Indirect Jmp/Jcc').print_debug_info()
             elif i.mnemonic in call_list:
                 try:
                     addr = int(i.op_str,16)
@@ -294,8 +298,12 @@ class Verifier:
                     else:
                         calls.append(addr)
                 except ValueError:
-                    raise IndirectCall(self.target_section(function.virtual_address),
+                    if self.exit_on_insecurity:
+                        raise IndirectCall(self.target_section(function.virtual_address),
                                 function, hex(int(i.address)), i.op_str, 'Indirect Call')
+                    else:
+                        IndirectCall(self.target_section(function.virtual_address), 
+                                function, hex(int(i.address)), i.op_str, 'Indirect Call').print_debug_info()
 
             elif i.mnemonic in returns:
                 if self.exit_on_insecurity:
