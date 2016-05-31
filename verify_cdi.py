@@ -272,7 +272,13 @@ class Verifier:
                     # Indirect calls and jumps have a * after the instruction and before the location
                     # which raises a value error exception in the casting
                     addr = int(i.op_str,16)
-                    jmps.append(addr)
+                    if addr >= plt_start_addr and addr <= plt_start_addr + plt_size:
+                        if (addr - plt_start_addr) % 16 != 0:
+                            raise MiddleOfPltEntryJump(target_section(function.virtual_address),
+                                    function, '', addr, 'plt starts at ' + hex(plt_start_addr))
+
+                    else:
+                        jmps.append(addr)
                 except ValueError:
                     raise IndirectJump(self.target_section(function.virtual_address),
                                 function, hex(int(i.address)), '', 'Indirect Jump')
