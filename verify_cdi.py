@@ -106,7 +106,11 @@ class Verifier:
         for funct in self.function_list:
             if not funct.verified and funct.incoming_returns:
                 self.verify(funct)
-            self.check_return_jumps_are_valid(funct)
+            try:
+                self.check_return_jumps_are_valid(funct)
+            except InsecureJump as insecurity:
+                insecurity.print_debug_info()
+                self.secure = False
 
         # verify shared library portion (TODO)
         # verify .init, _start, etc. (TODO)
@@ -119,7 +123,7 @@ class Verifier:
 
         instruction_addresses = self.instr_addresses(funct)
 
-        return_addr_iter = iter(funct.incoming_returns)
+        return_addr_iter = iter(sorted(funct.incoming_returns))
         return_addr = return_addr_iter.next()
 
         valid_addr_iter = '0'
@@ -140,12 +144,14 @@ class Verifier:
                     try:
                         valid_addr = valid_addr_iter.next()
                     except StopIteration:
-                        raise MiddleOfInstructionJump(self.target_section(funct),
-                                Function('Unknown', 0, 0, 0), 'Unknown',
+                        raise MiddleOfInstructionJump(
+                                self.target_section(funct.virtual_address),
+                                elfparse.Function('Unknown', 0, 0, 0), 'Unknown',
                                 return_addr, 'Jump goes to ' + funct.name)
                 elif valid_addr > return_addr:
-                        raise MiddleOfInstructionJump(self.target_section(funct),
-                                Function('Unknown', 0, 0, 0), 'Unknown',
+                        raise MiddleOfInstructionJump(
+                                self.target_section(funct.virtual_address),
+                                elfparse.Function('Unknown', 0, 0, 0), 'Unknown',
                                 return_addr, 'Jump goes to ' + funct.name)
                 else: # valid_addr == return_addr
                     return_addr = return_addr_iter.next()
@@ -251,6 +257,7 @@ class Verifier:
         file.seek(function.file_offset)
         buff = file.read(int(function.size))
         md = Cs(CS_ARCH_X86, CS_MODE_64)
+        print '--------------:  ' + function.name
         for i in md.disasm(buff, function.virtual_address):
             addresses.append(int(i.address))
             print("0x%x:\t%s\t%s" %(i.address, i.mnemonic, i.op_str))
@@ -277,8 +284,8 @@ class Verifier:
                     calls.append(int(i.op_str, 16))
             elif i.mnemonic in loop_list:
                 loops.append(int(i.op_str, 16))
-
         
+        print '--------------:  ' + function.name + '\n'
         return calls, jmps, loops, addresses
 
     def instr_addresses(self, function):
@@ -290,8 +297,8 @@ class Verifier:
         file.seek(function.file_offset)
         buff = file.read(int(function.size))
         md = Cs(CS_ARCH_X86, CS_MODE_64)
-        for i in md.disasm(buff, int(function.virtual_address,16)):
-            addresses.append(hex(int(i.address)))
+        for i in md.disasm(buff, function.virtual_address):
+            addresses.append(int(i.address))
             
         return addresses
 #############################
