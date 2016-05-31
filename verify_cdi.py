@@ -30,10 +30,6 @@ class Verifier:
             functions_called = []
             calls, jumps, loops, instruction_addresses = self.inspect(function,
                     self.plt_start_addr, self.plt_size)
-<<<<<<< HEAD
-            
-=======
->>>>>>> f5d1c056b6f8325ed13e7eb29d090c820d7efd60
 
             for addr in calls:
                 target_function = self.target_function(addr)
