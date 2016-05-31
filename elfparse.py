@@ -1,43 +1,51 @@
 import subprocess
 import sys
 import re
+import types
 
 class ExecSection:
     def __init__(self, name, size, file_offset, virtual_address, index):
         self.name = name
         self.size = size
-        self.file_offset = file_offset
-        self.virtual_address = virtual_address
         self.elf_index = index
 
+        # stored as integers. Use hex() to get a hex string representation
+        self.file_offset = file_offset
+        self.virtual_address = virtual_address
+
+        assert type(self.file_offset) is types.IntType
+        assert type(self.virtual_address) is types.IntType
+
     def contains_address(self, virtual_address):
-        assert int(virtual_address, 16) > 0
+        assert type(virtual_address) is types.IntType
         
-        return (int(virtual_address, 16) >= int(self.virtual_address, 16) and 
-                int(virtual_address, 16) < int(self.virtual_address, 16) + self.size)
+        return (virtual_address >= self.virtual_address and 
+                virtual_address < self.virtual_address + self.size)
 
 class Function:
     def __init__(self, name, size, file_offset, virtual_address):
         self.name = name
+        self.verified = False
+
+        # stored as integers. Use hex() to get a hex string representation
         self.size = size
         self.file_offset = file_offset
         self.virtual_address = virtual_address
-        self.verified = False
 
         # virtual addresses of all "return" jumps to this function
         self.incoming_returns = []
+
+        assert type(self.size) is types.IntType
+        assert type(self.file_offset) is types.IntType
+        assert type(self.virtual_address) is types.IntType
     
     def contains_address(self, virtual_address):
-        assert int(virtual_address, 16) > 0
+        assert type(virtual_address) is types.IntType
+        assert virtual_address > 0
         
-        return (int(virtual_address, 16) >= int(self.virtual_address, 16) and 
-                int(virtual_address, 16) < int(self.virtual_address, 16) + self.size)
+        return (virtual_address >= self.virtual_address and 
+                virtual_address < self.virtual_address + self.size)
 
-class plt_addresses:
-    """plt addresses"""
-    def __init__(self, arg):
-        self.arg = arg
-        
 def gather_exec_sections(binary):
     """Outputs a list of the executable sections found in file object <binary>
     """
@@ -83,9 +91,9 @@ def gather_functions(binary, exec_sections):
     """
     functions = []
     try:
-            symbols = subprocess.check_output("readelf -s "+binary.name, stderr=subprocess.STDOUT, shell=True)
+        symbols = subprocess.check_output(['readelf', '-s', binary.name])
     except subprocess.CalledProcessError as e:
-            print e.output
+        print e.output
 
     for symbol in symbols.splitlines():
         column = symbol.split()
@@ -98,10 +106,10 @@ def gather_functions(binary, exec_sections):
                     section_index = re.search(r"\d+(\.\d+)?", es.elf_index).group(0)
                     if ind == section_index:
                         in_ex_sec = True
-                        offset = int(column[1], 16) - int(es.virtual_address, 16)
+                        offset = int(column[1], 16) - es.virtual_address
                         file_offset = es.file_offset + offset
                 if in_ex_sec:
-                    functions.append(Function(column[7],int(column[2]),file_offset,column[1]))
+                    functions.append(Function(column[7],int(column[2]),file_offset,int(column[1], 16)))
     return functions
 
 
@@ -111,11 +119,12 @@ def gather_plts(binary):
     """
     plts = []
     try:
-            sections = subprocess.check_output("readelf -S "+binary.name, stderr=subprocess.STDOUT, shell=True)
+        sections = subprocess.check_output(['readelf', '-S', binary.name])
     except subprocess.CalledProcessError as e:
-            print e.output
+        print e.output
     found_plt = False
     start_address = 0
+    plt_size = 0
     size = 0
     for section in sections.splitlines():
         column = section.split()
@@ -156,7 +165,7 @@ def extract_section(line1, line2, section_list):
         return 
     
     name = line1_fields[0];
-    virtual_address = hex(int(line1_fields[2], 16))
+    virtual_address = int(line1_fields[2], 16)
     file_offset = int(line1_fields[3], 16)
     size = int(line2_fields[0], 16)
     
