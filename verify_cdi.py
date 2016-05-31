@@ -10,11 +10,12 @@ from operator import attrgetter
 # functor used to avoid excessive parameter passing
 class Verifier:
     def __init__(self, file_object, exec_sections, function_list, plt_start_addr,
-            plt_size, exit_on_insecurity = True):
+            plt_size, plt_entry_size, exit_on_insecurity = True):
         self.binary = file_object
         self.exec_sections = exec_sections
         self.plt_start_addr = plt_start_addr
         self.plt_size = plt_size
+        self.plt_entry_size = plt_entry_size
         self.exit_on_insecurity = exit_on_insecurity
         self.secure = True # secure until proven otherwise
         
@@ -25,11 +26,11 @@ class Verifier:
         """Recursively verifies that function is CDI compliant"""
 
         function.verified = True
-        functions_called = []
+
         try:
             functions_called = []
             calls, jumps, loops, instruction_addresses = self.inspect(function,
-                    self.plt_start_addr, self.plt_size)
+                    self.plt_start_addr, self.plt_size, self.plt_entry_size)
 
             for addr in calls:
                 target_function = self.target_function(addr)
@@ -59,9 +60,9 @@ class Verifier:
                 target_function = self.target_function(addr)
 
                 if target_function == None:
-                    raise OutOfObjectJump(self.target_section(addr, function,
+                    raise OutOfObjectJump(self.target_section(addr), function,
                             '', addr, 'jump may target whitespace '
-                            'between functions'))
+                            'between functions')
 
                 # check that jumps back into function don't go to middle of instrs
                 elif target_function == function:
@@ -234,7 +235,7 @@ class Verifier:
                 return sect
         return None
  
-    def inspect(self, function, plt_start_addr, plt_size):
+    def inspect(self, function, plt_start_addr, plt_size, plt_entry_size):
         """Returns a list of calls, jumps, loop addresses, and valid instr addresses as tuple
         
         Raises IndirectJump if there are any indirect jumps
@@ -273,7 +274,7 @@ class Verifier:
                     # which raises a value error exception in the casting
                     addr = int(i.op_str,16)
                     if addr >= plt_start_addr and addr <= plt_start_addr + plt_size:
-                        if (addr - plt_start_addr) % 16 != 0:
+                        if (addr - plt_start_addr) % plt_entry_size != 0:
                             raise MiddleOfPltEntryJump(target_section(function.virtual_address),
                                     function, '', addr, 'plt starts at ' + hex(plt_start_addr))
 
@@ -281,26 +282,32 @@ class Verifier:
                         jmps.append(addr)
                 except ValueError:
                     raise IndirectJump(self.target_section(function.virtual_address),
-                                function, hex(int(i.address)), '', 'Indirect Jump')
+                                function, hex(int(i.address)), i.op_str, 'Indirect Jmp/Jcc')
             elif i.mnemonic in call_list:
                 try:
                     addr = int(i.op_str,16)
                     if addr >= plt_start_addr and addr <= plt_start_addr + plt_size:
-                        if (addr - plt_start_addr) % 16 != 0:
+                        if (addr - plt_start_addr) % plt_entry_size != 0:
                             raise MiddleOfPltEntryJump(target_section(function.virtual_address),
                                     function, '', addr, 'plt starts at ' + hex(plt_start_addr))
 
                     else:
-                        calls.append(i.op_str)
+                        calls.append(addr)
                 except ValueError:
                     raise IndirectCall(self.target_section(function.virtual_address),
-                                function, hex(int(i.address)), '', 'Indirect Call')
+                                function, hex(int(i.address)), i.op_str, 'Indirect Call')
 
             elif i.mnemonic in returns:
-                raise IndirectJump(self.target_section(function.virtual_address),
-                                function, hex(int(i.address)), '', 'Return Instruction')
+                if self.exit_on_insecurity:
+                    raise IndirectJump(self.target_section(function.virtual_address), 
+                            function, hex(int(i.address)), i.op_str, 'Return Instruction')
+                else:
+                    IndirectJump(self.target_section(function.virtual_address),
+                            function, hex(int(i.address)), i.op_str, 'Return Instruction').print_debug_info()
+
+
             elif i.mnemonic in loop_list:
-                loops.append(i.op_str)
+                loops.append(int(i.op_str, 16))
         
 
         
@@ -427,10 +434,10 @@ if __name__ == "__main__":
     exec_sections = elfparse.gather_exec_sections(binary)
 
     functions = elfparse.gather_functions(binary, exec_sections)
-    plt_start_addr, plt_size = elfparse.gather_plts(binary)
+    plt_start_addr, plt_size, plt_entry_size = elfparse.gather_plts(binary)
     
     verifier = Verifier(binary, exec_sections, functions, plt_start_addr, 
-            plt_size, False)
+            plt_size, plt_entry_size, False)
 
     if verifier.judge():
         sys.exit(0)

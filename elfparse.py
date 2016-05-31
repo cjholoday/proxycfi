@@ -125,6 +125,7 @@ def gather_plts(binary):
     found_plt = False
     start_address = 0
     plt_size = 0
+    entry_size = 0
     size = 0
     for section in sections.splitlines():
         column = section.split()
@@ -138,7 +139,7 @@ def gather_plts(binary):
                 start_address = int(column[3], 16)
                 found_plt = True
 
-    return start_address, plt_size
+    return start_address, plt_size, entry_size
 
 #############################
 # Helper Functions
@@ -168,6 +169,7 @@ def extract_section(line1, line2, section_list):
     virtual_address = int(line1_fields[2], 16)
     file_offset = int(line1_fields[3], 16)
     size = int(line2_fields[0], 16)
+
     
     sect = ExecSection(name, size, file_offset, virtual_address, section_index)
     section_list.append(sect)
