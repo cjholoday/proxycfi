@@ -24,11 +24,11 @@ class Verifier:
         """Recursively verifies that function is CDI compliant"""
 
         function.verified = True
-
+        functions_called = []
         try:
             calls, jumps, loops, instruction_addresses = self.inspect(function,
                     self.plt_start_addr, self.plt_size)
-            functions_called = []
+            
 
             for addr in calls:
                 target_function = self.target_function(addr)
@@ -231,6 +231,7 @@ class Verifier:
         """Returns a list of calls, jumps, and valid instr addresses as tuple
         
         Raises IndirectJump if there are any indirect jumps
+
         """
         jmps = []
         calls = []
@@ -245,6 +246,9 @@ class Verifier:
         call_list = ["call","callf","sysenter","syscall"]
 
         loop_list = ["loopz","loopnz", "loope","loopne", "loop"]
+
+        # Insecure instructions list
+        returns = ["ret", "retf", "iret", "retq", "iretq"]
         
         file = open(self.binary.name, 'rb')
         file.seek(function.file_offset)
@@ -255,21 +259,34 @@ class Verifier:
             print("0x%x:\t%s\t%s" %(i.address, i.mnemonic, i.op_str))
             addresses
             if i.mnemonic in jmp_list:
-                jmps.append(i.op_str)
+                try:
+                    # Indirect calls and jumps have a * after the instruction and before the location
+                    # which raises a value error exception in the casting
+                    addr = int(i.op_str,16)
+                    jmps.append(addr)
+                except ValueError:
+                    raise IndirectJump(self.target_section(function.virtual_address),
+                                function, hex(int(i.address)), '', 'Indirect Jump')
             elif i.mnemonic in call_list:
-                addr = int(i.op_str,16)
-                if addr >= plt_start_addr and addr <= plt_start_addr + plt_size:
-                    if (addr - plt_start_addr) % 16 != 0:
-                        raise MiddleOfPltEntryJump(target_section(function.virtual_address),
-                                function, '', addr, 'plt starts at ' + hex(plt_start_addr))
+                try:
+                    addr = int(i.op_str,16)
+                    if addr >= plt_start_addr and addr <= plt_start_addr + plt_size:
+                        if (addr - plt_start_addr) % 16 != 0:
+                            raise MiddleOfPltEntryJump(target_section(function.virtual_address),
+                                    function, '', addr, 'plt starts at ' + hex(plt_start_addr))
 
-                else:
-                    calls.append(i.op_str)
+                    else:
+                        calls.append(i.op_str)
+                except ValueError:
+                    raise IndirectCall(self.target_section(function.virtual_address),
+                                function, hex(int(i.address)), '', 'Indirect Call')
+
+            elif i.mnemonic in returns:
+                raise IndirectJump(self.target_section(function.virtual_address),
+                                function, hex(int(i.address)), '', 'Return Instruction')
             elif i.mnemonic in loop_list:
                 loops.append(i.op_str)
-
         
-        return jmps,calls,loops,addresses
 
     def instr_addresses(self, function):
         """Returns a list of valid instr addresses for a function
@@ -310,11 +327,24 @@ class InsecureJump(Error):
         print '\tjump address: \t' + self.jump_address
         print '\tmessage: \t' + self.message + '\n'
 
+class Return(InsecureJump):
+    """Exception for return instruction"""
+
+    def print_debug_info(self):
+        print '--RETURN INSTRUCTION--'
+        InsecureJump.print_debug_info(self)
+
 class MiddleOfPltEntryJump(InsecureJump):
     """Exception for jump to middle of PLT"""
 
     def print_debug_info(self):
         print '--JUMP TO MIDDLE OF PLT ENTRY--'
+        InsecureJump.print_debug_info(self)
+class IndirectCall(InsecureJump):
+    """Exception for unconstrained indirect jump"""
+    
+    def print_debug_info(self):
+        print '--INDIRECT CALL--'
         InsecureJump.print_debug_info(self)
 
 class IndirectJump(InsecureJump):
