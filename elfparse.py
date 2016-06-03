@@ -2,6 +2,7 @@ import subprocess
 import sys
 import re
 import types
+import getopt
 
 class ExecSection:
     def __init__(self, name, size, file_offset, virtual_address, index):

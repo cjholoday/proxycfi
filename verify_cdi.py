@@ -5,19 +5,21 @@ import binascii
 import types
 from capstone import *
 from operator import attrgetter
+from getopt import getopt
 
 
 # functor used to avoid excessive parameter passing
 class Verifier:
     def __init__(self, file_object, exec_sections, function_list, plt_start_addr,
-            plt_size, plt_entry_size, exit_on_insecurity = True):
+            plt_size, plt_entry_size, exit_on_insecurity, print_instr_as_decoded):
         self.binary = file_object
         self.exec_sections = exec_sections
         self.plt_start_addr = plt_start_addr
         self.plt_size = plt_size
         self.plt_entry_size = plt_entry_size
-        self.exit_on_insecurity = exit_on_insecurity
         self.secure = True # secure until proven otherwise
+        self.exit_on_insecurity = exit_on_insecurity
+        self.print_instr_as_decoded = print_instr_as_decoded
         
         self.function_list = sorted(function_list, 
                 key=attrgetter('virtual_address'))
@@ -262,10 +264,12 @@ class Verifier:
         file.seek(function.file_offset)
         buff = file.read(int(function.size))
         md = Cs(CS_ARCH_X86, CS_MODE_64)
-        print '--------------:  ' + function.name
+        if self.print_instr_as_decoded:
+            print '--------------:  ' + function.name
         for i in md.disasm(buff, function.virtual_address):
             addresses.append(int(i.address))
-            print("0x%x:\t%s\t%s" %(i.address, i.mnemonic, i.op_str))
+            if self.print_instr_as_decoded:
+                print("0x%x:\t%s\t%s" %(i.address, i.mnemonic, i.op_str))
             addresses
             if i.mnemonic in jmp_list:
                 try:
@@ -318,8 +322,9 @@ class Verifier:
                 loops.append(int(i.op_str, 16))
         
 
-        
-        print '--------------:  ' + function.name + '\n'
+        if self.print_instr_as_decoded:
+            print '--------------:  ' + function.name + '\n'
+
         return calls, jmps, loops, addresses
 
 
@@ -434,18 +439,47 @@ class MiddleOfInstructionLoopJump(InsecureJump):
 # Script
 #############################
 
+def print_help():
+    print '----------------------------------------------'
+    print 'Usage: ./verify_cdi.py <options> <binary_name>'
+    print 'Options:'
+    print '  -c : continue finding indirections even after one is found'
+    print '  -p : print instructions as they are decoded'
+    print '  -h : print this help'
+    print '----------------------------------------------'
+
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        print 'Usage: python verify_cdi.py <filename>'
+    if len(sys.argv) < 2:
+        print_help()
+        sys.exit(1)
+
+    optlist, args = getopt(sys.argv[1:], 'cph')
     
-    binary = open(sys.argv[1], 'rb')
+    # defaults
+    exit_on_insecurity = True
+    print_instr_as_decoded = False
+
+    # options can flip defaults
+    if ('-c', '') in optlist:
+        exit_on_insecurity = False
+    if ('-p', '') in optlist:
+        print_instr_as_decoded = True
+    if ('-h', '') in optlist:
+        print_help()
+        sys.exit(0)
+
+    if not args:
+        print_help()
+        sys.exit(1)
+
+    binary = open(args[0], 'rb')
     exec_sections = elfparse.gather_exec_sections(binary)
 
     functions = elfparse.gather_functions(binary, exec_sections)
     plt_start_addr, plt_size, plt_entry_size = elfparse.gather_plts(binary)
     
     verifier = Verifier(binary, exec_sections, functions, plt_start_addr, 
-            plt_size, plt_entry_size, False)
+            plt_size, plt_entry_size, exit_on_insecurity, print_instr_as_decoded)
 
     if verifier.judge():
         sys.exit(0)
