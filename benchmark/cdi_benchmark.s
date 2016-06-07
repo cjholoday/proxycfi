@@ -393,10 +393,10 @@ encipher_cipher_main_1:
 	jmp 	end1
 	else1:
 	cmpq 	$decipher, %rax
-	jne 	end1
+	jne 	1f
 	call	decipher
 decipher_cipher_main_1:
-	end1:
+1:
 	/*Sled 1 ends*/
 	movl	ciphertext(%rip), %edx
 	movl	cipherref(%rip), %eax
@@ -420,13 +420,13 @@ decipher_cipher_main_1:
 	jne		else2
 	call 	encipher
 encipher_cipher_main_2:
-	jmp 	end2
+	jmp 	1f
 	else2:
 	cmpq 	$decipher, %rax
 	jne 	end2
 	call	decipher
 decipher_cipher_main_2:
-	end2:
+1:
 	/*Sled 2 ends*/
 	movl	newplain(%rip), %edx
 	movl	plaintext(%rip), %eax
