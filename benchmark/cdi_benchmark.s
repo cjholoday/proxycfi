@@ -390,7 +390,7 @@ cipher_main:
 	jne		else1
 	call 	encipher
 encipher_cipher_main_1:
-	jmp 	end1
+	jmp 	1f
 	else1:
 	cmpq 	$decipher, %rax
 	jne 	1f
@@ -423,7 +423,7 @@ encipher_cipher_main_2:
 	jmp 	1f
 	else2:
 	cmpq 	$decipher, %rax
-	jne 	end2
+	jne 	1f
 	call	decipher
 decipher_cipher_main_2:
 1:
