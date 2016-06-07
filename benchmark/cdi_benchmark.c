@@ -97,14 +97,19 @@ unsigned int cipherref[2] = { 0x9fe2c864, 0xd7da4da4 };
 unsigned int ciphertext[2];
 unsigned int newplain[2];
 
+
 int
 cipher_main(void)
 {
-
-  encipher(plaintext, ciphertext, keytext);
+  void (*cipher_type) (unsigned int *const in,
+   unsigned int *const out,
+   const unsigned int *const key);
+  cipher_type = &encipher;
+  cipher_type(plaintext, ciphertext, keytext);
   if (ciphertext[0] != cipherref[0] || ciphertext[1] != cipherref[1])
       return 1;
-  decipher(ciphertext, newplain, keytext);
+  cipher_type = &decipher;
+  cipher_type(ciphertext, newplain, keytext);
   if (newplain[0] != plaintext[0] || newplain[1] != plaintext[1])
       return 1;
   
