@@ -72,7 +72,17 @@ mov_mov_3:
 .L3:
 	leave
 	.cfi_def_cfa 7, 8
-	ret
+        addq    $8, %rsp
+        2:
+        cmpq    $mov_mov_1, -8(%rsp)
+        je      mov_mov_1
+        cmpq    $mov_mov_2, -8(%rsp)
+        je      mov_mov_2
+        cmpq    $mov_mov_3, -8(%rsp)
+        je      mov_mov_3
+        cmpq    $mov_hanoi_main_1, -8(%rsp)
+        je      mov_hanoi_main_1
+        jmp     2b
 	.cfi_endproc
 .LFE0:
 	.size	mov, .-mov
@@ -142,7 +152,11 @@ tfp_printf_hanoi_main_3:
 	movl	$0, %eax
 	leave
 	.cfi_def_cfa 7, 8
-	ret
+        addq    $8, %rsp
+        2:
+        cmpq    $hanoi_main_main_1, -8(%rsp)
+        je      hanoi_main_main_1
+        jmp 2b
 	.cfi_endproc
 .LFE1:
 	.size	hanoi_main, .-hanoi_main
@@ -234,7 +248,13 @@ encipher:
 	nop
 	popq	%rbp
 	.cfi_def_cfa 7, 8
-	ret
+        addq    $8, %rsp
+        2:
+        cmpq    $encipher_cipher_main_1, -8(%rsp)
+        je      encipher_cipher_main_1
+        cmpq    $encipher_cipher_main_2, -8(%rsp)
+        je      encipher_cipher_main_2
+        jmp 2b
 	.cfi_endproc
 .LFE2:
 	.size	encipher, .-encipher
@@ -326,7 +346,13 @@ decipher:
 	nop
 	popq	%rbp
 	.cfi_def_cfa 7, 8
-	ret
+        addq    $8, %rsp
+        2:
+        cmpq    $decipher_cipher_main_1, -8(%rsp)
+        je      decipher_cipher_main_1
+        cmpq    $decipher_cipher_main_2, -8(%rsp)
+        je      decipher_cipher_main_2
+        jmp 2b
 	.cfi_endproc
 .LFE3:
 	.size	decipher, .-decipher
@@ -496,7 +522,11 @@ tfp_printf_cipher_main_4:
 .L20:
 	leave
 	.cfi_def_cfa 7, 8
-	ret
+        addq    $8, %rsp
+        2:
+        cmpq    $cipher_main_main_1, -8(%rsp)
+        je      cipher_main_main_1
+        jmp 2b
 	.cfi_endproc
 .LFE4:
 	.size	cipher_main, .-cipher_main
@@ -517,7 +547,7 @@ cipher_main_main_1:
 	movl	$0, %eax
 	popq	%rbp
 	.cfi_def_cfa 7, 8
-	ret
+        ret
 	.cfi_endproc
 .LFE5:
 	.size	main, .-main
