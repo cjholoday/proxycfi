@@ -93,7 +93,7 @@ mov_mov_3:
 .LC1:
 	.string	"Disks     Moves\n"
 .LC2:
-	.string	"%3d  %05d%05d\n"
+	.string	"%3d  %04X%04X\n"
 	.text
 	.globl	hanoi_main
 	.type	hanoi_main, @function

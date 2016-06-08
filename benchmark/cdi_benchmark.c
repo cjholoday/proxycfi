@@ -47,7 +47,7 @@ hanoi_main(void)
       mov(disk,1,3);
 
       Loops = Loops + 1;
-      printf("%3d  %05d%05d\n",disk,count >> 16, count & 0xffff);
+      printf("%3d  %04X%04X\n",disk,count >> 16, count & 0xffff);
 
       if ( disk == 30 ) break;
     }
