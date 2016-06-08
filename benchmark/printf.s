@@ -24,7 +24,15 @@ outchar:
 	nop
 	leave
 	.cfi_def_cfa 7, 8
-	ret
+	 	addq    $8, %rsp
+        2:
+        cmpq    $outchar_tfp_printf_1, -8(%rsp)
+        je      outchar_tfp_printf_1
+        cmpq    $outchar_tfp_printf_2, -8(%rsp)
+        je      outchar_tfp_printf_2
+        cmpq    $outchar_tfp_printf_3, -8(%rsp)
+        je      outchar_tfp_printf_3
+        jmp     2b
 	.cfi_endproc
 .LFE0:
 	.size	outchar, .-outchar
@@ -57,7 +65,17 @@ out:
 	nop
 	popq	%rbp
 	.cfi_def_cfa 7, 8
-	ret
+		addq    $8, %rsp
+        2:
+        cmpq    $out_outDgt_1, -8(%rsp)
+        je      out_outDgt_1
+        cmpq    $out_tfp_printf_1, -8(%rsp)
+        je      out_tfp_printf_1
+        cmpq    $out_tfp_printf_2, -8(%rsp)
+        je      out_tfp_printf_2
+        cmpq    $out_tfp_printf_3, -8(%rsp)
+        je      out_tfp_printf_3
+        jmp     2b
 	.cfi_endproc
 .LFE1:
 	.size	out, .-out
@@ -96,7 +114,15 @@ out_outDgt_1:
 	nop
 	leave
 	.cfi_def_cfa 7, 8
-	ret
+		addq    $8, %rsp
+        2:
+        cmpq    $outDgt_divOut_1, -8(%rsp)
+        je      outDgt_divOut_1
+        cmpq    $outDgt_tfp_printf_1, -8(%rsp)
+        je      outDgt_tfp_printf_1
+        cmpq    $outDgt_tfp_printf_2, -8(%rsp)
+        je      outDgt_tfp_printf_2
+        jmp     2b
 	.cfi_endproc
 .LFE2:
 	.size	outDgt, .-outDgt
@@ -142,7 +168,23 @@ outDgt_divOut_1:
 	nop
 	leave
 	.cfi_def_cfa 7, 8
-	ret
+		addq    $8, %rsp
+        2:
+        cmpq    $divOut_tfp_printf_1, -8(%rsp)
+        je      divOut_tfp_printf_1
+        cmpq    $divOut_tfp_printf_2, -8(%rsp)
+        je      divOut_tfp_printf_2
+        cmpq    $divOut_tfp_printf_3, -8(%rsp)
+        je      divOut_tfp_printf_3
+        cmpq    $divOut_tfp_printf_4, -8(%rsp)
+        je      divOut_tfp_printf_4
+        cmpq    $divOut_tfp_printf_5, -8(%rsp)
+        je      divOut_tfp_printf_5
+        cmpq    $divOut_tfp_printf_6, -8(%rsp)
+        je      divOut_tfp_printf_6
+        cmpq    $divOut_tfp_printf_7, -8(%rsp)
+        je      divOut_tfp_printf_7
+        jmp     2b
 	.cfi_endproc
 .LFE3:
 	.size	divOut, .-divOut
