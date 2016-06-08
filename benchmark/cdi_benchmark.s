@@ -53,13 +53,13 @@ mov:
 	movl	%eax, %esi
 	movl	%ecx, %edi
 	call	mov
-mov_mov_1:
+_CDI_mov_TO_mov_1:
 	movl	-28(%rbp), %edx
 	movl	-24(%rbp), %eax
 	movl	%eax, %esi
 	movl	$1, %edi
 	call	mov
-mov_mov_2:
+_CDI_mov_TO_mov_2:
 	movl	-20(%rbp), %eax
 	leal	-1(%rax), %ecx
 	movl	-28(%rbp), %edx
@@ -67,21 +67,21 @@ mov_mov_2:
 	movl	%eax, %esi
 	movl	%ecx, %edi
 	call	mov
-mov_mov_3:
+_CDI_mov_TO_mov_3:
 	movl	$0, %eax
 .L3:
 	leave
 	.cfi_def_cfa 7, 8
         addq    $8, %rsp
         2:
-        cmpq    $mov_mov_1, -8(%rsp)
-        je      mov_mov_1
-        cmpq    $mov_mov_2, -8(%rsp)
-        je      mov_mov_2
-        cmpq    $mov_mov_3, -8(%rsp)
-        je      mov_mov_3
-        cmpq    $mov_hanoi_main_1, -8(%rsp)
-        je      mov_hanoi_main_1
+        cmpq    $_CDI_mov_TO_mov_1, -8(%rsp)
+        je      _CDI_mov_TO_mov_1
+        cmpq    $_CDI_mov_TO_mov_2, -8(%rsp)
+        je      _CDI_mov_TO_mov_2
+        cmpq    $_CDI_mov_TO_mov_3, -8(%rsp)
+        je      _CDI_mov_TO_mov_3
+        cmpq    $_CDI_mov_TO_hanoi_main_1, -8(%rsp)
+        je      _CDI_mov_TO_hanoi_main_1
         jmp     2b
 	.cfi_endproc
 .LFE0:
@@ -110,13 +110,13 @@ hanoi_main:
 	movl	$.LC0, %edi
 	movl	$0, %eax
 	call	tfp_printf
-.globl	tfp_printf_hanoi_main_1
-tfp_printf_hanoi_main_1:
+.globl	_CDI_tfp_printf_TO_hanoi_main_1
+_CDI_tfp_printf_TO_hanoi_main_1:
 	movl	$.LC1, %edi
 	movl	$0, %eax
 	call	tfp_printf
-.globl	tfp_printf_hanoi_main_2
-tfp_printf_hanoi_main_2:
+.globl	_CDI_tfp_printf_TO_hanoi_main_2
+_CDI_tfp_printf_TO_hanoi_main_2:
 	movl	$0, -8(%rbp)
 .L7:
 	addl	$1, -8(%rbp)
@@ -131,7 +131,7 @@ tfp_printf_hanoi_main_2:
 	movl	$1, %esi
 	movl	%eax, %edi
 	call	mov
-mov_hanoi_main_1:
+_CDI_mov_TO_hanoi_main_1:
 	addl	$1, -4(%rbp)
 	movq	count(%rip), %rax
 	movzwl	%ax, %edx
@@ -145,8 +145,8 @@ mov_hanoi_main_1:
 	movl	$.LC2, %edi
 	movl	$0, %eax
 	call	tfp_printf
-.globl	tfp_printf_hanoi_main_3
-tfp_printf_hanoi_main_3:
+.globl	_CDI_tfp_printf_TO_hanoi_main_3
+_CDI_tfp_printf_TO_hanoi_main_3:
 	cmpl	$30, -8(%rbp)
 	je	.L10
 	jmp	.L7
@@ -157,8 +157,8 @@ tfp_printf_hanoi_main_3:
 	.cfi_def_cfa 7, 8
         addq    $8, %rsp
         2:
-        cmpq    $hanoi_main_main_1, -8(%rsp)
-        je      hanoi_main_main_1
+        cmpq    $_CDI_hanoi_main_TO_main_1, -8(%rsp)
+        je      _CDI_hanoi_main_TO_main_1
         jmp 2b
 	.cfi_endproc
 .LFE1:
@@ -253,10 +253,10 @@ encipher:
 	.cfi_def_cfa 7, 8
         addq    $8, %rsp
         2:
-        cmpq    $encipher_cipher_main_1, -8(%rsp)
-        je      encipher_cipher_main_1
-        cmpq    $encipher_cipher_main_2, -8(%rsp)
-        je      encipher_cipher_main_2
+        cmpq    $_CDI_encipher_TO_cipher_main_1, -8(%rsp)
+        je      _CDI_encipher_TO_cipher_main_1
+        cmpq    $_CDI_encipher_TO_cipher_main_2, -8(%rsp)
+        je      _CDI_encipher_TO_cipher_main_2
         jmp 2b
 	.cfi_endproc
 .LFE2:
@@ -351,10 +351,10 @@ decipher:
 	.cfi_def_cfa 7, 8
         addq    $8, %rsp
         2:
-        cmpq    $decipher_cipher_main_1, -8(%rsp)
-        je      decipher_cipher_main_1
-        cmpq    $decipher_cipher_main_2, -8(%rsp)
-        je      decipher_cipher_main_2
+        cmpq    $_CDI_decipher_TO_cipher_main_1, -8(%rsp)
+        je      _CDI_decipher_TO_cipher_main_1
+        cmpq    $_CDI_decipher_TO_cipher_main_2, -8(%rsp)
+        je      _CDI_decipher_TO_cipher_main_2
         jmp 2b
 	.cfi_endproc
 .LFE3:
@@ -418,13 +418,13 @@ cipher_main:
 	cmpq 	$encipher, %rax
 	jne		else1
 	call 	encipher
-encipher_cipher_main_1:
+_CDI_encipher_TO_cipher_main_1:
 	jmp 	1f
 	else1:
 	cmpq 	$decipher, %rax
 	jne 	1f
 	call	decipher
-decipher_cipher_main_1:
+_CDI_decipher_TO_cipher_main_1:
 1:
 	/*Sled 1 ends*/
 	movl	ciphertext(%rip), %edx
@@ -448,13 +448,13 @@ decipher_cipher_main_1:
 	cmpq 	$encipher, %rax
 	jne		else2
 	call 	encipher
-encipher_cipher_main_2:
+_CDI_encipher_TO_cipher_main_2:
 	jmp 	1f
 	else2:
 	cmpq 	$decipher, %rax
 	jne 	1f
 	call	decipher
-decipher_cipher_main_2:
+_CDI_decipher_TO_cipher_main_2:
 1:
 	/*Sled 2 ends*/
 	movl	newplain(%rip), %edx
@@ -472,8 +472,8 @@ decipher_cipher_main_2:
 	movl	$.LC3, %edi
 	movl	$0, %eax
 	call	tfp_printf
-.globl	tfp_printf_cipher_main_1
-tfp_printf_cipher_main_1:
+.globl	_CDI_tfp_printf_TO_cipher_main_1
+_CDI_tfp_printf_TO_cipher_main_1:
 	movl	plaintext+4(%rip), %eax
 	movzwl	%ax, %ecx
 	movl	plaintext+4(%rip), %eax
@@ -489,8 +489,8 @@ tfp_printf_cipher_main_1:
 	movl	$.LC4, %edi
 	movl	$0, %eax
 	call	tfp_printf
-.globl	tfp_printf_cipher_main_2
-tfp_printf_cipher_main_2:
+.globl	_CDI_tfp_printf_TO_cipher_main_2
+_CDI_tfp_printf_TO_cipher_main_2:
 	movl	ciphertext+4(%rip), %eax
 	movzwl	%ax, %ecx
 	movl	ciphertext+4(%rip), %eax
@@ -506,8 +506,8 @@ tfp_printf_cipher_main_2:
 	movl	$.LC5, %edi
 	movl	$0, %eax
 	call	tfp_printf
-.globl	tfp_printf_cipher_main_3
-tfp_printf_cipher_main_3:
+.globl	_CDI_tfp_printf_TO_cipher_main_3
+_CDI_tfp_printf_TO_cipher_main_3:
 	movl	newplain+4(%rip), %eax
 	movzwl	%ax, %ecx
 	movl	newplain+4(%rip), %eax
@@ -523,16 +523,16 @@ tfp_printf_cipher_main_3:
 	movl	$.LC6, %edi
 	movl	$0, %eax
 	call	tfp_printf
-.globl	tfp_printf_cipher_main_4
-tfp_printf_cipher_main_4:
+.globl	_CDI_tfp_printf_TO_cipher_main_4
+_CDI_tfp_printf_TO_cipher_main_4:
 	movl	$0, %eax
 .L20:
 	leave
 	.cfi_def_cfa 7, 8
         addq    $8, %rsp
         2:
-        cmpq    $cipher_main_main_1, -8(%rsp)
-        je      cipher_main_main_1
+        cmpq    $_CDI_cipher_main_TO_main_1, -8(%rsp)
+        je      _CDI_cipher_main_TO_main_1
         jmp 2b
 	.cfi_endproc
 .LFE4:
@@ -548,9 +548,9 @@ main:
 	movq	%rsp, %rbp
 	.cfi_def_cfa_register 6
 	call	hanoi_main
-hanoi_main_main_1:
+_CDI_hanoi_main_TO_main_1:
 	call	cipher_main
-cipher_main_main_1:
+_CDI_cipher_main_TO_main_1:
 	movl	$0, %eax
 	popq	%rbp
 	.cfi_def_cfa 7, 8

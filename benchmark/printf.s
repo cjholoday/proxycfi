@@ -26,12 +26,12 @@ outchar:
 	.cfi_def_cfa 7, 8
 	addq    $8, %rsp
         2:
-        cmpq    $outchar_tfp_printf_1, -8(%rsp)
-        je      outchar_tfp_printf_1
-        cmpq    $outchar_tfp_printf_2, -8(%rsp)
-        je      outchar_tfp_printf_2
-        cmpq    $outchar_tfp_printf_3, -8(%rsp)
-        je      outchar_tfp_printf_3
+        cmpq    $_CDI_outchar_TO_tfp_printf_1, -8(%rsp)
+        je      _CDI_outchar_TO_tfp_printf_1
+        cmpq    $_CDI_outchar_TO_tfp_printf_2, -8(%rsp)
+        je      _CDI_outchar_TO_tfp_printf_2
+        cmpq    $_CDI_outchar_TO_tfp_printf_3, -8(%rsp)
+        je      _CDI_outchar_TO_tfp_printf_3
         jmp     2b
 	.cfi_endproc
 .LFE0:
@@ -67,14 +67,14 @@ out:
 	.cfi_def_cfa 7, 8
 	addq    $8, %rsp
         2:
-        cmpq    $out_outDgt_1, -8(%rsp)
-        je      out_outDgt_1
-        cmpq    $out_tfp_printf_1, -8(%rsp)
-        je      out_tfp_printf_1
-        cmpq    $out_tfp_printf_2, -8(%rsp)
-        je      out_tfp_printf_2
-        cmpq    $out_tfp_printf_3, -8(%rsp)
-        je      out_tfp_printf_3
+        cmpq    $_CDI_out_TO_outDgt_1, -8(%rsp)
+        je      _CDI_out_TO_outDgt_1
+        cmpq    $_CDI_out_TO_tfp_printf_1, -8(%rsp)
+        je      _CDI_out_TO_tfp_printf_1
+        cmpq    $_CDI_out_TO_tfp_printf_2, -8(%rsp)
+        je      _CDI_out_TO_tfp_printf_2
+        cmpq    $_CDI_out_TO_tfp_printf_3, -8(%rsp)
+        je      _CDI_out_TO_tfp_printf_3
         jmp     2b
 	.cfi_endproc
 .LFE1:
@@ -109,19 +109,19 @@ outDgt:
 	movsbl	%al, %eax
 	movl	%eax, %edi
 	call	out
-out_outDgt_1:
+_CDI_out_TO_outDgt_1:
 	movb	$1, zs(%rip)
 	nop
 	leave
 	.cfi_def_cfa 7, 8
 	addq    $8, %rsp
         2:
-        cmpq    $outDgt_divOut_1, -8(%rsp)
-        je      outDgt_divOut_1
-        cmpq    $outDgt_tfp_printf_1, -8(%rsp)
-        je      outDgt_tfp_printf_1
-        cmpq    $outDgt_tfp_printf_2, -8(%rsp)
-        je      outDgt_tfp_printf_2
+        cmpq    $_CDI_outDgt_TO_divOut_1, -8(%rsp)
+        je      _CDI_outDgt_TO_divOut_1
+        cmpq    $_CDI_outDgt_TO_tfp_printf_1, -8(%rsp)
+        je      _CDI_outDgt_TO_tfp_printf_1
+        cmpq    $_CDI_outDgt_TO_tfp_printf_2, -8(%rsp)
+        je      _CDI_outDgt_TO_tfp_printf_2
         jmp     2b
 	.cfi_endproc
 .LFE2:
@@ -163,27 +163,27 @@ divOut:
 	movsbl	%al, %eax
 	movl	%eax, %edi
 	call	outDgt
-outDgt_divOut_1:
+_CDI_outDgt_TO_divOut_1:
 .L13:
 	nop
 	leave
 	.cfi_def_cfa 7, 8
 	addq    $8, %rsp
         2:
-        cmpq    $divOut_tfp_printf_1, -8(%rsp)
-        je      divOut_tfp_printf_1
-        cmpq    $divOut_tfp_printf_2, -8(%rsp)
-        je      divOut_tfp_printf_2
-        cmpq    $divOut_tfp_printf_3, -8(%rsp)
-        je      divOut_tfp_printf_3
-        cmpq    $divOut_tfp_printf_4, -8(%rsp)
-        je      divOut_tfp_printf_4
-        cmpq    $divOut_tfp_printf_5, -8(%rsp)
-        je      divOut_tfp_printf_5
-        cmpq    $divOut_tfp_printf_6, -8(%rsp)
-        je      divOut_tfp_printf_6
-        cmpq    $divOut_tfp_printf_7, -8(%rsp)
-        je      divOut_tfp_printf_7
+        cmpq    $_CDI_divOut_TO_tfp_printf_1, -8(%rsp)
+        je      _CDI_divOut_TO_tfp_printf_1
+        cmpq    $_CDI_divOut_TO_tfp_printf_2, -8(%rsp)
+        je      _CDI_divOut_TO_tfp_printf_2
+        cmpq    $_CDI_divOut_TO_tfp_printf_3, -8(%rsp)
+        je      _CDI_divOut_TO_tfp_printf_3
+        cmpq    $_CDI_divOut_TO_tfp_printf_4, -8(%rsp)
+        je      _CDI_divOut_TO_tfp_printf_4
+        cmpq    $_CDI_divOut_TO_tfp_printf_5, -8(%rsp)
+        je      _CDI_divOut_TO_tfp_printf_5
+        cmpq    $_CDI_divOut_TO_tfp_printf_6, -8(%rsp)
+        je      _CDI_divOut_TO_tfp_printf_6
+        cmpq    $_CDI_divOut_TO_tfp_printf_7, -8(%rsp)
+        je      _CDI_divOut_TO_tfp_printf_7
         jmp     2b
 	.cfi_endproc
 .LFE3:
@@ -232,7 +232,7 @@ tfp_printf:
 	movsbl	-219(%rbp), %eax
 	movl	%eax, %edi
 	call	outchar
-outchar_tfp_printf_1:
+_CDI_outchar_TO_tfp_printf_1:
 	jmp	.L16
 .L17:
 	movb	$0, -218(%rbp)
@@ -337,25 +337,25 @@ outchar_tfp_printf_1:
 	movl	%eax, num(%rip)
 	movl	$45, %edi
 	call	out
-out_tfp_printf_1:
+_CDI_out_TO_tfp_printf_1:
 .L34:
 	movl	$10000, %edi
 	call	divOut
-divOut_tfp_printf_1:
+_CDI_divOut_TO_tfp_printf_1:
 	movl	$1000, %edi
 	call	divOut
-divOut_tfp_printf_2:
+_CDI_divOut_TO_tfp_printf_2:
 	movl	$100, %edi
 	call	divOut
-divOut_tfp_printf_3:
+_CDI_divOut_TO_tfp_printf_3:
 	movl	$10, %edi
 	call	divOut
-divOut_tfp_printf_4:
+_CDI_divOut_TO_tfp_printf_4:
 	movl	num(%rip), %eax
 	movsbl	%al, %eax
 	movl	%eax, %edi
 	call	outDgt
-outDgt_tfp_printf_1:
+_CDI_outDgt_TO_tfp_printf_1:
 	jmp	.L35
 .L26:
 	cmpb	$88, -219(%rbp)
@@ -381,18 +381,18 @@ outDgt_tfp_printf_1:
 	movl	%eax, num(%rip)
 	movl	$4096, %edi
 	call	divOut
-divOut_tfp_printf_5:
+_CDI_divOut_TO_tfp_printf_5:
 	movl	$256, %edi
 	call	divOut
-divOut_tfp_printf_6:
+_CDI_divOut_TO_tfp_printf_6:
 	movl	$16, %edi
 	call	divOut
-divOut_tfp_printf_7:
+_CDI_divOut_TO_tfp_printf_7:
 	movl	num(%rip), %eax
 	movsbl	%al, %eax
 	movl	%eax, %edi
 	call	outDgt
-outDgt_tfp_printf_2:
+_CDI_outDgt_TO_tfp_printf_2:
 	jmp	.L35
 .L23:
 	movl	-208(%rbp), %eax
@@ -415,7 +415,7 @@ outDgt_tfp_printf_2:
 	movsbl	%al, %eax
 	movl	%eax, %edi
 	call	out
-out_tfp_printf_2:
+_CDI_out_TO_tfp_printf_2:
 	jmp	.L35
 .L28:
 	movl	-208(%rbp), %eax
@@ -440,7 +440,7 @@ out_tfp_printf_2:
 .L25:
 	movl	$37, %edi
 	call	out
-out_tfp_printf_3:
+_CDI_out_TO_tfp_printf_3:
 .L54:
 	nop
 .L35:
@@ -473,7 +473,7 @@ out_tfp_printf_3:
 .L47:
 	movl	%eax, %edi
 	call	outchar
-outchar_tfp_printf_2:
+_CDI_outchar_TO_tfp_printf_2:
 .L45:
 	movzbl	-217(%rbp), %eax
 	movl	%eax, %edx
@@ -486,7 +486,7 @@ outchar_tfp_printf_2:
 	movsbl	-219(%rbp), %eax
 	movl	%eax, %edi
 	call	outchar
-outchar_tfp_printf_3:
+_CDI_outchar_TO_tfp_printf_3:
 .L49:
 	movq	-216(%rbp), %rax
 	leaq	1(%rax), %rdx
@@ -512,20 +512,20 @@ outchar_tfp_printf_3:
 	.cfi_def_cfa 7, 8
 	addq    $8, %rsp
         2:
-        cmpq    $tfp_printf_hanoi_main_1, -8(%rsp)
-        je      tfp_printf_hanoi_main_1
-        cmpq    $tfp_printf_hanoi_main_2, -8(%rsp)
-        je      tfp_printf_hanoi_main_2
-        cmpq    $tfp_printf_hanoi_main_3, -8(%rsp)
-        je      tfp_printf_hanoi_main_3
-        cmpq    $tfp_printf_cipher_main_1, -8(%rsp)
-        je      tfp_printf_cipher_main_1
-        cmpq    $tfp_printf_cipher_main_2, -8(%rsp)
-        je      tfp_printf_cipher_main_2
-        cmpq    $tfp_printf_cipher_main_3, -8(%rsp)
-        je      tfp_printf_cipher_main_3
-        cmpq    $tfp_printf_cipher_main_4, -8(%rsp)
-        je      tfp_printf_cipher_main_4
+        cmpq    $_CDI_tfp_printf_TO_hanoi_main_1, -8(%rsp)
+        je      _CDI_tfp_printf_TO_hanoi_main_1
+        cmpq    $_CDI_tfp_printf_TO_hanoi_main_2, -8(%rsp)
+        je      _CDI_tfp_printf_TO_hanoi_main_2
+        cmpq    $_CDI_tfp_printf_TO_hanoi_main_3, -8(%rsp)
+        je      _CDI_tfp_printf_TO_hanoi_main_3
+        cmpq    $_CDI_tfp_printf_TO_cipher_main_1, -8(%rsp)
+        je      _CDI_tfp_printf_TO_cipher_main_1
+        cmpq    $_CDI_tfp_printf_TO_cipher_main_2, -8(%rsp)
+        je      _CDI_tfp_printf_TO_cipher_main_2
+        cmpq    $_CDI_tfp_printf_TO_cipher_main_3, -8(%rsp)
+        je      _CDI_tfp_printf_TO_cipher_main_3
+        cmpq    $_CDI_tfp_printf_TO_cipher_main_4, -8(%rsp)
+        je      _CDI_tfp_printf_TO_cipher_main_4
         jmp     2b
 	.cfi_endproc
 .LFE4:
