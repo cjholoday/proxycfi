@@ -1,22 +1,22 @@
 import control_flow_graph
 import asm_file_sig
 
-def gen_cfg(asm_file_sigs):
-    """Generate cfg from a list of asm_files. Produce funct names for each sig
+def gen_cfg(asm_file_descr):
+    """Generate cfg from a list of asm_files. Produce funct names for each description
 
     asm_files should be a list containing objects of type 'AsmFile'
     """
 
     cfg = control_flow_graph.ControlFlowGraph()
-    for sig in asm_file_sigs:
-        asm_file = open(sig.name, 'r')
+    for descr in asm_file_descr:
+        asm_file = open(descr.name, 'r')
 
         done = goto_next_funct(asm_file)
         while not done:
             funct = extract_funct(asm_file)
 
             cfg.add_funct(funct)
-            sig.funct_names.append(funct.name)
+            descr.funct_names.append(funct.name)
 
             done = goto_next_funct(asm_file)
 
