@@ -1,4 +1,8 @@
 .DS_STORE
 *.swp
 *.pyc
+*.s
+*.ii
+*.o
+a.out
 
