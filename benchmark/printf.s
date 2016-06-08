@@ -510,7 +510,23 @@ outchar_tfp_printf_3:
 	nop
 	leave
 	.cfi_def_cfa 7, 8
-	ret
+		addq    $8, %rsp
+        2:
+        cmpq    $tfp_printf_hanoi_main_1, -8(%rsp)
+        je      tfp_printf_hanoi_main_1
+        cmpq    $tfp_printf_hanoi_main_2, -8(%rsp)
+        je      tfp_printf_hanoi_main_2
+        cmpq    $tfp_printf_hanoi_main_3, -8(%rsp)
+        je      tfp_printf_hanoi_main_3
+        cmpq    $tfp_printf_cipher_main_1, -8(%rsp)
+        je      tfp_printf_cipher_main_1
+        cmpq    $tfp_printf_cipher_main_2, -8(%rsp)
+        je      tfp_printf_cipher_main_2
+        cmpq    $tfp_printf_cipher_main_3, -8(%rsp)
+        je      tfp_printf_cipher_main_3
+        cmpq    $tfp_printf_cipher_main_4, -8(%rsp)
+        je      tfp_printf_cipher_main_4
+        jmp     2b
 	.cfi_endproc
 .LFE4:
 	.size	tfp_printf, .-tfp_printf

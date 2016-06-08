@@ -110,10 +110,12 @@ hanoi_main:
 	movl	$.LC0, %edi
 	movl	$0, %eax
 	call	tfp_printf
+.globl	tfp_printf_hanoi_main_1
 tfp_printf_hanoi_main_1:
 	movl	$.LC1, %edi
 	movl	$0, %eax
 	call	tfp_printf
+.globl	tfp_printf_hanoi_main_2
 tfp_printf_hanoi_main_2:
 	movl	$0, -8(%rbp)
 .L7:
@@ -143,6 +145,7 @@ mov_hanoi_main_1:
 	movl	$.LC2, %edi
 	movl	$0, %eax
 	call	tfp_printf
+.globl	tfp_printf_hanoi_main_3
 tfp_printf_hanoi_main_3:
 	cmpl	$30, -8(%rbp)
 	je	.L10
@@ -469,6 +472,7 @@ decipher_cipher_main_2:
 	movl	$.LC3, %edi
 	movl	$0, %eax
 	call	tfp_printf
+.globl	tfp_printf_cipher_main_1
 tfp_printf_cipher_main_1:
 	movl	plaintext+4(%rip), %eax
 	movzwl	%ax, %ecx
@@ -485,6 +489,7 @@ tfp_printf_cipher_main_1:
 	movl	$.LC4, %edi
 	movl	$0, %eax
 	call	tfp_printf
+.globl	tfp_printf_cipher_main_2
 tfp_printf_cipher_main_2:
 	movl	ciphertext+4(%rip), %eax
 	movzwl	%ax, %ecx
@@ -501,6 +506,7 @@ tfp_printf_cipher_main_2:
 	movl	$.LC5, %edi
 	movl	$0, %eax
 	call	tfp_printf
+.globl	tfp_printf_cipher_main_3
 tfp_printf_cipher_main_3:
 	movl	newplain+4(%rip), %eax
 	movzwl	%ax, %ecx
@@ -517,6 +523,7 @@ tfp_printf_cipher_main_3:
 	movl	$.LC6, %edi
 	movl	$0, %eax
 	call	tfp_printf
+.globl	tfp_printf_cipher_main_4
 tfp_printf_cipher_main_4:
 	movl	$0, %eax
 .L20:
