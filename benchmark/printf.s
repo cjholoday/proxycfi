@@ -24,7 +24,7 @@ outchar:
 	nop
 	leave
 	.cfi_def_cfa 7, 8
-	 	addq    $8, %rsp
+	addq    $8, %rsp
         2:
         cmpq    $outchar_tfp_printf_1, -8(%rsp)
         je      outchar_tfp_printf_1
@@ -65,7 +65,7 @@ out:
 	nop
 	popq	%rbp
 	.cfi_def_cfa 7, 8
-		addq    $8, %rsp
+	addq    $8, %rsp
         2:
         cmpq    $out_outDgt_1, -8(%rsp)
         je      out_outDgt_1
@@ -114,7 +114,7 @@ out_outDgt_1:
 	nop
 	leave
 	.cfi_def_cfa 7, 8
-		addq    $8, %rsp
+	addq    $8, %rsp
         2:
         cmpq    $outDgt_divOut_1, -8(%rsp)
         je      outDgt_divOut_1
@@ -168,7 +168,7 @@ outDgt_divOut_1:
 	nop
 	leave
 	.cfi_def_cfa 7, 8
-		addq    $8, %rsp
+	addq    $8, %rsp
         2:
         cmpq    $divOut_tfp_printf_1, -8(%rsp)
         je      divOut_tfp_printf_1
@@ -510,7 +510,7 @@ outchar_tfp_printf_3:
 	nop
 	leave
 	.cfi_def_cfa 7, 8
-		addq    $8, %rsp
+	addq    $8, %rsp
         2:
         cmpq    $tfp_printf_hanoi_main_1, -8(%rsp)
         je      tfp_printf_hanoi_main_1
