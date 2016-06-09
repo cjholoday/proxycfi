@@ -253,7 +253,7 @@ class Verifier:
                 "jne","jbe","jna","jnbe","ja","js","jns","jp","jpe","jnp","jpo","jl",
                 "jnge","jnl","jge","jle","jng","jnle","jg","jecxz","jrcxz","jmp","jmpe"]
          
-        call_list = ["call","callf","sysenter","syscall"]
+        call_list = ["call","callf", "callq"]
 
         loop_list = ["loopz","loopnz", "loope","loopne", "loop"]
 
