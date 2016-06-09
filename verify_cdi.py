@@ -7,6 +7,7 @@ from capstone import *
 from operator import attrgetter
 from getopt import getopt
 
+IGNORE_RET_FROM_MAIN = False
 
 # functor used to avoid excessive parameter passing
 class Verifier:
@@ -310,7 +311,11 @@ class Verifier:
                                 function, hex(int(i.address)), i.op_str, 'Indirect Call').print_debug_info()
 
             elif i.mnemonic in returns:
-                if self.exit_on_insecurity:
+                if function.name == 'main' and IGNORE_RET_FROM_MAIN:
+                    # ignore the return
+                    pass
+
+                elif self.exit_on_insecurity:
                     raise IndirectJump(self.target_section(function.virtual_address), 
                             function, hex(int(i.address)), i.op_str, 'Return Instruction')
                 else:
@@ -445,6 +450,7 @@ def print_help():
     print 'Options:'
     print '  -c : continue finding indirections even after one is found'
     print '  -p : print instructions as they are decoded'
+    print '  -i : ignore the return from main'
     print '  -h : print this help'
     print '----------------------------------------------'
 
@@ -453,7 +459,7 @@ if __name__ == "__main__":
         print_help()
         sys.exit(1)
 
-    optlist, args = getopt(sys.argv[1:], 'cph')
+    optlist, args = getopt(sys.argv[1:], 'cphi')
     
     # defaults
     exit_on_insecurity = True
@@ -462,6 +468,8 @@ if __name__ == "__main__":
     # options can flip defaults
     if ('-c', '') in optlist:
         exit_on_insecurity = False
+    if ('-i', '') in optlist:
+        IGNORE_RET_FROM_MAIN = True
     if ('-p', '') in optlist:
         print_instr_as_decoded = True
     if ('-h', '') in optlist:
