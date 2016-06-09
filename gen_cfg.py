@@ -1,5 +1,5 @@
 import control_flow_graph
-import asm_file_sig
+import asm_parsing
 
 def gen_cfg(asm_file_descrs):
     """Generate cfg from a list of asm_files. Produce funct names for each description
@@ -11,23 +11,19 @@ def gen_cfg(asm_file_descrs):
     for descr in asm_file_descrs:
         asm_file = open(descr.name, 'r')
 
-        done = goto_next_funct(asm_file)
+        done = asm_parsing.goto_next_funct(asm_file)
         while not done:
             funct = extract_funct(asm_file)
 
             cfg.add_funct(funct)
             descr.funct_names.append(funct.name)
 
-            done = goto_next_funct(asm_file)
+            done = asm_parsing.goto_next_funct(asm_file)
 
         asm_file.close()
 
     return cfg
 
-def goto_next_funct(asm_file):
-    """Moves file pointer to next funct label. Return true if no functs left"""
-
-    return True
 
 def extract_funct(asm_file):
     """Constructs a function from the assembly file. Begins at label of funct

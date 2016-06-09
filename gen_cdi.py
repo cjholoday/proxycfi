@@ -1,5 +1,5 @@
 import sys
-from asm_file_description import AsmFileDescription
+import asm_parsing
 from gen_cfg import gen_cfg
 from gen_cdi_asm import gen_cdi_asm
 
@@ -14,7 +14,7 @@ if __name__ == "__main__":
     asm_filenames = sys.argv[1:]
     asm_file_descrs = []
     for filename in asm_filenames:
-        asm_file_descrs.append(AsmFileDescription(filename))
+        asm_file_descrs.append(asm_parsing.AsmFileDescription(filename))
 
     cfg = gen_cfg(asm_file_descrs)
     gen_cdi_asm(cfg, asm_file_descrs)
