@@ -1,6 +1,7 @@
 import sys
 from asm_file_description import AsmFileDescription
 from gen_cfg import gen_cfg
+from gen_cdi_asm import gen_cdi_asm
 
 ############################
 # Script
@@ -16,5 +17,4 @@ if __name__ == "__main__":
         asm_file_descrs.append(AsmFileDescription(filename))
 
     cfg = gen_cfg(asm_file_descrs)
-
-    # write second batch of .s files
+    gen_cdi_asm(cfg, asm_file_descrs)
