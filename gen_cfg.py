@@ -20,6 +20,8 @@ def gen_cfg(asm_file_descrs):
 
             done = goto_next_funct(asm_file)
 
+        asm_file.close()
+
     return cfg
 
 def goto_next_funct(asm_file):
