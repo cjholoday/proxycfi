@@ -22,12 +22,14 @@ def gen_cfg(asm_file_descrs):
 
         asm_file.close()
 
+    # build return sets
+
     return cfg
 
 
 def extract_funct(asm_file):
-    """Constructs a function from the assembly file. Begins at label of funct
+    """Constructs a function from the assembly file. 
 
-    The asm_file pointer must point to the label of the function
+    File pointer must point at first instruction of the function
     """
     pass
