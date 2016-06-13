@@ -3,20 +3,20 @@ import types
 class ControlFlowGraph:
     def __init__(self):
         # don't touch this attribute
-        self._funct_edges = dict()
+        self._funct_vertices = dict()
 
     def add_funct(self, funct):
-        self._funct_edges[funct.name] = funct
+        self._funct_vertices[funct.name] = funct
 
     def funct(self, funct_name):
-        return self._funct_edges[funct_name]
+        return self._funct_vertices[funct_name]
 
     def __iter__(self):
         return iter(ControlFlowGraphIterator(self))
 
 class ControlFlowGraphIterator:
     def __init__(self, cfg):
-        self.cfg_iter = cfg._funct_edges.iteritems()
+        self.cfg_iter = cfg._funct_vertices.iteritems()
 
     def __iter__(self):
         return self
