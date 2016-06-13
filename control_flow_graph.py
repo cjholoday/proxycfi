@@ -50,4 +50,4 @@ class Site:
 
         self.line_num = line_num
         self.targets = targets
-        self.type_of_site = type_of_site
+        self.site_type = type_of_site
