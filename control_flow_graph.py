@@ -36,9 +36,18 @@ class Function:
         self.sites = sites
 
 class Site:
-    def __init__(self, line_num, targets):
+    CALL_SITE = 0
+    RETURN_SITE = 1
+    INDIR_JMP_SITE = 2
+
+    def __init__(self, line_num, targets, type_of_site):
         assert type(line_num) is types.IntType
         assert type(targets) is types.ListType
+        assert type(type_of_site) is types.IntType
+        assert (type_of_site == Site.CALL_SITE or 
+                type_of_site == Site.RETURN_SITE or
+                type_of_site == Site.INDIR_JMP_SITE)
 
         self.line_num = line_num
         self.targets = targets
+        self.type_of_site = type_of_site
