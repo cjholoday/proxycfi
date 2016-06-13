@@ -25,13 +25,12 @@ class ControlFlowGraphIterator:
         return self.cfg_iter.next()[1]
 
 class Function:
-    def __init__(self, name, sites, return_set):
+    def __init__(self, name, sites, return_dict):
         assert type(name) is types.StringType
-        assert type(return_set) is types.ListType
 
         # all functions that can be returned to in the format:
         # (function_label, num_times_function_calls_this_one)
-        self.return_set = return_set
+        self.return_dict = return_dict
         self.name = name
         self.sites = sites
 
@@ -42,7 +41,6 @@ class Site:
 
     def __init__(self, line_num, targets, type_of_site):
         assert type(line_num) is types.IntType
-        assert type(targets) is types.ListType
         assert type(type_of_site) is types.IntType
         assert (type_of_site == Site.CALL_SITE or 
                 type_of_site == Site.RETURN_SITE or
