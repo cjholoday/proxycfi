@@ -22,7 +22,18 @@ def gen_cfg(asm_file_descrs):
 
         asm_file.close()
 
-    # build return sets
+    # build return dictionaries
+    for funct in cfg:
+        call_dict = dict()
+        for site in funct.sites:
+            if site.site_type == Site.CALL_SITE:
+                for label in site.targets:
+                    if label in call_dict:
+                        call_dict[label] += 1
+                    else:
+                        call_dict[label] = 1
+        for target_label, multiplicity in call_dict.iteritems():
+            cfg.funct(target_label).return_dict[funct.name] = multiplicity
 
     return cfg
 
