@@ -28,8 +28,6 @@ class Function:
     def __init__(self, name, sites, return_dict):
         assert type(name) is types.StringType
 
-        # all functions that can be returned to in the format:
-        # (function_label, num_times_function_calls_this_one)
         self.return_dict = return_dict
         self.name = name
         self.sites = sites
