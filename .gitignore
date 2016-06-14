@@ -5,4 +5,4 @@
 *.ii
 *.o
 a.out
-
+*.json
