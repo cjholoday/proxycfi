@@ -69,7 +69,7 @@ def extract_funct(asm_file, funct_name, line_num):
                 targets.append(arg_str)
             Sites.append(control_flow_graph.Site(line_num, targets, 0))
         elif key_symbol in returns:
-            Sites.append(control_flow_graph.Site(line_num, targets, 1))
+            Sites.append(control_flow_graph.Site(line_num, return_dict, 1))
         elif key_symbol in jmp_list:
             if '%' in arg_str:
                 Sites.append(control_flow_graph.Site(line_num, targets, 2))
