@@ -10,16 +10,17 @@ def gen_cfg(asm_file_descrs):
     cfg = control_flow_graph.ControlFlowGraph()
     for descr in asm_file_descrs:
         asm_file = open(descr.name, 'r')
+        line_num = 0
 
-        func_name = asm_parsing.goto_next_funct(asm_file)
+        funct_name, line_num = asm_parsing.goto_next_funct(asm_file, line_num)
         
-        while func_name:
-            funct = extract_funct(asm_file, func_name)
+        while funct_name:
+            funct, line_num = extract_funct(asm_file, funct_name, line_num)
 
             cfg.add_funct(funct)
             descr.funct_names.append(funct.name)
 
-            func_name = asm_parsing.goto_next_funct(asm_file)
+            funct_name, line_num = asm_parsing.goto_next_funct(asm_file, line_num)
 
         asm_file.close()
 
@@ -40,7 +41,7 @@ def gen_cfg(asm_file_descrs):
 
 
 
-def extract_funct(asm_file, func_name):
+def extract_funct(asm_file, funct_name, line_num):
     """Constructs a function from the assembly file. 
 
 
@@ -51,13 +52,12 @@ def extract_funct(asm_file, func_name):
     jmp_list = ["jo","jno","jb","jnae","jc","jnb","jae","jnc","jz","je","jnz",
                 "jne","jbe","jna","jnbe","ja","js","jns","jp","jpe","jnp","jpo","jl",
                 "jnge","jnl","jge","jle","jng","jnle","jg","jecxz","jrcxz","jmp","jmpe"]
-    func_line = 0
     asm_line = asm_file.readline()
+    line_num += 1
     first_word = asm_line.split()[0]
     comment_continues = False
     Sites = []
     return_dict = dict()
-    print func_name
     while asm_line:
         first_word = asm_line.split()[0]
         if (first_word[:len('.LFE')] == '.LFE'):
@@ -65,15 +65,16 @@ def extract_funct(asm_file, func_name):
         targets = []
         labels, key_symbol, arg_str, comment_continues = asm_parsing.decode_line(asm_line, comment_continues)
         if key_symbol in call_list:
-            targets.append(arg_str)
-            Sites.append(control_flow_graph.Site(func_line, targets, 0))
+            if '%' not in arg_str:
+                targets.append(arg_str)
+            Sites.append(control_flow_graph.Site(line_num, targets, 0))
         elif key_symbol in returns:
-            Sites.append(control_flow_graph.Site(func_line, targets, 1))
+            Sites.append(control_flow_graph.Site(line_num, targets, 1))
         elif key_symbol in jmp_list:
             if '%' in arg_str:
-                Sites.append(control_flow_graph.Site(func_line, targets, 2))
+                Sites.append(control_flow_graph.Site(line_num, targets, 2))
         asm_line = asm_file.readline()
-        func_line += 1
+        line_num += 1
 
-    return control_flow_graph.Function(func_name, Sites, return_dict)
+    return control_flow_graph.Function(funct_name, Sites, return_dict), line_num
     

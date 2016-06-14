@@ -42,6 +42,7 @@ class Site:
         assert (type_of_site == Site.CALL_SITE or 
                 type_of_site == Site.RETURN_SITE or
                 type_of_site == Site.INDIR_JMP_SITE)
+
         self.line_num = line_num
         self.targets = targets
         self.site_type = type_of_site

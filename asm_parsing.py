@@ -5,7 +5,7 @@ class AsmFileDescription:
         self.name = name
         self.funct_names = []
 
-def goto_next_funct(asm_file):
+def goto_next_funct(asm_file, line_num):
     """Moves file ptr to first instr of next funct. Returns name of said funct
 
     Precisely, the file ptr points to the line after '.LFB*' where * is a digit
@@ -15,19 +15,21 @@ def goto_next_funct(asm_file):
     prev_label = ''
 
     asm_line = asm_file.readline()
+    line_num += 1
     while asm_line:
         first_word = asm_line.split()[0]
 
         if (first_word[-1] == ':'):
             if (first_word[:len('.LFB')] == '.LFB' 
                     and first_word[len('.LFB'):-1].isdigit()):
-                return prev_label
+                return prev_label, line_num
             else:
                 prev_label = first_word[:-1]
 
         asm_line = asm_file.readline()
+        line_num += 1
 
-    return ''
+    return '', line_num
 
 
 def decode_line(asm_line, comment_continues):
