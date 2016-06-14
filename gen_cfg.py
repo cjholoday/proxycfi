@@ -1,5 +1,7 @@
 import control_flow_graph
 import asm_parsing
+from eprint import eprint
+import sys
 
 def gen_cfg(asm_file_descrs):
     """Generate cfg from a list of asm_files. Produce funct names for each description
@@ -43,7 +45,10 @@ def gen_cfg(asm_file_descrs):
                             call_dict[f.name] = 1
                         
         for target_label, multiplicity in call_dict.iteritems():
-            cfg.funct(target_label).return_dict[funct.name] = multiplicity
+            try:
+                cfg.funct(target_label).return_dict[funct.name] = multiplicity
+            except KeyError:
+                eprint("WARNING: function cannot be found: " + target_label )
 
     return cfg
 
