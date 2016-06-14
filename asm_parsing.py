@@ -17,14 +17,16 @@ def goto_next_funct(asm_file, line_num):
     asm_line = asm_file.readline()
     line_num += 1
     while asm_line:
-        first_word = asm_line.split()[0]
+        # ignore empty lines
+        if asm_line != '\n':
+            first_word = asm_line.split()[0]
 
-        if (first_word[-1] == ':'):
-            if (first_word[:len('.LFB')] == '.LFB' 
-                    and first_word[len('.LFB'):-1].isdigit()):
-                return prev_label, line_num
-            else:
-                prev_label = first_word[:-1]
+            if (first_word[-1] == ':'):
+                if (first_word[:len('.LFB')] == '.LFB' 
+                        and first_word[len('.LFB'):-1].isdigit()):
+                    return prev_label, line_num
+                else:
+                    prev_label = first_word[:-1]
 
         asm_line = asm_file.readline()
         line_num += 1
