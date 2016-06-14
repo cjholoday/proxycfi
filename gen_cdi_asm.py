@@ -1,4 +1,5 @@
 import control_flow_graph
+from control_flow_graph import Site
 import operator
 
 def gen_cdi_asm(cfg, asm_file_descrs):
@@ -40,4 +41,21 @@ def write_lines(num_lines, asm_src, asm_dest):
 
 def convert_to_cdi(site, funct, asm_line, asm_dest):
     """Converts asm_line to cdi compliant code then writes it to asm_dest"""
+
+    if site.site_type == Site.CALL_SITE:
+        convert_call_site(site, funct, asm_line, asm_dest)
+    elif site.site_type == Site.RETURN_SITE:
+        convert_return_site(site, funct, asm_line, asm_dest)
+    else:
+        convert_indir_jmp_site(site, funct, asm_line, asm_dest)
+
+
+def convert_call_site(site, funct, asm_line, asm_dest):
     pass
+    
+def convert_return_site(site, funct, asm_line, asm_dest):
+    pass
+
+def convert_indir_jmp_site(site, funct, asm_line, asm_dest):
+    pass
+
