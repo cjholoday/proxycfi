@@ -34,6 +34,14 @@ def gen_cfg(asm_file_descrs):
                         call_dict[label] += 1
                     else:
                         call_dict[label] = 1
+                # temporary: indirect calls can go to any function
+                if site.targets == []:
+                    for f in cfg:
+                        if f.name in call_dict:
+                            call_dict[f.name] += 1
+                        else:
+                            call_dict[f.name] = 1
+                        
         for target_label, multiplicity in call_dict.iteritems():
             cfg.funct(target_label).return_dict[funct.name] = multiplicity
 
