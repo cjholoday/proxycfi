@@ -17,7 +17,9 @@ def gen_cfg(asm_file_descrs):
         funct_name, line_num = asm_parsing.goto_next_funct(asm_file, line_num)
         
         while funct_name:
+            funct_line_num = line_num + 1 # +1 so points at first instr
             funct, line_num = extract_funct(asm_file, funct_name, line_num)
+            funct.line_num = funct_line_num
 
             cfg.add_funct(funct)
             descr.funct_names.append(funct.name)
