@@ -41,6 +41,7 @@ def gen_cfg(asm_file_descrs):
                 # temporary: indirect calls can go to any function
                 if site.targets == []:
                     for f in cfg:
+                        site.targets.append(f.name)
                         if f.name in call_dict:
                             call_dict[f.name] += 1
                         else:
