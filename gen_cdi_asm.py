@@ -54,7 +54,21 @@ def convert_call_site(site, funct, asm_line, asm_dest):
     pass
     
 def convert_return_site(site, funct, asm_line, asm_dest):
-    pass
+    cdi_ret_prefix = '_CDI_' + funct.name + '_TO_'
+
+    ret_sled= '\taddq $8, %rsp\n' + '\t2:\n'
+
+    for target_name, multiplicity in site.targets.iteritems():
+        i = 1
+        while i <= multiplicity:
+            target_label = cdi_ret_prefix + target_name + '_' + str(i)
+            ret_sled += '\tcmpq\t$' + target_label + ', -8(%rsp)\n'
+            ret_sled += '\tje\t' + target_label + '\n'
+            i += 1
+
+    ret_sled += '\tjmp\t 2b\n'
+    asm_dest.write(ret_sled)
+
 
 def convert_indir_jmp_site(site, funct, asm_line, asm_dest):
     pass
