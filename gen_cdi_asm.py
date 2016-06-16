@@ -23,7 +23,8 @@ def gen_cdi_asm(cfg, asm_file_descrs):
                 src_line_num = site.line_num
                 
                 convert_to_cdi(site, funct, line_to_fix, asm_dest,
-                        lambda funct_name: funct_name in descr.funct_names)
+                        lambda funct_name: funct_name in descr.funct_names,
+                        lambda target: cfg.funct(target).is_global)
 
         # write the rest of the lines over
         src_line = asm_src.readline()
@@ -42,13 +43,15 @@ def write_lines(num_lines, asm_src, asm_dest):
         asm_dest.write(asm_src.readline())
         i += 1
 
-def convert_to_cdi(site, funct, asm_line, asm_dest, funct_name_in_same_file):
+def convert_to_cdi(site, funct, asm_line, asm_dest, funct_name_in_same_file,
+        target_is_global):
     """Converts asm_line to cdi compliant code then writes it to asm_dest"""
 
     if site.site_type == Site.CALL_SITE:
-        convert_call_site(site, funct, asm_line, asm_dest, funct_name_in_same_file)
+        convert_call_site(site, funct, asm_line, asm_dest, funct_name_in_same_file,
+                target_is_global)
     elif site.site_type == Site.RETURN_SITE:
-        convert_return_site(site, funct, asm_line, asm_dest)
+        convert_return_site(site, funct, asm_line, asm_dest,funct_name_in_same_file)
     elif site.site_type == Site.INDIR_JMP_SITE:
         convert_indir_jmp_site(site, funct, asm_line, asm_dest)
     else:
@@ -56,7 +59,8 @@ def convert_to_cdi(site, funct, asm_line, asm_dest, funct_name_in_same_file):
         eprint('WARNING: Site has invalid type!')
 
 
-def convert_call_site(site, funct, asm_line, asm_dest, funct_name_in_same_file):
+def convert_call_site(site, funct, asm_line, asm_dest, funct_name_in_same_file,
+        target_is_global):
     arg_str = asm_parsing.decode_line(asm_line, False)[2]
 
     indirect_call = '%' in arg_str
@@ -78,6 +82,10 @@ def convert_call_site(site, funct, asm_line, asm_dest, funct_name_in_same_file):
     assert len(arg_str.split()) == 1
 
     for target_name in site.targets:
+        # skip targets that can't be reached
+        if not target_is_global(target_name) and not funct_name_in_same_file(target_name):
+            continue
+
         call_operand = arg_str.replace('*', '')
         times_fixed = get_times_fixed_and_increment(target_name, funct)
 
@@ -110,12 +118,20 @@ def get_times_fixed_and_increment(target_name, funct):
 
 
     
-def convert_return_site(site, funct, asm_line, asm_dest):
+def convert_return_site(site, funct, asm_line, asm_dest, funct_name_in_same_file):
+    # don't fix 'main' in this version
+    if funct.name == 'main':
+        asm_dest.write(asm_line)
+        return
+
     cdi_ret_prefix = '_CDI_' + funct.name + '_TO_'
 
     ret_sled= '\taddq $8, %rsp\n' + '\t2:\n'
 
     for target_name, multiplicity in site.targets.iteritems():
+        # skip returns that are impossible: funct can't be called outside of the same file
+        if not funct.is_global and not funct_name_in_same_file(target_name):
+            continue
         i = 1
         while i <= multiplicity:
             target_label = cdi_ret_prefix + target_name + '_' + str(i)

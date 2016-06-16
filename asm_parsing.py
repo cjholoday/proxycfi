@@ -13,6 +13,7 @@ def goto_next_funct(asm_file, line_num):
     """
 
     prev_label = ''
+    globl_decl = ''
 
     asm_line = asm_file.readline()
     line_num += 1
@@ -21,17 +22,19 @@ def goto_next_funct(asm_file, line_num):
         if asm_line != '\n':
             first_word = asm_line.split()[0]
 
-            if (first_word[-1] == ':'):
+            if first_word[-1] == ':':
                 if (first_word[:len('.LFB')] == '.LFB' 
                         and first_word[len('.LFB'):-1].isdigit()):
-                    return prev_label, line_num
+                    return prev_label, line_num, prev_label == globl_decl
                 else:
                     prev_label = first_word[:-1]
+            elif first_word == '.globl':
+                globl_decl = decode_line(asm_line, False)[2]
 
         asm_line = asm_file.readline()
         line_num += 1
 
-    return '', line_num
+    return '', line_num, False
 
 
 def decode_line(asm_line, comment_continues):

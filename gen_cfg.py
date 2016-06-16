@@ -14,17 +14,19 @@ def gen_cfg(asm_file_descrs):
         asm_file = open(descr.name, 'r')
         line_num = 0
 
-        funct_name, line_num = asm_parsing.goto_next_funct(asm_file, line_num)
+        is_global = False
+        funct_name, line_num, is_global = asm_parsing.goto_next_funct(asm_file, line_num)
         
         while funct_name:
             funct_line_num = line_num + 1 # +1 so points at first instr
             funct, line_num = extract_funct(asm_file, funct_name, line_num)
             funct.line_num = funct_line_num
+            funct.is_global = is_global
 
             cfg.add_funct(funct)
             descr.funct_names.append(funct.name)
 
-            funct_name, line_num = asm_parsing.goto_next_funct(asm_file, line_num)
+            funct_name, line_num, is_global = asm_parsing.goto_next_funct(asm_file, line_num)
 
         asm_file.close()
 

@@ -31,6 +31,7 @@ class Function:
         self.name = name
         self.sites = sites
         self.line_num = line_num
+        self.is_global = True
 
 class Site:
     CALL_SITE = 0
