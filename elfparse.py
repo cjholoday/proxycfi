@@ -3,6 +3,7 @@ import sys
 import re
 import types
 import getopt
+from eprint import eprint
 
 class ExecSection:
     def __init__(self, name, size, file_offset, virtual_address, index):
@@ -58,7 +59,7 @@ def gather_exec_sections(binary):
                 subprocess.check_output(['readelf', '-S', binary.name]))
     
     except subprocess.CalledProcessError:
-        sys.stderr.write('readelf failed in gathering executable sections')
+        eprint('FATAL ERROR: Cannot use readelf -S on ' + binary.name)
         sys.exit(1)
     
     raw_section_lines = raw_section_info.split('\n')
@@ -92,25 +93,42 @@ def gather_functions(binary, exec_sections):
     """
     functions = []
     try:
-        symbols = subprocess.check_output(['readelf', '-s', binary.name])
+        readelf_text = subprocess.check_output(['readelf', '-s', binary.name])
     except subprocess.CalledProcessError as e:
-        print e.output
+        eprint('FATAL ERROR: Cannot use readelf -s on ' + binary.name)
+        sys.exit(1)
+    
+    table_lines = readelf_text.splitlines()
 
-    for symbol in symbols.splitlines():
-        column = symbol.split()
-        if len(column) > 3:
-            if column[3] == "FUNC":
+    # Ignore the dynamic symbol table because everything in the
+    # the dynamic symbol table is also in the regular symbol table
+    i = 0
+    while i < len(table_lines):
+        symbols = table_lines[i].split()
+        if len(symbols) >= 2 and symbols[2] == "'.symtab'":
+            break
+        i += 1
+    else:
+        eprint('FATAL ERROR: Symbol table (".symtab") not found in ' + binary.name)
+        sys.exit(1)
+
+    while i < len(table_lines):
+        symbols = table_lines[i].split()
+        if len(symbols) > 3:
+            if symbols[3] == "FUNC":
                 offset = 0
                 in_ex_sec = False
                 for es in exec_sections:
-                    ind = column[6]
+                    ind = symbols[6]
                     section_index = re.search(r"\d+(\.\d+)?", es.elf_index).group(0)
                     if ind == section_index:
                         in_ex_sec = True
-                        offset = int(column[1], 16) - es.virtual_address
+                        offset = int(symbols[1], 16) - es.virtual_address
                         file_offset = es.file_offset + offset
                 if in_ex_sec:
-                    functions.append(Function(column[7],int(column[2]),file_offset,int(column[1], 16)))
+                    functions.append( Function(symbols[7],int(symbols[2]),
+                        file_offset, int(symbols[1], 16)))
+        i += 1
     return functions
 
 
