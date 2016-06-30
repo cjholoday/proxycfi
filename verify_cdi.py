@@ -1,8 +1,11 @@
+#!/usr/bin/env python
+
 import bisect
 import elfparse
 import sys
 import binascii
 import types
+from eprint import eprint
 from capstone import *
 from operator import attrgetter
 from getopt import getopt
@@ -102,9 +105,15 @@ class Verifier:
                 main = f
                 break
         else:
-            raise NoMainFunction()
+            eprint("WARNING: no main function")
 
-        self.verify(main)
+        if main:
+            self.verify(main)
+        else:
+            for funct in self.function_list:
+                # sections must have size > 0 to be considered
+                # NOTE: _fini and company have size 0 so they are not verified
+                self.verify(funct)
 
         # check that incoming "return" jumps are valid
         for funct in self.function_list:
@@ -351,9 +360,6 @@ class Verifier:
 #############################
 
 class Error(Exception):
-    pass
-
-class NoMainFunction(Error):
     pass
 
 class InsecureJump(Error):
