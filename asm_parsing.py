@@ -52,10 +52,6 @@ def goto_next_funct(asm_file, line_num):
 
     return '', line_num, False
 
-def update_loc(asm_line, src_loc):
-    """Checks for a .loc or .file directive then updates location if needed"""
-    key_symbol
-
 
 def decode_line(asm_line, comment_continues):
     """Decodes the asm_line into key_symbols, an argument_string and label list
