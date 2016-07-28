@@ -2,8 +2,24 @@ import sys
 
 class AsmFileDescription:
     def __init__(self, name):
-        self.name = name
+        self.filename = name
         self.funct_names = []
+
+        # list of filenames that this asm file depends on
+        self.dependencies = [] 
+
+    def read_dependencies(self, filename = ''):
+        if not filename:
+            filename = self.src_filename() + '.dependencies'
+        dep_file = open(filename, 'r')
+        self.dependencies = dep_file.readline().split()[1:]
+        assert dep_file.readline() == ''
+        dep_file.close()
+
+    def src_filename(self):
+        assert self.filename[-2:] == '.s'
+        return self.filename[:-2] + '.c'
+
 
 def goto_next_funct(asm_file, line_num):
     """Moves file ptr to first instr of next funct. Returns name of said funct
@@ -35,6 +51,10 @@ def goto_next_funct(asm_file, line_num):
         line_num += 1
 
     return '', line_num, False
+
+def update_loc(asm_line, src_loc):
+    """Checks for a .loc or .file directive then updates location if needed"""
+    key_symbol
 
 
 def decode_line(asm_line, comment_continues):
