@@ -45,27 +45,28 @@ class FunctControlFlowGraphIterator:
         return self.cfg_iter.next()
 
 class Function:
-    def __init__(self, asm_name, asm_filename, sites, return_dict, line_num = -1):
+    def __init__(self, asm_name, asm_filename, src_filename, sites, asm_line_num):
         self.asm_name = asm_name
         self.asm_filename = asm_filename
-        self.uniq_label = asm_filename + '.' + asm_name
-        self.ftype = None # function type
-
-        self.return_dict = return_dict
         self.sites = sites
-        self.asm_line_num = line_num
+        self.asm_line_num = asm_line_num
+        self.uniq_label = asm_filename + '.' + asm_name
+        self.src_filename = src_filename
+
+        # unitialized / improperly set until gen_cfg finishes
+        self.ftype = None # function type
+        self.ret_dict = dict()
         self.is_global = True
 
 class FunctionType:
     """A function signature type. May be associated with a particular function"""
     def __init__(self, mangled_str):
         self.mangled_str = mangled_str
-        self.src_name = '' # optional (used for function definitions)
-        self.matched = False
+        self.src_name = '' # used when function type
 
         # location
         self.src_filename = ''
-        self.line_no = -1
+        self.src_line_num = -1
         self.enclosing_funct_name = '' # optional (used for fp location)
 
     def __str__(self):
@@ -104,13 +105,17 @@ class Site:
     INDIR_JMP_SITE = 2
     PLT_SITE = 3
 
-    def __init__(self, line_num, targets, type_of_site):
+    def __init__(self, line_num, targets, type_of_site, dwarf_loc):
         assert type(line_num) is types.IntType
         assert type(type_of_site) is types.IntType
         assert (type_of_site == Site.CALL_SITE or 
                 type_of_site == Site.RETURN_SITE or
                 type_of_site == Site.INDIR_JMP_SITE)
 
-        self.line_num = line_num
+        self.asm_line_num = line_num
         self.group = type_of_site
         self.targets = targets
+        if dwarf_loc.valid():
+            self.src_line_num = dwarf_loc.line_num
+        else:
+            self.src_line_num = ''

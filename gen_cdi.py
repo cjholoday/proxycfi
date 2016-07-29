@@ -33,10 +33,8 @@ if __name__ == "__main__":
     asm_file_descrs = []
     for filename in asm_filenames:
         asm_file_descrs.append(asm_parsing.AsmFileDescription(filename))
-        asm_file_descrs[-1].read_dependencies()
 
     cfg = gen_cfg(asm_file_descrs, options)
-    #print_cfg_as_json(cfg)
     cfg.print_json_to('cdi_cfg.json')
 
     gen_cdi_asm(cfg, asm_file_descrs, options)

@@ -1,27 +1,25 @@
 import sys
+from eprint import eprint
 
 class AsmFileDescription:
     def __init__(self, name):
         self.filename = name
-        self.funct_names = []
 
-        # list of filenames that this asm file depends on
-        self.dependencies = [] 
-
-    def read_dependencies(self, filename = ''):
-        if not filename:
-            filename = self.src_filename() + '.dependencies'
-        dep_file = open(filename, 'r')
-        self.dependencies = dep_file.readline().split()[1:]
-        assert dep_file.readline() == ''
-        dep_file.close()
+        # these unique define functions because we have their filename (above)
+        self.funct_names = [] 
 
     def src_filename(self):
-        assert self.filename[-2:] == '.s'
-        return self.filename[:-2] + '.c'
+        if self.filename[-2:] == '.s':
+            eprint('error: non-assembly file passed:', self.filename)
+            sys.exit(1)
+        elif len(self.filename) >= len('.cdi.s') and self.filename[-6:] == '.cdi.s':
+            eprint('error: cdi-assembly file passed:', self.filename)
+            sys.exit(1)
+        else:
+            return self.filename[:-2] + '.c'
 
 
-def goto_next_funct(asm_file, line_num):
+def goto_next_funct(asm_file, line_num, dwarf_loc):
     """Moves file ptr to first instr of next funct. Returns name of said funct
 
     Precisely, the file ptr points to the line after '.LFB*' where * is a digit
@@ -34,6 +32,7 @@ def goto_next_funct(asm_file, line_num):
     asm_line = asm_file.readline()
     line_num += 1
     while asm_line:
+        update_dwarf_loc(asm_line, dwarf_loc)
         # ignore empty lines
         if asm_line != '\n':
             first_word = asm_line.split()[0]
@@ -52,6 +51,50 @@ def goto_next_funct(asm_file, line_num):
 
     return '', line_num, False
 
+class DwarfSourceLoc:
+    # internal, don't touch
+    _filename_dict = dict()
+
+    def __init__(self):
+        self.filenum = -1
+        self.line_num = -1
+        self.col_num = -1
+
+    def map_filename(self, filenum, filename):
+        self._filename_dict[filenum] = filename
+
+    def filename(self):
+        if self.filenum not in self._filename_dict:
+            eprint('warning: undefined filenumber: ' + str(self.filenum))
+            return '?'
+        return self._filename_dict[self.filenum]
+
+    def __str__(self):
+        return self.filename() + ':' + str(self.line_num) + ':' + str(self.col_num)
+
+    def valid(self):
+        return self.filenum >= 0 and self.line_num >= 0 and self.col_num >= 0
+
+    @staticmethod
+    def wipe_filename_mapping():
+        DwarfSourceLoc._filename_dict.clear()
+
+def update_dwarf_loc(asm_line, dwarf_loc):
+    """Checks for a .loc or .file directive then updates location if needed
+    
+    Assumes there is no comment before the key symbol
+    """
+
+    # at most 4 words needed: ".loc filenum line_num col_num"
+    asm_list = asm_line.split(None, 4)
+    if not asm_list:
+        return
+    elif asm_list[0] == '.loc':
+        dwarf_loc.filenum = int(asm_list[1])
+        dwarf_loc.line_num = int(asm_list[2])
+        dwarf_loc.col_num = int(asm_list[3])
+    elif asm_list[0] == '.file' and asm_list[1].isdigit():
+        dwarf_loc.map_filename(int(asm_list[1]), asm_list[2].strip('"'))
 
 def decode_line(asm_line, comment_continues):
     """Decodes the asm_line into key_symbols, an argument_string and label list
@@ -90,22 +133,6 @@ def decode_line(asm_line, comment_continues):
     arg_str = ' '.join(args_list)
 
     return labels, key_symbol, arg_str, comment_continues
-
-def is_label(word):
-    """Returns true if word is a label.
-
-    Labels are a string of alphanumeric characters that may begin with '.' or
-    an alphabetic char but not a digit. '_' may appear anywhere in the string
-    as well
-    """
-
-    if not word or word[0].isdigit():
-        return False
-    
-    for c in word[1:]:
-        if not c.isalnum() and not c == '_':
-            return False
-    return True
 
 def remove_comments(asm_line, comment_continues):
     """Finds comments in asm_line and returns a commentless version
