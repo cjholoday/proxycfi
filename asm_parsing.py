@@ -8,15 +8,16 @@ class AsmFileDescription:
         # these unique define functions because we have their filename (above)
         self.funct_names = [] 
 
-    def src_filename(self):
-        if self.filename[-2:] == '.s':
+    def check_filename(self):
+        if self.filename[-2:] != '.s':
             eprint('error: non-assembly file passed:', self.filename)
             sys.exit(1)
         elif len(self.filename) >= len('.cdi.s') and self.filename[-6:] == '.cdi.s':
             eprint('error: cdi-assembly file passed:', self.filename)
             sys.exit(1)
-        else:
-            return self.filename[:-2] + '.c'
+
+    def src_filename(self):
+        return self.filename[:-2] + '.c'
 
 
 def goto_next_funct(asm_file, line_num, dwarf_loc):
