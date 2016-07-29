@@ -1,0 +1,10 @@
+.DS_STORE
+*.swp
+*.pyc
+*.ii
+*.s
+*.o
+a.out
+funct_types.txt
+fp_types.txt
+*.json
