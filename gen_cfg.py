@@ -11,6 +11,7 @@ def gen_cfg(asm_file_descrs, options):
     """
 
     global_functs = []
+    src_filename_set = set()
 
     cfg = funct_cfg.FunctControlFlowGraph()
     for descr in asm_file_descrs:
@@ -27,6 +28,7 @@ def gen_cfg(asm_file_descrs, options):
             funct, line_num = extract_funct(asm_file, funct_name, line_num, dwarf_loc)
             funct.asm_filename = descr.filename
             funct.is_global = is_global
+            src_filename_set.add(funct.src_filename)
 
             if funct.is_global:
                 global_functs.append(funct)
@@ -64,7 +66,7 @@ def gen_cfg(asm_file_descrs, options):
         del(funct.direct_call_sites)
                         
     try:
-        build_indir_targets(cfg, options)
+        build_indir_targets(cfg, src_filename_set, options)
         build_ret_dicts(cfg)
     except NoTypeFile as warning:
         build_ret_dicts(cfg, True)
@@ -72,8 +74,6 @@ def gen_cfg(asm_file_descrs, options):
 
 
     return cfg
-
-
 
 def extract_funct(asm_file, funct_name, line_num, dwarf_loc):
     """Constructs a function from the assembly file. 
@@ -149,22 +149,30 @@ def extract_funct(asm_file, funct_name, line_num, dwarf_loc):
 
     return new_funct, line_num
     
-def build_indir_targets(cfg, options):
+def build_indir_targets(cfg, src_filename_set, options):
     """Builds the target set of each function's indirect calls/jumps
     
     Currently only builds the targets for indirect calls
     """
-    
-    # associate function types with assembly functions (fix for C++)
-    funct_types = read_function_types(options)
-    for funct in cfg:
-        funct.ftype = funct_types[funct.src_filename + '.' + funct.asm_name]
-    
-    fptr_types = read_fptr_types(options)
 
     def is_indir_call_site(site):
         return (site.group == funct_cfg.Site.CALL_SITE 
                 and site.targets == [])
+
+    if options['--no-narrowing']:
+        for funct in cfg:
+            fptr_sites = filter(is_indir_call_site, funct.sites)
+            for fptr_site in fptr_sites:
+                fptr_site.targets = [f for f in cfg]
+        return
+    
+    # associate function types with assembly functions (need to fix for C++)
+    funct_types = read_function_types(src_filename_set, options)
+    for funct in cfg:
+        funct.ftype = funct_types[funct.src_filename + '.' + funct.asm_name]
+    
+    fptr_types = read_fptr_types(src_filename_set, options)
+
     
     for funct in cfg:
         fptr_sites = filter(is_indir_call_site, funct.sites)
@@ -181,14 +189,14 @@ def assign_targets(fptr_sites, funct, cfg, options):
     fptr_sites is a list of sites in funct that have indirect calls
     """
 
-    if options.use_profile:
+    if options['--profile-use']:
         assign_targets_profiled(fptr_sites, funct, cfg, options)
         return
 
     fptr_sites = sorted(fptr_sites, key=operator.attrgetter('src_line_num'))
     funct.fptr_types = sorted(funct.fptr_types, key=operator.attrgetter('src_line_num'))
 
-    arbitrary_ftype = funct_cfg.FunctionType('')
+    arbitrary_ftype = funct_cfg.FunctionType.arbitrary
 
     i = j = 0
     def print_fptr_type_unmatched_msg():
@@ -232,7 +240,11 @@ def assign_targets(fptr_sites, funct, cfg, options):
 def assign_targets_profiled(fptr_sites, funct, cfg, options):
     pass # TODO
     
-def build_ret_dicts(cfg, no_typefile = False):
+def increment_dict(dictionary, key, start = 1):
+    dictionary[key] = dictionary.get(key, start - 1) + 1
+    return dictionary[key]
+
+def build_ret_dicts(cfg):
     """Builds return dictionaries of all functions in the CFG
 
     Notice that when a given function is being examined, it is all the other
@@ -240,30 +252,23 @@ def build_ret_dicts(cfg, no_typefile = False):
     return dictionary depends on which functions call foo
     """
 
+    arbitrary_ftype = funct_cfg.FunctionType.arbitrary
+    beg_multiplicity = 1
+
     for funct in cfg:
         call_dict = dict()
         for site in funct.sites:
             if site.group == site.CALL_SITE:
                 for target in site.targets:
-                    if target.uniq_label in call_dict:
-                        call_dict[target.uniq_label] += 1
-                    else:
-                        call_dict[target.uniq_label] = 1
-                if no_typefile and site.targets == []:
-                    for f in cfg:
-                        site.targets.append(f)
-                        if f in call_dict:
-                            call_dict[f.uniq_label] += 1
-                        else:
-                            call_dict[f.uniq_label] = 1
-                        
+                    increment_dict(call_dict, target.uniq_label, beg_multiplicity)
+
         for target_label, multiplicity in call_dict.iteritems():
             try:
                 cfg.funct(target_label).ret_dict[funct.uniq_label] = multiplicity
             except KeyError:
                 eprint("warning: function cannot be found: " + target_label )
 
-def read_function_types(options):
+def read_function_types(src_filename_set, options):
     """Reads in function type information and stores it in a dict
 
     The dict has the following mapping:
@@ -276,35 +281,37 @@ def read_function_types(options):
     """
 
 
-    if options.verbose:
+    if options['--verbose']:
         print 'read function types:\n===================='
 
     funct_types = dict()
-    try:
-        funct_typefile = open('funct_types.txt', 'r')
-    except IOError:
-        raise NoTypeFile('funct_types.txt couldn\'t be opened')
 
-    for line in funct_typefile:
-        loc, mangled_str = line.split()[0], line.split()[1]
-        loc_list = loc.split(':')
+    for src_filename in src_filename_set:
+        try:
+            funct_typefile = open(src_filename + '.ftypes', 'r')
+        except IOError:
+            continue # source files don't NEED functions (e.g. header files)
 
-        funct_type = funct_cfg.FunctionType(mangled_str)
-        funct_type.src_filename = loc_list[0]
-        funct_type.src_line_num = int(loc_list[1])
-        funct_type.src_name = loc_list[3]
-        key = funct_type.src_filename + '.' + funct_type.src_name
-        funct_types[key] = funct_type
-        if options.verbose:
-            print funct_type.src_name + ': ' + str(funct_type)
+        for line in funct_typefile:
+            if options['--verbose']:
+                print line,     # don't print newline in file
+            loc, mangled_str = line.split()[0], line.split()[1]
+            loc_list = loc.split(':')
 
-    if options.verbose:
+            funct_type = funct_cfg.FunctionType(mangled_str)
+            funct_type.src_filename = loc_list[0]
+            funct_type.src_line_num = int(loc_list[1])
+            funct_type.src_name = loc_list[3]
+            key = funct_type.src_filename + '.' + funct_type.src_name
+            funct_types[key] = funct_type
+        funct_typefile.close()
+
+    if options['--verbose']:
         print '\n',
 
-    funct_typefile.close()
     return funct_types
 
-def read_fptr_types(options):
+def read_fptr_types(src_filename_set, options):
     """Reads in the function pointer type information and stores it in a dict
 
     The dict has the following mapping:
@@ -316,35 +323,36 @@ def read_fptr_types(options):
     needed
     """
 
-    if options.verbose:
+    if options['--verbose']:
         print 'read function pointer types:\n============================'
     fp_types = dict()
-    try:
-        fp_typefile = open('fp_types.txt', 'r')
-    except IOError:
-        raise NoTypeFile('fp_types.txt couldn\'t be opened')
+    for src_filename in src_filename_set:
+        try:
+            fp_typefile = open(src_filename + '.fptypes', 'r')
+        except IOError:
+            continue # not all sources have to have fptrs
 
-    for line in fp_typefile:
-        loc, type_str = line.split()[0], line.split()[1]
-        loc_list = loc.split(':')
+        for line in fp_typefile:
+            loc, type_str = line.split()[0], line.split()[1]
+            loc_list = loc.split(':')
 
-        fp_type = funct_cfg.FunctionType(type_str)
-        fp_type.src_filename = loc_list[0]
-        fp_type.src_line_num = int(loc_list[1])
-        fp_type.enclosing_funct_name = loc_list[3]
+            fp_type = funct_cfg.FunctionType(type_str)
+            fp_type.src_filename = loc_list[0]
+            fp_type.src_line_num = int(loc_list[1])
+            fp_type.enclosing_funct_name = loc_list[3]
 
-        key = fp_type.src_filename + '.' + fp_type.enclosing_funct_name
-        if key in fp_types:
-            fp_types[key].append(fp_type)
-        else:
-            fp_types[key] = [fp_type]
-        if options.verbose:
-            print 'In ' + fp_type.enclosing_funct_name + ': ' + str(fp_type)
+            key = fp_type.src_filename + '.' + fp_type.enclosing_funct_name
+            if key in fp_types:
+                fp_types[key].append(fp_type)
+            else:
+                fp_types[key] = [fp_type]
+            if options['--verbose']:
+                print 'In ' + fp_type.enclosing_funct_name + ': ' + str(fp_type)
+        fp_typefile.close()
             
-    if options.verbose:
+    if options['--verbose']:
         print '\n',
 
-    fp_typefile.close()
     return fp_types
 
 class NoTypeFile(IOError):

@@ -60,6 +60,7 @@ class Function:
 
 class FunctionType:
     """A function signature type. May be associated with a particular function"""
+
     def __init__(self, mangled_str):
         self.mangled_str = mangled_str
         self.src_name = '' # used when function type
@@ -90,6 +91,8 @@ class FunctionType:
 
     def __ne__(self, other):
         return not __eq__(self, other)
+
+FunctionType.arbitrary = FunctionType('')
 
 class SledIdFaucet:
     def __init__(self):

@@ -128,8 +128,8 @@ def convert_call_site(site, funct, asm_line, asm_dest,
         call_sled += '\tjmp\t2f\n'
 
     call_sled += '1:\n'
-    call_sled += cdi_exit_str(sled_id_faucet(), funct.asm_filename, 
-            options.debug_mode, dwarf_loc)
+    call_sled += cdi_abort_str(sled_id_faucet(), funct.asm_filename, 
+            options['--no-abort-messages'], dwarf_loc)
     call_sled += '2:\n'
     asm_dest.write(call_sled)
 
@@ -153,32 +153,32 @@ def convert_return_site(site, funct, asm_line, asm_dest, cfg,
             ret_sled += '\tje\t' + sled_label + '\n'
             i += 1
 
-    ret_sled += cdi_exit_str(sled_id_faucet(), funct.asm_filename,
-            options.debug_mode, dwarf_loc)
+    ret_sled += cdi_abort_str(sled_id_faucet(), funct.asm_filename,
+            options['--no-abort-messages'], dwarf_loc)
     asm_dest.write(ret_sled)
 
 
 def convert_indir_jmp_site(site, funct, asm_line, asm_dest):
     pass
 
-def cdi_exit_str(sled_id, asm_filename, debug_mode, dwarf_loc):
-    """Return string that exits from cdi code with a useful debug message"""
+def cdi_abort_str(sled_id, asm_filename, no_abort_msg, dwarf_loc):
+    """Return string that aborts from cdi code with a useful debug message"""
 
     loc_str = asm_filename
     if dwarf_loc.valid():
         loc_str = str(dwarf_loc) + ':' + loc_str
 
-    call_cdi_exit = ''
-    if debug_mode:
-        call_cdi_exit += '\tmovq\t $.CDI_sled_id_' + str(sled_id) + ', %rsi\n'
-        call_cdi_exit += '\tmovq\t$.CDI_sled_id_' + str(sled_id) +'_len, %rdx\n'
-        call_cdi_exit += '\tcall\t_CDI_exit\n'
-        call_cdi_exit += '.CDI_sled_id_' + str(sled_id) + ':\n'
-        call_cdi_exit += '\t.string\t"' + loc_str + ' id=' + str(sled_id) + '"\n'
-        call_cdi_exit += '\t.set\t.CDI_sled_id_' + str(sled_id) + '_len, '
-        call_cdi_exit += '.-.CDI_sled_id_' + str(sled_id) + '\n'
+    call_cdi_abort = ''
+    if no_abort_msg:
+        call_cdi_abort = '\tmovq\t$0, %rdx\n\tcall _CDI_abort\n'
     else:
-        call_cdi_exit = '\tmovq\t$0, %rdx\n\tcall _CDI_exit\n'
+        call_cdi_abort += '\tmovq\t $.CDI_sled_id_' + str(sled_id) + ', %rsi\n'
+        call_cdi_abort += '\tmovq\t$.CDI_sled_id_' + str(sled_id) +'_len, %rdx\n'
+        call_cdi_abort += '\tcall\t_CDI_abort\n'
+        call_cdi_abort += '.CDI_sled_id_' + str(sled_id) + ':\n'
+        call_cdi_abort += '\t.string\t"' + loc_str + ' id=' + str(sled_id) + '"\n'
+        call_cdi_abort += '\t.set\t.CDI_sled_id_' + str(sled_id) + '_len, '
+        call_cdi_abort += '.-.CDI_sled_id_' + str(sled_id) + '\n'
 
-    return call_cdi_exit
+    return call_cdi_abort
 
