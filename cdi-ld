@@ -1,8 +1,7 @@
 #!/bin/bash 
 
 ld_arg_required_options=("-m" "-o" "-a" "-audit" "-A" "-b" "-c" "--depaudit" "-P" 
-"-e" "--exclude-libs" "--exclude-modules-for-implib" "-f" "-F" "-G" "-h" "-l" 
-"-L" "-O" "-R" "-T" "-dT" "-u" "-y" "-Y" "-z" "-assert" "-z" 
+"-e" "--exclude-libs" "--exclude-modules-for-implib" "-f" "-F" "-G" "-h" "-l" "-L" "-O" "-R" "-T" "-dT" "-u" "-y" "-Y" "-z" "-assert" "-z" 
 "--exclude-symbols" "--heap" "--image-base" "--major-image-version" 
 "--major-os-version" "--major-subsystem-version" "--minor-image-version" 
 "--minor-os-version" "--minor-subsystem-version" "--output-def" 
@@ -48,7 +47,6 @@ function handle_archive {
 
     echo_spec_word=false
     archive_files="$archive_files $archive"
-    echo "$archive"
     archive_objs=( $(ar -t $archive) )
     if [ "$?" -ne "0" ]; then
         exit 1
@@ -79,24 +77,26 @@ function handle_archive {
 # cdi-ld: wrapper for ld
 #########################
 
-echo $ld_spec
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 ld_spec=$@
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+# the search directories that ld searches through first
+builtin_search_dirs="$("$SCRIPT_DIR"/gnu-ld --verbose | grep SEARCH_DIR | tr -s ' ;' '\n' | sed 's/^[^"]*"//g' | sed 's/".*$//g')"
 
 prev=""
 obj_files=""
 archive_files=""
 cdi_ld_spec=""
+
 # get object and archive files. Also create cdi spec for ld
-echo $ld_spec
 for word in $ld_spec; do
     echo_spec_word=true
 
-    if [ "$prev" = "-l" ]; then
-        handle_archive "$word"
-    elif [ "${word:0:2}" = "-l" ] && [ "$word" != "-l" ]; then
-        handle_archive "${word#-l}"
-    elif [ "${word:0:1}" != "-" ] \
+    #if [ "$prev" = "-l" ]; then
+        #handle_archive "$word"
+    #elif [ "${word:0:2}" = "-l" ] && [ "$word" != "-l" ]; then
+        #handle_archive "${word#-l}"
+    if [ "${word:0:1}" != "-" ] \
         && [ "$(requires_arg $prev)" = false ]; then
         bare_filename="${word##*/}"
         if  [ "${bare_filename: -2}" = ".a" ]; then
