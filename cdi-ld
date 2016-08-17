@@ -1,0 +1,221 @@
+#!/bin/bash 
+
+ld_arg_required_options=("-m" "-o" "-a" "-audit" "-A" "-b" "-c" "--depaudit" "-P" 
+"-e" "--exclude-libs" "--exclude-modules-for-implib" "-f" "-F" "-G" "-h" "-l" 
+"-L" "-O" "-R" "-T" "-dT" "-u" "-y" "-Y" "-z" "-assert" "-z" 
+"--exclude-symbols" "--heap" "--image-base" "--major-image-version" 
+"--major-os-version" "--major-subsystem-version" "--minor-image-version" 
+"--minor-os-version" "--minor-subsystem-version" "--output-def" 
+"--out-implib" "--dll-search-prefix" "--stack" "--subsystem" "--bank-window" 
+"--got")
+
+function requires_arg {
+    for opt in ${ld_arg_required_options[@]}; do
+        if [ "$opt" = "$1" ]; then
+            echo true 
+            return 0
+        fi
+    done
+    
+    echo false
+}
+
+# returns true if the given file is listed without an explicit path
+function is_bare_file {
+    is_match=$(expr match "$1" '/')
+    if [ "$is_match" -eq "1" ]; then
+        echo false
+    else
+        echo true
+    fi
+}
+
+function output_arg {
+    local spec="$1"
+    local prev=""
+    for word in $spec; do
+        if [ "$prev" = "-o" ]; then
+            echo $word
+            exit 0
+        else
+            prev="$word"
+        fi
+    done
+}
+
+function handle_archive {
+    archive=$1
+
+    echo_spec_word=false
+    archive_files="$archive_files $archive"
+    echo "$archive"
+    archive_objs=( $(ar -t $archive) )
+    if [ "$?" -ne "0" ]; then
+        exit 1
+    fi
+
+    if [ "$(is_bare_file $archive)" = "true" ]; then
+        archive_path=""
+    else
+        archive_path="${archive%/*}/"
+    fi
+
+    mv "${archive_objs[0]}" "${archive_objs[0]}.cdi_temp"
+    ar -t $archive &> /dev/null
+    if [ "$?" -ne 0 ]; then # archive is thin
+        prefix=""
+    else 
+        prefix="$bare_filename."
+    fi
+
+    # write the archive's objects to the spec
+    for obj in ${archive_objs[@]}; do
+        cdi_ld_spec="$cdi_ld_spec $archive_path$prefix$obj"
+    done
+    mv "${archive_objs[0]}.cdi_temp" "${archive_objs[0]}"
+}
+
+#########################
+# cdi-ld: wrapper for ld
+#########################
+
+echo $ld_spec
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+ld_spec=$@
+
+prev=""
+obj_files=""
+archive_files=""
+cdi_ld_spec=""
+# get object and archive files. Also create cdi spec for ld
+echo $ld_spec
+for word in $ld_spec; do
+    echo_spec_word=true
+
+    if [ "$prev" = "-l" ]; then
+        handle_archive "$word"
+    elif [ "${word:0:2}" = "-l" ] && [ "$word" != "-l" ]; then
+        handle_archive "${word#-l}"
+    elif [ "${word:0:1}" != "-" ] \
+        && [ "$(requires_arg $prev)" = false ]; then
+        bare_filename="${word##*/}"
+        if  [ "${bare_filename: -2}" = ".a" ]; then
+            handle_archive $word
+        elif [ "$(is_bare_file $word)" = "true" ]; then
+            obj_files="$obj_files $word"
+        fi
+    fi
+
+    if [ "$echo_spec_word" = "true" ]; then
+        cdi_ld_spec="$cdi_ld_spec $word"
+    fi
+
+    prev=$word
+done
+
+
+asm_files=""
+cdi_asm_files=""
+
+# get assembly files from deferred object files
+for obj_file in ${obj_files[@]}; do
+    # first byte of ELF file is 0x7F. Remove it to properly compare
+    elf=$(head -c 4 $obj_file | sed 's/\x7F//g')
+    if [ "$elf" = "ELF" ]; then
+        printf "cdi-ld error: linking non-deferred "
+        printf "object file: '%s'\n" "$obj_file"
+        exit 1
+    fi
+    asm_file=$(head -1 $obj_file | awk '{ print $2 }')
+    asm_files="$asm_files $asm_file"
+    cdi_asm_files="$cdi_asm_files ${asm_file/%.s/.cdi.s}"
+done
+
+all_arch_objs=""
+delete_files="" # files that need to be deleted later on
+
+# get assembly files from deferred object files in the archives
+for archive in ${archive_files[@]}; do
+    arch_objs=$(ar -t $archive)
+
+    if [ "$?" -ne "0" ]; then
+        exit 1
+    fi
+
+    # when the archive is extracted, it overwrites object files
+    # with the same name. Temporarily save those files
+    for arch_obj in ${arch_objs[@]}; do
+        mv "$arch_obj" "$arch_obj.cdi_temp"
+    done
+
+    ar -x $archive 2> /dev/null
+    if [ "$?" -ne "0" ]; then
+        # the archive must be thin because the first query for the 
+        # archive's table succeeded
+        for arch_obj in ${arch_objs[@]}; do
+            mv "$arch_obj.cdi_temp" "$arch_obj"
+        done
+        all_arch_objs="$all_arch_objs $arch_objs"
+        is_thin=true
+    else
+        for arch_obj in ${arch_objs[@]}; do
+            mv "$arch_obj" "$archive.$arch_obj"
+            mv "$arch_obj.cdi_temp" "$arch_obj"
+            all_arch_objs="$all_arch_objs $archive.$arch_obj"
+            #delete_files="$delete_files $archive.$arch_obj"
+        done
+
+        is_thin=false
+    fi
+
+    for arch_obj in ${arch_objs[@]}; do
+        if [ "$is_thin" = false ]; then
+            arch_obj="$archive.$arch_obj"
+        fi
+        # first byte of ELF file is 0x7F. Remove it to properly compare
+        elf=$(head -c 4 $arch_obj | sed 's/\x7F//g')
+        if [ "$elf" = "ELF" ]; then
+            printf "cdi-ld error: linking non-deferred object file: "
+            printf "'%s' from archive '%s'\n" \
+                "${arch_obj#*.a.}" "${arch_obj%%.*}.a"
+            exit 1
+        fi
+        asm_file=$(head -1 $arch_obj | awk '{ print $2 }')
+        asm_files="$asm_files $asm_file"
+        cdi_asm_files="$cdi_asm_files ${asm_file/%.s/.cdi.s}"
+    done
+
+done
+
+all_obj_files="$obj_files $all_arch_objs"
+${SCRIPT_DIR}/gen_cdi -nn $asm_files
+for obj_file in $obj_files; do
+    ${SCRIPT_DIR}/gnu-as $(tail -1 $obj_file)
+done
+
+for obj_file in $all_arch_objs; do
+    cdi_as_spec=$(tail -1 $obj_file)
+    outfile=$(output_arg "$cdi_as_spec")
+    if [ "$outfile" = "$obj_file" ]; then # archive is thin
+        ${SCRIPT_DIR}/gnu-as $cdi_as_spec
+    else
+        # we need to preserve the existing outfile, if one exists
+        if [ -f "$outfile" ]; then
+            mv "$outfile" "$outfile.cdi_temp"
+        fi
+        ${SCRIPT_DIR}/gnu-as $cdi_as_spec
+        if [ -f "$outfile.cdi_temp" ]; then
+            mv "$outfile.cdi_temp" "$outfile"
+        fi
+        mv "$outfile" "$obj_file"
+    fi
+done
+
+${SCRIPT_DIR}/gnu-ld $cdi_ld_spec ${SCRIPT_DIR}/cdi_abort.o
+
+for file in "$delete_files"; do
+    rm -f "$file"
+done
+
+exit 0
+
