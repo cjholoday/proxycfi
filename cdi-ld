@@ -34,23 +34,54 @@ function output_arg {
     local prev=""
     for word in $spec; do
         if [ "$prev" = "-o" ]; then
-            echo $word
-            exit 0
+            echo "$word"
+            return
         else
             prev="$word"
         fi
     done
 }
 
+# save $1 to $2 if $1 exists. If $2 exists, it is deleted
+function mvtemp {
+    if [ -f "$1" ]; then
+        mv "$1" "$2"
+    else
+        rm -f "$2"
+    fi
+}
+# Fills global variable archive_files
+# Adds objects of archive to end of cdi_ld_spec unless the archive is
+#   not cdi-compliant. Instead, the archive is added as if not 
+#   compiling with cdi. This is a temporary measure while we transition
+#   to 100% CDI code
+# ONLY call this function when creating cdi_ld_spec
 function handle_archive {
     archive=$1
 
-    echo_spec_word=false
-    archive_files="$archive_files $archive"
-    archive_objs=( $(ar -t $archive) )
+    local archive_objs=( $(ar -t $archive) )
     if [ "$?" -ne "0" ]; then
         exit 1
     fi
+
+    # first check what kind of archive it is
+    first_obj="${archive_objs[0]}"
+    mvtemp "$first_obj" "$first_obj.cdi_temp"
+
+    # if archive is thin, then extraction will fail, in which case the
+    # object is already extracted. Ignore the failure
+    ar -x "$archive" "$first_obj" 
+
+    elf=$(head -c 4 "$first_obj" | sed 's/^\x7F//')
+    mvtemp "$first_obj.cdi_temp" "$first_obj"
+    if [ "$elf" = "ELF" ]; then
+        unsafe_archives="$unsafe_archives $archive"
+        cdi_ld_spec="$cdi_ld_spec $archive"
+        return 
+    fi
+
+    local echo_spec_word=false
+    archive_files="$archive_files $archive"
 
     if [ "$(is_bare_file $archive)" = "true" ]; then
         archive_path=""
@@ -58,7 +89,7 @@ function handle_archive {
         archive_path="${archive%/*}/"
     fi
 
-    mv "${archive_objs[0]}" "${archive_objs[0]}.cdi_temp"
+    mvtemp "${archive_objs[0]}" "${archive_objs[0]}.cdi_temp"
     ar -t $archive &> /dev/null
     if [ "$?" -ne 0 ]; then # archive is thin
         prefix=""
@@ -70,7 +101,25 @@ function handle_archive {
     for obj in ${archive_objs[@]}; do
         cdi_ld_spec="$cdi_ld_spec $archive_path$prefix$obj"
     done
-    mv "${archive_objs[0]}.cdi_temp" "${archive_objs[0]}"
+    mvtemp "${archive_objs[0]}.cdi_temp" "${archive_objs[0]}"
+}
+
+function find_lib {
+    libname="$1"
+
+    # shared libraries are favored
+    for dir in $ld_search_dirs; do
+        if [ -f "$dir/lib$libname.so" ]; then
+            echo "$dir/lib$libname.so"
+            return
+        elif [ -f "$dir/lib$libname.a" ]; then
+            echo "$dir/lib$libname.a"
+            return
+        fi
+    done
+
+    # error code (filenames cannot contain \0)
+    echo '\0'
 }
 
 #########################
@@ -79,9 +128,21 @@ function handle_archive {
 
 ld_spec=$@
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+unsafe_archives=""
 
-# the search directories that ld searches through first
 builtin_search_dirs="$("$SCRIPT_DIR"/gnu-ld --verbose | grep SEARCH_DIR | tr -s ' ;' '\n' | sed 's/^[^"]*"//g' | sed 's/".*$//g')"
+
+# here we grab directories specified by -L
+added_dirs="$(echo "$ld_spec" | tr -s ' ' '\n' | \
+    grep "^-L" | sed 's/^-L//g')"
+
+
+# and now we grab directories specified by --library-path
+added_dirs="$added_dirs $(echo "$ld_spec" | tr -s ' ' '\n' | \
+    grep "^--library-path=" | sed 's/^--library-path=//g')"
+
+# Note the order. -L/--library-path directories are favored
+ld_search_dirs="$added_dirs $builtin_search_dirs"
 
 prev=""
 obj_files=""
@@ -92,18 +153,30 @@ cdi_ld_spec=""
 for word in $ld_spec; do
     echo_spec_word=true
 
-    #if [ "$prev" = "-l" ]; then
-        #handle_archive "$word"
-    #elif [ "${word:0:2}" = "-l" ] && [ "$word" != "-l" ]; then
-        #handle_archive "${word#-l}"
-    if [ "${word:0:1}" != "-" ] \
+    # handle -l<libname> and -l <libname>
+    if [ "$prev" = "-l" ] || \
+        ([ "${word:0:2}" = "-l" ] && [ "$word" != "-l" ]); then
+
+        echo_spec_word=false
+        word="$(echo "$word" | sed 's/^-l//')" #remove -l if needed
+        lib="$(find_lib "$word")"
+        if [ "$lib" = '\0' ]; then
+            printf "cdi-ld: error: cannot find -l%s\n" "$word"
+            exit 1
+        elif [ "${lib: -2}" = ".a" ]; then
+            handle_archive "$lib"
+        else
+            cdi_ld_spec="$cdi_ld_spec -l$word"
+        fi
+    elif [ "${word:0:1}" != "-" ] \
         && [ "$(requires_arg $prev)" = false ]; then
-        bare_filename="${word##*/}"
-        if  [ "${bare_filename: -2}" = ".a" ]; then
-            handle_archive $word
+        if  [ "${word: -2}" = ".a" ]; then
+            handle_archive "$word"
         elif [ "$(is_bare_file $word)" = "true" ]; then
             obj_files="$obj_files $word"
         fi
+    elif [ "$word" = "-l" ]; then
+        echo_spec_word=false
     fi
 
     if [ "$echo_spec_word" = "true" ]; then
@@ -113,14 +186,13 @@ for word in $ld_spec; do
     prev=$word
 done
 
-
 asm_files=""
 cdi_asm_files=""
 
 # get assembly files from deferred object files
 for obj_file in ${obj_files[@]}; do
     # first byte of ELF file is 0x7F. Remove it to properly compare
-    elf=$(head -c 4 $obj_file | sed 's/\x7F//g')
+    elf=$(head -c 4 $obj_file | sed 's/\x7F//')
     if [ "$elf" = "ELF" ]; then
         printf "cdi-ld error: linking non-deferred "
         printf "object file: '%s'\n" "$obj_file"
@@ -145,7 +217,7 @@ for archive in ${archive_files[@]}; do
     # when the archive is extracted, it overwrites object files
     # with the same name. Temporarily save those files
     for arch_obj in ${arch_objs[@]}; do
-        mv "$arch_obj" "$arch_obj.cdi_temp"
+        mvtemp "$arch_obj" "$arch_obj.cdi_temp"
     done
 
     ar -x $archive 2> /dev/null
@@ -153,14 +225,14 @@ for archive in ${archive_files[@]}; do
         # the archive must be thin because the first query for the 
         # archive's table succeeded
         for arch_obj in ${arch_objs[@]}; do
-            mv "$arch_obj.cdi_temp" "$arch_obj"
+            mvtemp "$arch_obj.cdi_temp" "$arch_obj"
         done
         all_arch_objs="$all_arch_objs $arch_objs"
         is_thin=true
     else
         for arch_obj in ${arch_objs[@]}; do
             mv "$arch_obj" "$archive.$arch_obj"
-            mv "$arch_obj.cdi_temp" "$arch_obj"
+            mvtemp "$arch_obj.cdi_temp" "$arch_obj"
             all_arch_objs="$all_arch_objs $archive.$arch_obj"
             #delete_files="$delete_files $archive.$arch_obj"
         done
@@ -173,7 +245,7 @@ for archive in ${archive_files[@]}; do
             arch_obj="$archive.$arch_obj"
         fi
         # first byte of ELF file is 0x7F. Remove it to properly compare
-        elf=$(head -c 4 $arch_obj | sed 's/\x7F//g')
+        elf=$(head -c 4 $arch_obj | sed 's/^\x7F//g')
         if [ "$elf" = "ELF" ]; then
             printf "cdi-ld error: linking non-deferred object file: "
             printf "'%s' from archive '%s'\n" \
@@ -188,34 +260,35 @@ for archive in ${archive_files[@]}; do
 done
 
 all_obj_files="$obj_files $all_arch_objs"
-${SCRIPT_DIR}/gen_cdi -nn $asm_files
+${SCRIPT_DIR}/gen_cdi $asm_files
 for obj_file in $obj_files; do
     ${SCRIPT_DIR}/gnu-as $(tail -1 $obj_file)
 done
 
 for obj_file in $all_arch_objs; do
+    echo $obj_file
     cdi_as_spec=$(tail -1 $obj_file)
     outfile=$(output_arg "$cdi_as_spec")
     if [ "$outfile" = "$obj_file" ]; then # archive is thin
         ${SCRIPT_DIR}/gnu-as $cdi_as_spec
     else
-        # we need to preserve the existing outfile, if one exists
-        if [ -f "$outfile" ]; then
-            mv "$outfile" "$outfile.cdi_temp"
-        fi
+        mvtemp "$outfile" "$outfile.cdi_temp"
         ${SCRIPT_DIR}/gnu-as $cdi_as_spec
-        if [ -f "$outfile.cdi_temp" ]; then
-            mv "$outfile.cdi_temp" "$outfile"
-        fi
         mv "$outfile" "$obj_file"
+        mvtemp "$outfile.cdi_temp" "$outfile"
     fi
 done
 
+echo "$cd_ld_spec"
 ${SCRIPT_DIR}/gnu-ld $cdi_ld_spec ${SCRIPT_DIR}/cdi_abort.o
 
 for file in "$delete_files"; do
     rm -f "$file"
 done
+
+if [ -n "$unsafe_archives" ]; then
+    printf "non-cdi-compliant archives: %s\n" "$unsafe_archives"
+fi
 
 exit 0
 

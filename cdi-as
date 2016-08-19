@@ -12,10 +12,9 @@ function requires_arg {
     echo false
 }
 
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 as_spec=$@
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cdi_as_spec=""
-
 
 output_option=false
 found_outfile=false
