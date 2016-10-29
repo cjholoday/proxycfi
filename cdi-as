@@ -1,0 +1,67 @@
+#!/bin/bash 
+
+as_arg_required_options=("--debug-prefix-map" "--defsym" "-I" "-o")
+function requires_arg {
+    for opt in ${as_arg_required_options[@]}; do
+        if [ "$opt" = "$1" ]; then
+            echo true 
+            return 0
+        fi
+    done
+    
+    echo false
+}
+
+as_spec=$@
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+cdi_as_spec=""
+
+output_option=false
+found_outfile=false
+prev=""
+
+for word in $as_spec; do
+    # find output file
+    if [ "$word" = "-o" ]; then
+        output_option=true
+    elif [ "$output_option" = true ]; then
+        if [ -f "$word" ]; then
+            echo -n "cdi-as warning: file '$word' already exists. " >&2
+            echo "overwriting" >&2
+        fi
+
+        if [ "$found_outfile" = true ]; then
+            echo "cdi-as warning: more than one output file for a \
+                single assembly file: $output_file, $word"
+        fi
+
+        output_file=$word
+        output_option=false
+        found_outfile=true
+
+    fi
+
+    # find input file and build spec that takes in *.cdi.s files
+    firstchar=`expr substr $word 1 1`
+    if [ "$firstchar" != "-" ] && [ "$firstchar" != "/" ] \
+        && [ "$(requires_arg $prev)" = false ]; then
+        input_file="$word"
+        cdi_as_spec="$cdi_as_spec ${input_file/%.s/.cdi.s}"
+    else
+        cdi_as_spec="$cdi_as_spec $word"
+    fi
+done
+
+# default output file is 'a.out'
+if [ "$found_outfile" = false ]; then
+    if [ -f "$i" ]; then
+        echo -n "cdi-as warning: file '$i' already exists. " >&2
+        echo "overwriting" >&2
+    fi
+
+    output_file=a.out
+fi
+
+printf "deferred: %s\n%s\n" "$input_file" "$cdi_as_spec" > "$output_file"
+
+exit 0
