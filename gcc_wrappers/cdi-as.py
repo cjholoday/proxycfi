@@ -108,6 +108,7 @@ except MissingDependency as err:
     eprint("cdi-as: warning: missing dependency associated with '" + 
         input_src_fname_stem + '.' + language)
 
+fake_object.write('# dependencies ' + ' '.join(deps) + '\n')
 
 # find the function and function pointer type information from dependencies
 # and place them in the fake object file
