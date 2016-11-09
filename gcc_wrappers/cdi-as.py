@@ -15,14 +15,14 @@ def parse_as_spec(spec):
     cdi_as_spec = ''
     AS_ARG_REQUIRED_OPTIONS = ['--debug-prefix-map', '--defsym', '-I', '-o']
     prev_word = ''
-    for word in spec.split():
+    for word in spec:
         if prev_word == '-o':
             assert output_obj_fname == ''
-            output_obj_fname = word
+            output_obj_fname = word[:word.rfind('.')] + '.cdi.o'
+            word = output_obj_fname
         elif prev_word not in AS_ARG_REQUIRED_OPTIONS and word[0] != '-':
             input_asm_fname = word
             word = word[:word.rfind('.')] + '.cdi.s'
-            word = word[:-2] + '.cdi.s'
         cdi_as_spec += word + ' '
         prev_word = word
 
@@ -75,10 +75,10 @@ def absolute_directory(fname_path):
 #   for more information, see the documentation
 ########################################################################
 
-as_spec = ' '.join(sys.argv[1:])
+as_spec = sys.argv[1:]
 input_asm_fname, output_obj_fname, cdi_as_spec = parse_as_spec(as_spec)
 input_src_fname_stem = input_asm_fname[:input_asm_fname.rfind('.')]
-fake_object = open(input_src_fname_stem + '.o', 'w')
+fake_object = open(input_src_fname_stem + '.cdi.o', 'w')
 
 fake_object.write('# cdi_as_spec ' + cdi_as_spec + '\n')
 fake_object.write('# source_directory {}\n'.format(absolute_directory(
@@ -145,4 +145,9 @@ for dep_fname in deps:
 fake_object.write('# assembly\n')
 with open(input_asm_fname, 'r') as asm:
     fake_object.write(asm.read())
+
+# create the usual object files. These are used in cdi-ld to discover 
+# what object files are needed in the archives
+subprocess.check_output(['as'] + as_spec)
+
 
