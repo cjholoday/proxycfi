@@ -4,6 +4,8 @@ import subprocess
 import os
 from eprint import eprint
 
+AS_ARG_REQUIRED_OPTIONS = ['--debug-prefix-map', '--defsym', '-I', '-o']
+
 class MissingDependency(Exception):
     def __init__(self, dep_list):
         self.dep_list = dep_list
@@ -12,24 +14,27 @@ class MissingDependency(Exception):
 def parse_as_spec(spec):
     output_obj_fname = ''
     input_asm_fname = ''
-    cdi_as_spec = ''
-    AS_ARG_REQUIRED_OPTIONS = ['--debug-prefix-map', '--defsym', '-I', '-o']
     prev_word = ''
+    as_spec_non_io = ''
     for word in spec.split():
+        is_io = False
         if prev_word == '-o':
             assert output_obj_fname == ''
             output_obj_fname = word
+            is_io = True
         elif prev_word not in AS_ARG_REQUIRED_OPTIONS and word[0] != '-':
             input_asm_fname = word
-            word = word[:word.rfind('.')] + '.cdi.s'
-            word = word[:-2] + '.cdi.s'
-        cdi_as_spec += word + ' '
+            is_io = True
+        elif word == '-o':
+            is_io = True
         prev_word = word
+        if not is_io:
+            as_spec_non_io += word + ' '
 
     if output_obj_fname == '':
         output_obj_fname = 'a.out'
 
-    return input_asm_fname, output_obj_fname, cdi_as_spec[:-1]
+    return input_asm_fname, output_obj_fname, as_spec_non_io
 
 # Returns a list of dependencies of a .c source file
 # the source file itself is included in the list
@@ -76,11 +81,12 @@ def absolute_directory(fname_path):
 ########################################################################
 
 as_spec = ' '.join(sys.argv[1:])
-input_asm_fname, output_obj_fname, cdi_as_spec = parse_as_spec(as_spec)
+input_asm_fname, output_obj_fname, as_spec_non_io = parse_as_spec(as_spec)
 input_src_fname_stem = input_asm_fname[:input_asm_fname.rfind('.')]
 fake_object = open(input_src_fname_stem + '.o', 'w')
 
-fake_object.write('# cdi_as_spec ' + cdi_as_spec + '\n')
+fake_object.write('# as_spec ' + as_spec + '\n')
+fake_object.write('# as_spec_non_io ' + as_spec_non_io + '\n')
 fake_object.write('# source_directory {}\n'.format(absolute_directory(
     input_asm_fname)))
 

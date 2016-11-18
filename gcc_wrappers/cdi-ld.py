@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 import sys
 import os
 import subprocess
@@ -22,8 +23,10 @@ class FakeObjectFile:
             self.src_directory 
             self.has_missing_dep
             self.deps
-            self.cdi_as_spec """
+            self.as_spec 
+            self.as_spec_non_io"""
         self.has_missing_dep = False
+        self.as_spec_non_io = ''
         with open(path, 'r') as fake_obj:
             elf_signature = '\x7FELF'
             if fake_obj.read(4) == elf_signature:
@@ -47,6 +50,8 @@ class FakeObjectFile:
                     break
                 elif command == 'typeinfo':
                     reading_typeinfo = True
+                elif command == 'as_spec_non_io':
+                    self.as_spec_non_io = words[2:]
                 elif command == 'source_directory':
                     self.src_directory = words[2]
                 elif command == 'dependencies':
@@ -54,8 +59,8 @@ class FakeObjectFile:
                 elif command == 'warning':
                     if words[2] == 'missing_dependency':
                         self.has_missing_dep = True
-                elif command == 'cdi_as_spec':
-                    self.cdi_as_spec = words[2:]
+                elif command == 'as_spec':
+                    self.as_spec = words[2:]
                 else:
                     eprint("cdi-ld: warning: invalid command '{}' in "
                             " fake object '{}'".format(command, path))
@@ -212,7 +217,6 @@ def trim_path(path):
         slash_index = path[:-1].rfind('/')
     return path[slash_index + 1:]
 
-
 ########################################################################
 # cdi-ld: a cdi wrapper for the gnu linker 'ld'
 #   Identifies necessary fake object files in archives, converts fake object
@@ -224,19 +228,37 @@ ld_spec = sys.argv[1:]
 linker = Linker(ld_spec)
 linker.parse_spec()
 
-# the fake object files directly listed in the ld spec
-explicit_fake_objs = []
-for fname in linker.obj_fnames:
-    explicit_fake_objs.append(FakeObjectFile(fname[:-2] + '.cdi.o'))
-    print 'directory: ' + explicit_fake_objs[-1].src_directory
-    print 'missing dep? ' + str(explicit_fake_objs[-1].has_missing_dep)
-    print 'deps: ' + ' '.join(explicit_fake_objs[-1].deps)
-    print 'cdi as spec: ' + ' '.join(explicit_fake_objs[-1].cdi_as_spec)
-
 archives = []
 for path in linker.archive_paths:
     archives.append(Archive(path))
 
-verbose_linker_output = subprocess.check_output(['ld'] + ld_spec + ['--verbose'])
-implicit_fake_objs = required_archive_objs(verbose_linker_output)
+# the fake object files directly listed in the ld spec
+explicit_fake_objs = []
+for fname in linker.obj_fnames:
+    cdi_obj_name = fname[:fname.rfind('.')] + '.cdi.o'
+    subprocess.call(['mv', fname, cdi_obj_name])
+    explicit_fake_objs.append(FakeObjectFile(cdi_obj_name))
+
+    print 'directory: ' + explicit_fake_objs[-1].src_directory
+    print 'missing dep? ' + str(explicit_fake_objs[-1].has_missing_dep)
+    print 'deps: ' + ' '.join(explicit_fake_objs[-1].deps)
+    print 'cdi as spec: ' + ' '.join(explicit_fake_objs[-1].as_spec)
+
+# only the needed object files are included from a given archive. Hence, we must
+# check which of the objects are needed for every archive. Instead of coding this
+# ourselves, we instead use the existing gcc infastructure to find the needed
+# object files: the linker spits out which object files are needed with the 
+# --verbose flag. To get this output, however, we need to compile the code
+# without CDI. The linker needs object files and we simply don't have the CDI
+# object files ready
+
+if archives != []:
+    # generate non-cdi object files
+    for fake_obj in explicit_fake_objs:
+        subprocess.call(['as', fake_obj.path, '-o', 
+            fake_obj.path[:-1 * len('.cdi.o')] + '.o'] + fake_obj.as_spec_non_io)
+
+    verbose_linker_output = subprocess.check_output(['ld'] + ld_spec + ['--verbose'])
+    implicit_fake_objs = required_archive_objs(verbose_linker_output)
+    print implicit_fake_objs
 
