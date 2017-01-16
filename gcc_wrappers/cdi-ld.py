@@ -28,7 +28,7 @@ class FakeObjectFile:
     def fname_stem(self):
         fname = self.path
         if '/' in self.path:
-            fname = self.path[self.rfind('/') + 1:]
+            fname = self.path[fname.rfind('/') + 1:]
         return upto_last(fname, '.fake.o')
 
     def construct_from_file(self, path):
@@ -43,13 +43,15 @@ class FakeObjectFile:
         self.has_missing_dep = False
         self.as_spec_no_io = ''
         with open(path, 'r') as fake_obj:
-            elf_signature = '\x7FELF'
+            elf_signature = '\x7FELF' # TODO verify #<deff instead
             if fake_obj.read(4) == elf_signature:
                 raise NonDeferredObjectFile()
             fake_obj.seek(0)
 
             reading_typeinfo = False
             for line in fake_obj:
+                if line == '#<deff>\n':
+                    continue
                 if reading_typeinfo:
                     if line == '\n':
                         reading_typeinfo = False
@@ -91,8 +93,10 @@ class Archive:
 class Linker:
     def __init__(self, spec):
         self.spec = spec
-        entry_type = enum(OBJECT='object', ARCHIVE='archive', OMIT='omit',
-                NORMAL='normal')
+        self.lib_search_dirs = self.gen_lib_search_dirs()
+        self.entry_type = enum(OBJECT='object', ARCHIVE='archive', OMIT='omit',
+                SHARED_LIB='shared_lib', NORMAL='normal',
+                LIBSTEM='libstem') # libstem is '-lm' or the 'm' in '-l m'
 
     def parse_spec(self):
         """Extracts info from the spec and stores it in object variables
@@ -110,13 +114,11 @@ class Linker:
         self.obj_fnames = []
         self.archive_paths = []
         self.shared_lib_paths = []
-        self.archive_position = dict()
-        self.obj_file_indices = []
+        self.entry_types = [] # types of spec words
 
         # indices that shouldn't be included in cdi spec
         self.bad_spec_indices = [] 
         
-        lib_search_dirs = self.lib_search_dirs()
 
         prev = ''
         for i, word in enumerate(self.spec):
@@ -125,77 +127,123 @@ class Linker:
                 word = word[2:]
             if prev == '-l': 
                 try:
-                    lib_path = self.find_lib(lib_search_dirs, word)
-                    lib_path = os.path.realpath(lib_path)
+                    lib_path = self.find_lib(word)
 
                     # don't allow duplicate archives/shared-libs
-                    if lib_path in self.library_positions:
-                        self.bad_spec_indices.append(i)
+                    if (lib_path in self.archive_paths
+                            or lib_path in self.shared_lib_paths):
+                        self.entry_types.append(self.entry_type.OMIT)
                     else:
-                        self.library_positions[lib_path] = i
+                        self.entry_types.append(self.entry_type.LIBSTEM)
                         if lib_path[-2:] == '.a':
                             self.archive_paths.append(lib_path)
                         else:
                             self.shared_lib_paths.append(lib_path)
                 except Linker.NoMatchingLibrary as err:
                     eprint('cdi-ld: error: no matching library for -l{}'.format(
-                        err.libname))
+                        err.libstem))
                     sys.exit(1)
             elif word[0] != '-' and prev not in LD_ARG_REQUIRED_OPTIONS:
-                path_record = None
-                if word[-2:] == '.a':
-                    path_record = self.archive_paths
-                elif word[-3:] == '.so':
-                    path_record = self.shared_lib_paths
+                # three valid possibilities: object file, shared lib, archive
+                record = None
+                entry_type = None
+                with open(word, 'rb') as mystery_file:
+                    discriminator = mystery_file.read(7) # TODO handle exception
+                    if discriminator[:len('\x7FELF')] == '\x7FELF':
+                        # use elf header to find type of elf file
+                        mystery_file.seek(16)
+                        e_type = mystery_file.read(1)
+                        if e_type == '\x00': # no type
+                            assert False # TODO: error message
+                        elif e_type == '\x01': # relocatable
+                            entry_type = self.entry_type.OBJECT
+                            record = self.obj_fnames
+                        elif e_type == '\x02': # executable
+                            assert False # TODO: error message
+                        elif e_type == '\x03': # shared object file
+                            entry_type = self.entry_type.SHARED_LIB
+                            record = self.shared_lib_paths
+                        elif e_type == '\x04': # core file
+                            assert False # TODO: error message
+                        else:
+                            print repr(e_type)
+                            assert False # TODO: error message
+                    elif discriminator == '!<arch>':
+                        entry_type = self.entry_type.ARCHIVE
+                        record = self.archive_paths
+                    elif discriminator == '#<deff>':
+                        entry_type = self.entry_type.OBJECT
+                        record = self.obj_fnames
+                    else:
+                        print mystery_file.name
+                        assert False # TODO error message (not obj, lib, arch)
 
-                if word[-2:] == '.a' or word[-3:] == '.so':
+                self.entry_types.append(entry_type)
+                if (entry_type == self.entry_type.ARCHIVE 
+                        or entry_type == self.entry_type.SHARED_LIB):
                     lib_path = os.path.realpath(word)
-                    if self.library_positions.has_key(lib_path):
-                        self.bad_spec_indices.append(i)
+                    if (lib_path in self.archive_paths
+                            or lib_path in self.shared_lib_paths):
+                        self.entry_types[-1] = self.entry_type.OMIT
                     elif os.path.isfile(lib_path):
-                        self.library_positions[lib_path] = i
-                        path_record.append(lib_path)
+                        record.append(lib_path)
                     else:
                         eprint("cdi-ld: error: library file doesn't exist: '{}'"
                                 .format(lib_path))
                         sys.exit(1)
-                # object files are listed without a path
-                elif word == trim_path(word): 
-                    assert word[-2:] == '.o'
-                    self.obj_fnames.append(word)
-                    self.obj_file_indices.append(i)
+                elif entry_type == self.entry_type.OBJECT:
+                    # TODO: handle crt1.o properly
+                    if (trim_path(word) == 'crt1.o' 
+                            or trim_path(word) == 'crti.o'
+                            or trim_path(word) == 'crtbegin.o'
+                            or trim_path(word) == 'crtend.o'
+                            or trim_path(word) == 'crtn.o'):
+                        self.entry_types[-1] = self.entry_type.NORMAL
+                    else:
+                        record.append(word)
             elif word == '-l':
-                self.bad_spec_indices.append(i)
+                self.entry_types.append(self.entry_type.OMIT)
+            else:
+                self.entry_types.append(self.entry_type.NORMAL)
             prev = word
+        assert len(self.spec) == len(self.entry_types)
 
     def get_cdi_spec(self, required_objs):
         """Returns CDI-compliant spec given dict: <archive name -> objs to use>"""
-        obj_indices_set = set(obj_file_indices)
-        bad_indices_set = set(bad_spec_indices)
-        library
+        if required_objs == None:
+            required_objs = dict()
         cdi_spec = []
         for i, word in enumerate(self.spec):
-            if i in obj_indices_set:
-                cdi_spec.append(upto_last(self.spec[i], '.') + '.cdi.o')
-            elif i in bad_indices_set:
-                continue
-            else:
-                return
-            
-        
-
-        self.library_positions = dict()
-        self.obj_file_indices = []
-
-        # indices that shouldn't be included in cdi spec
-        self.bad_spec_indices = [] 
-
+            if self.entry_types[i] == self.entry_type.OBJECT:
+                cdi_spec.append(upto_last(word, '.o') + '.cdi.o')
+            elif self.entry_types[i] == self.entry_type.ARCHIVE:
+                try:
+                    cdi_spec += required_objs[os.path.realpath(word)]
+                except KeyError:
+                    pass
+            elif self.entry_types[i] == self.entry_type.SHARED_LIB:
+                cdi_spec.append(word)
+                pass # maybe do superficial test to see if shared lib is CDI
+            elif self.entry_types[i] == self.entry_type.LIBSTEM:
+                if word[:2] == '-l':
+                    word = word[2:]
+                lib_path = self.find_lib(word)
+                if lib_path[-2:] == '.a':
+                    try:
+                        cdi_spec += required_objs[os.path.realpath(word)]
+                    except KeyError:
+                        pass
+                else:
+                    cdi_spec.append(lib_path)
+            elif self.entry_types[i] == self.entry_type.NORMAL:
+                cdi_spec.append(word)
+        return cdi_spec
 
     def link(self, spec):
         """Run the GNU linker on spec"""
         pass
 
-    def lib_search_dirs(self):
+    def gen_lib_search_dirs(self):
         # first find directories in which libraries are searched for
         builtin_search_dirs = subprocess.check_output(
                 '''$(which ld) --verbose | grep SEARCH_DIR | tr -s ' ;' '''
@@ -203,27 +251,30 @@ class Linker:
         added_search_dirs = []
         prev = ''
         for word in self.spec:
-            if word[:2] == '-L':
-                added_search_dirs.append(word[2:])
+            if word[:2] == '-L' and len(word) > 2:
+                added_search_dirs.append(os.path.realpath(word[2:]))
             elif prev == '--library-path' or prev == '-L':
-                added_search_dirs.append(word)
+                added_search_dirs.append(os.path.realpath(word))
+            prev = word
 
         # note the order: -L/--library-path directories are favored
         return added_search_dirs + builtin_search_dirs 
 
-    def find_lib(self, search_dirs, libname):
-        for directory in search_dirs:
-            candidate_stem = '{}/lib{}'.format(directory, libname)
+    def find_lib(self, libstem):
+        if libstem[:2] == '-l':
+            libstem = libstem[2:]
+        for directory in self.lib_search_dirs:
+            candidate_stem = '{}/lib{}'.format(directory, libstem)
             if os.path.isfile(candidate_stem + '.so'):
-                return candidate_stem + '.so'
+                return os.path.realpath(candidate_stem + '.so')
             elif os.path.isfile(candidate_stem + '.a'):
-                return candidate_stem + '.a'
+                return os.path.realpath(candidate_stem + '.a')
         else:
-            raise Linker.NoMatchingLibrary(libname)
+            raise Linker.NoMatchingLibrary(libstem)
 
     class NoMatchingLibrary(Exception):
-        def __init__(self, libname):
-            self.libname = libname
+        def __init__(self, libstem):
+            self.libstem = libstem
 
 
 def required_archive_objs(verbose_output):
@@ -245,41 +296,35 @@ def required_archive_objs(verbose_output):
                 objs_needed[archive_path] = [obj_fname]
 
 def get_archive_fake_objs(archive, objs_needed):
+    try:
+        os.chdir('.cdi')
+    except OSError:
+        subprocess.check_call(['mkdir', '.cdi'])
+        os.chdir('.cdi')
+
     fake_objs = []
     if archive.is_thin() and archive.path in objs_needed.keys():
         for fname in objs_needed[archive.path]:
             corrected_fname = upto_last(fname, '.') + '.fake.o'
-            subprocess.check_call(['cp', fname, corrected_fname])
+            subprocess.check_call(['cp', upto_last(archive.path, '/')
+                + '/' + fname, corrected_fname])
             fake_objs.append(FakeObjectFile(corrected_fname))
     elif archive.path in objs_needed.keys():
         obj_fnames = objs_needed[archive.path]
         conflict_list = []
-        for fname in obj_fnames:
-            if os.path.isfile(os.getcwd() + '/' + fname):
-                eprint("cdi-ld: warning: object '{}' in archive '{}'"
-                        "needs to be extracted but conflicts with existing"
-                        "file in directory" .format(fname, archive.path))
-                conflict_list.append(fname)
-                saved_cwd = os.getcwd()
-                subprocess.check_call(['mkdir', '-p', 'cdi_archive_conflicts'])
-                os.chdir(saved_cwd + '/cdi_archive_conflicts')
-
-                new_fname = '{}.{}'.format(trim_path(archive.path), fname)
-                subprocess.check_call(['ar', 'x', archive.path, fname])
-                subprocess.check_call(['mv', fname, saved_cwd + '/' + new_fname])
-                fake_objs.append(FakeObjectFile(new_fname))
-
-                os.chdir(saved_cwd)
         try:
             subprocess.check_call(['ar', 'x', archive.path] + obj_fnames)
-            for fname in obj_fnames:
-                if fname not in conflict_list:
-                    fake_objs.append(FakeObjectFile(fname))
         except subprocess.CalledProcessError:
             eprint("cdi-ld: error: cannot extract '{}' from non-thin "
                     "archive '{}'"
                     .format( "' '".join(obj_fnames), archive.path))
             sys.exit(1)
+
+        os.chdir('..')
+        for fname in obj_fnames:
+            qualified_fname = '{}__{}'.format(trim_path(archive.path), fname)
+            subprocess.check_call(['mv', '.cdi/' + fname, '.cdi/' + qualified_fname])
+            fake_objs.append(FakeObjectFile('.cdi/' + qualified_fname))
     return fake_objs
 
 def upto_last(string, cutoff):
@@ -335,15 +380,19 @@ for fname in linker.obj_fnames:
 archive_fake_objs = []
 unsafe_archives = []
 if archives != []:
-    # generate non-cdi object files
+    print 'Compiling normally to learn which objects are needed for archives...'
+    print '   Generating non-archive object files...'
+    sys.stdout.flush()
+
     for fake_obj in explicit_fake_objs:
         subprocess.call(['as', fake_obj.path, '-o', 
             fake_obj.path[:-1 * len('.fake.o')] + '.o'] + fake_obj.as_spec_no_io)
 
-    # generate non-cdi objects from archives
-    subprocess.check_call(['mkdir', '-p', 'cdi_temps'])
-    saved_cwd = os.getcwd()
-    os.chdir(saved_cwd + '/cdi_temps')
+    print '   Generating objects from archives...'
+    sys.stdout.flush()
+
+    subprocess.check_call(['mkdir', '-p', '.cdi'])
+    os.chdir('.cdi')
     for archive in archives:
         lines = subprocess.check_output(['ar', 'xv', archive.path]).strip().split('\n')
         fnames = map(lambda x: x[len('x - '):], lines)
@@ -359,17 +408,21 @@ if archives != []:
                 subprocess.check_call(['as', correct_fname, '-o', fname])
         subprocess.check_call(['ar', 'rc', trim_path(archive.path)] + fnames)
 
-    # generate non-cdi archives
+    # create spec for non-cdi compilation
     ld_spec_unsafe_archives = copy.deepcopy(ld_spec)
-    for archive in archives:
-        ld_spec_unsafe_archives[linker.archive_position[archive.path]] = (
-                'cdi_temps/' + trim_path(archive.path))
+    for i, entry in enumerate(linker.spec):
+        if linker.entry_types[i] == linker.entry_type.ARCHIVE:
+            ld_spec_unsafe_archives[i] = '.cdi/' + trim_path(linker.spec[i])
+        elif linker.entry_types[i] == linker.entry_type.LIBSTEM:
+            lib_path = linker.find_lib(entry)
+            if lib_path[-2:] == '.a':
+                ld_spec_unsafe_archives[i] = '.cdi/' + trim_path(lib_path)
 
-    os.chdir(saved_cwd)
+    os.chdir('..')
     verbose_linker_output = subprocess.check_output(['ld'] 
             + ld_spec_unsafe_archives + ['--verbose'])
     objs_needed = required_archive_objs(verbose_linker_output)
-
+    
     # construct fake objects from archives
     if objs_needed:
         for archive in objs_needed.keys(): 
@@ -377,23 +430,34 @@ if archives != []:
                 archive_fake_objs += get_archive_fake_objs(archive, objs_needed)
             except NonDeferredObjectFile:
                 unsafe_archives.append(archive)
-    if os.path.isdir(os.getcwd() + '/cdi_archive_conflicts'):
-            subprocess.call(['rmdir', os.getcwd() + '/cdi_archive_conflicts'])
+
 
 fake_objs = explicit_fake_objs + archive_fake_objs
 
-# asm -> cdi asm
+print 'Converting asm files to cdi-asm files...'
+sys.stdout.flush()
+
 cdi_ld_real_path = subprocess.check_output(['readlink', '-f', sys.argv[0]])
 cdi_ld_real_path = upto_last(cdi_ld_real_path, '/')
 converter_path = cdi_ld_real_path + '/../converter/gen_cdi.py'
 fake_obj_paths = [fake_obj.path for fake_obj in fake_objs]
-subprocess.call([converter_path] + CONVERTER_ARGS + fake_obj_paths)
+subprocess.check_call([converter_path] + CONVERTER_ARGS + fake_obj_paths)
 
-# Assemble
+print 'Assembling cdi asm files...'
+sys.stdout.flush()
+
 for fake_obj in fake_objs:
     subprocess.check_call(['as'] + fake_obj.as_spec_no_io
-            + [fake_obj.fname_stem() + '.cdi.s', '-o', fake_obj.fname_stem() + '.cdi.o'])
+            + [upto_last(fake_obj.path, '.fake.o') + '.cdi.s',
+                '-o', upto_last(fake_obj.path, '.fake.o') + '.cdi.o'])
 
-linker.link(linker.cdi_spec(objs_needed))
+# the fake objs need to be moved back to their original filename in case
+# another compilation wants to use them as well. This code ASSUMES that
+# linker.obj_fnames and explicit_fake_objs correspond index to index
+for i, fake_obj in enumerate(explicit_fake_objs):
+    subprocess.check_call(['mv', fake_obj.path, linker.obj_fnames[i]])
 
-# TODO: use upto_last, fix converter path, debug, generate non-cdi archives, cdi_ld_spec, fix library_positions in parse_spec  i -> libname or libname -> i, add test cases
+print 'Linking...'
+sys.stdout.flush()
+cdi_spec = linker.get_cdi_spec(objs_needed)
+linker.link(cdi_spec)
