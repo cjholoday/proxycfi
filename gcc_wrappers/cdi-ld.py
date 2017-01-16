@@ -4,17 +4,32 @@ import os
 import subprocess
 from eprint import eprint
 import re
+import copy
+
+CONVERTER_ARGS = []
 
 LD_ARG_REQUIRED_OPTIONS = ['-m', '-o', '-a', '-audit', '-A', '-b', '-c', '--depaudit', '-P', '-e', '--exclude-libs', '--exclude-modules-for-implib', '-f', '-F', '-G', '-h', '-l', '-L', '-O', '-R', '-T', '-dT', '-u', '-y', '-Y', '-z', '-assert', '-z', '--exclude-symbols', '--heap', '--image-base', '--major-image-version', '--major-os-version', '--major-subsystem-version', '--minor-image-version', '--minor-os-version', '--minor-subsystem-version', '--output-def', '--out-implib', '--dll-search-prefix', '--stack', '--subsystem', '--bank-window', '--got']
 
+# implement enum for python adapted from: 
+# http://pythoncentral.io/how-to-implement-an-enum-in-python/
+def enum(**named_values):
+    return type('Enum', (), named_values)
+
 class FakeObjectFile:
     def __init__(self, path):
+        assert path.endswith('.fake.o')
+        self.path = path # could be absolute or relative to current directory
         self.construct_from_file(path)
-        self.path = path
 
         if self.has_missing_dep:
             pass
             # try to find it now TODO
+
+    def fname_stem(self):
+        fname = self.path
+        if '/' in self.path:
+            fname = self.path[self.rfind('/') + 1:]
+        return upto_last(fname, '.fake.o')
 
     def construct_from_file(self, path):
         """Extracts info from fake object file
@@ -24,15 +39,13 @@ class FakeObjectFile:
             self.has_missing_dep
             self.deps
             self.as_spec 
-            self.as_spec_non_io"""
+            self.as_spec_no_io"""
         self.has_missing_dep = False
-        self.as_spec_non_io = ''
+        self.as_spec_no_io = ''
         with open(path, 'r') as fake_obj:
             elf_signature = '\x7FELF'
             if fake_obj.read(4) == elf_signature:
-                eprint("cdi-ld: error: linking non-deferred object file: '{}'"
-                        .format(path))
-                sys.exit(1)
+                raise NonDeferredObjectFile()
             fake_obj.seek(0)
 
             reading_typeinfo = False
@@ -50,8 +63,8 @@ class FakeObjectFile:
                     break
                 elif command == 'typeinfo':
                     reading_typeinfo = True
-                elif command == 'as_spec_non_io':
-                    self.as_spec_non_io = words[2:]
+                elif command == 'as_spec_no_io':
+                    self.as_spec_no_io = words[2:]
                 elif command == 'source_directory':
                     self.src_directory = words[2]
                 elif command == 'dependencies':
@@ -72,10 +85,14 @@ class Archive:
         self.fake_objs = []
         self.thin = False
 
+    def is_thin(self):
+        return subprocess.check_output(['head', '-1', self.path]) == '!<thin>'
 
 class Linker:
     def __init__(self, spec):
         self.spec = spec
+        entry_type = enum(OBJECT='object', ARCHIVE='archive', OMIT='omit',
+                NORMAL='normal')
 
     def parse_spec(self):
         """Extracts info from the spec and stores it in object variables
@@ -93,7 +110,7 @@ class Linker:
         self.obj_fnames = []
         self.archive_paths = []
         self.shared_lib_paths = []
-        self.library_positions = dict()
+        self.archive_position = dict()
         self.obj_file_indices = []
 
         # indices that shouldn't be included in cdi spec
@@ -112,7 +129,7 @@ class Linker:
                     lib_path = os.path.realpath(lib_path)
 
                     # don't allow duplicate archives/shared-libs
-                    if self.library_positions.has_key(lib_path):
+                    if lib_path in self.library_positions:
                         self.bad_spec_indices.append(i)
                     else:
                         self.library_positions[lib_path] = i
@@ -151,12 +168,31 @@ class Linker:
                 self.bad_spec_indices.append(i)
             prev = word
 
-    def cdi_spec(self, required_objs):
-        """Returns a CDI-compliant spec"""
-        pass
+    def get_cdi_spec(self, required_objs):
+        """Returns CDI-compliant spec given dict: <archive name -> objs to use>"""
+        obj_indices_set = set(obj_file_indices)
+        bad_indices_set = set(bad_spec_indices)
+        library
+        cdi_spec = []
+        for i, word in enumerate(self.spec):
+            if i in obj_indices_set:
+                cdi_spec.append(upto_last(self.spec[i], '.') + '.cdi.o')
+            elif i in bad_indices_set:
+                continue
+            else:
+                return
+            
+        
 
-    def link(self, spec_addition = None):
-        """Run the GNU linker on self.spec||spec_addition """
+        self.library_positions = dict()
+        self.obj_file_indices = []
+
+        # indices that shouldn't be included in cdi spec
+        self.bad_spec_indices = [] 
+
+
+    def link(self, spec):
+        """Run the GNU linker on spec"""
         pass
 
     def lib_search_dirs(self):
@@ -191,7 +227,7 @@ class Linker:
 
 
 def required_archive_objs(verbose_output):
-    """Given output from --verbose, returns dict {archive -> objs needed}"""
+    """Given output from --verbose, returns dict {archive path -> objs needed}"""
     objs_needed = dict()
     
     # matching strings in the form '(libname.a)obj_name.o'
@@ -208,6 +244,47 @@ def required_archive_objs(verbose_output):
             except KeyError:
                 objs_needed[archive_path] = [obj_fname]
 
+def get_archive_fake_objs(archive, objs_needed):
+    fake_objs = []
+    if archive.is_thin() and archive.path in objs_needed.keys():
+        for fname in objs_needed[archive.path]:
+            corrected_fname = upto_last(fname, '.') + '.fake.o'
+            subprocess.check_call(['cp', fname, corrected_fname])
+            fake_objs.append(FakeObjectFile(corrected_fname))
+    elif archive.path in objs_needed.keys():
+        obj_fnames = objs_needed[archive.path]
+        conflict_list = []
+        for fname in obj_fnames:
+            if os.path.isfile(os.getcwd() + '/' + fname):
+                eprint("cdi-ld: warning: object '{}' in archive '{}'"
+                        "needs to be extracted but conflicts with existing"
+                        "file in directory" .format(fname, archive.path))
+                conflict_list.append(fname)
+                saved_cwd = os.getcwd()
+                subprocess.check_call(['mkdir', '-p', 'cdi_archive_conflicts'])
+                os.chdir(saved_cwd + '/cdi_archive_conflicts')
+
+                new_fname = '{}.{}'.format(trim_path(archive.path), fname)
+                subprocess.check_call(['ar', 'x', archive.path, fname])
+                subprocess.check_call(['mv', fname, saved_cwd + '/' + new_fname])
+                fake_objs.append(FakeObjectFile(new_fname))
+
+                os.chdir(saved_cwd)
+        try:
+            subprocess.check_call(['ar', 'x', archive.path] + obj_fnames)
+            for fname in obj_fnames:
+                if fname not in conflict_list:
+                    fake_objs.append(FakeObjectFile(fname))
+        except subprocess.CalledProcessError:
+            eprint("cdi-ld: error: cannot extract '{}' from non-thin "
+                    "archive '{}'"
+                    .format( "' '".join(obj_fnames), archive.path))
+            sys.exit(1)
+    return fake_objs
+
+def upto_last(string, cutoff):
+    return string[:string.rfind(cutoff)]
+
 def trim_path(path):
     """Removes excess path e.g. /usr/local/bin/filename -> filename"""
     slash_index = path.rfind('/') 
@@ -217,6 +294,9 @@ def trim_path(path):
         slash_index = path[:-1].rfind('/')
     return path[slash_index + 1:]
 
+class NonDeferredObjectFile(Exception):
+    pass
+    
 ########################################################################
 # cdi-ld: a cdi wrapper for the gnu linker 'ld'
 #   Identifies necessary fake object files in archives, converts fake object
@@ -235,14 +315,14 @@ for path in linker.archive_paths:
 # the fake object files directly listed in the ld spec
 explicit_fake_objs = []
 for fname in linker.obj_fnames:
-    cdi_obj_name = fname[:fname.rfind('.')] + '.cdi.o'
-    subprocess.call(['mv', fname, cdi_obj_name])
-    explicit_fake_objs.append(FakeObjectFile(cdi_obj_name))
-
-    print 'directory: ' + explicit_fake_objs[-1].src_directory
-    print 'missing dep? ' + str(explicit_fake_objs[-1].has_missing_dep)
-    print 'deps: ' + ' '.join(explicit_fake_objs[-1].deps)
-    print 'cdi as spec: ' + ' '.join(explicit_fake_objs[-1].as_spec)
+    cdi_obj_name = upto_last(fname, '.') + '.fake.o'
+    subprocess.check_call(['mv', fname, cdi_obj_name])
+    try:
+        explicit_fake_objs.append(FakeObjectFile(cdi_obj_name))
+    except NonDeferredObjectFile:
+        eprint("cdi-ld: error: '{}' is not a deferred object file"
+                .format(fname))
+        sys.exit(1)
 
 # only the needed object files are included from a given archive. Hence, we must
 # check which of the objects are needed for every archive. Instead of coding this
@@ -252,13 +332,68 @@ for fname in linker.obj_fnames:
 # without CDI. The linker needs object files and we simply don't have the CDI
 # object files ready
 
+archive_fake_objs = []
+unsafe_archives = []
 if archives != []:
     # generate non-cdi object files
     for fake_obj in explicit_fake_objs:
         subprocess.call(['as', fake_obj.path, '-o', 
-            fake_obj.path[:-1 * len('.cdi.o')] + '.o'] + fake_obj.as_spec_non_io)
+            fake_obj.path[:-1 * len('.fake.o')] + '.o'] + fake_obj.as_spec_no_io)
 
-    verbose_linker_output = subprocess.check_output(['ld'] + ld_spec + ['--verbose'])
-    implicit_fake_objs = required_archive_objs(verbose_linker_output)
-    print implicit_fake_objs
+    # generate non-cdi objects from archives
+    subprocess.check_call(['mkdir', '-p', 'cdi_temps'])
+    saved_cwd = os.getcwd()
+    os.chdir(saved_cwd + '/cdi_temps')
+    for archive in archives:
+        lines = subprocess.check_output(['ar', 'xv', archive.path]).strip().split('\n')
+        fnames = map(lambda x: x[len('x - '):], lines)
+        for fname in fnames:
+            with open(fname, 'r') as fake_obj:
+                elf_signature = '\x7FELF'
+                is_elf = fake_obj.read(4) == elf_signature
+            if is_elf:
+                continue # already real object file
+            else:
+                correct_fname = upto_last(fname, '.') + '.fake.o'
+                subprocess.check_call(['mv', fname, correct_fname])
+                subprocess.check_call(['as', correct_fname, '-o', fname])
+        subprocess.check_call(['ar', 'rc', trim_path(archive.path)] + fnames)
 
+    # generate non-cdi archives
+    ld_spec_unsafe_archives = copy.deepcopy(ld_spec)
+    for archive in archives:
+        ld_spec_unsafe_archives[linker.archive_position[archive.path]] = (
+                'cdi_temps/' + trim_path(archive.path))
+
+    os.chdir(saved_cwd)
+    verbose_linker_output = subprocess.check_output(['ld'] 
+            + ld_spec_unsafe_archives + ['--verbose'])
+    objs_needed = required_archive_objs(verbose_linker_output)
+
+    # construct fake objects from archives
+    if objs_needed:
+        for archive in objs_needed.keys(): 
+            try:
+                archive_fake_objs += get_archive_fake_objs(archive, objs_needed)
+            except NonDeferredObjectFile:
+                unsafe_archives.append(archive)
+    if os.path.isdir(os.getcwd() + '/cdi_archive_conflicts'):
+            subprocess.call(['rmdir', os.getcwd() + '/cdi_archive_conflicts'])
+
+fake_objs = explicit_fake_objs + archive_fake_objs
+
+# asm -> cdi asm
+cdi_ld_real_path = subprocess.check_output(['readlink', '-f', sys.argv[0]])
+cdi_ld_real_path = upto_last(cdi_ld_real_path, '/')
+converter_path = cdi_ld_real_path + '/../converter/gen_cdi.py'
+fake_obj_paths = [fake_obj.path for fake_obj in fake_objs]
+subprocess.call([converter_path] + CONVERTER_ARGS + fake_obj_paths)
+
+# Assemble
+for fake_obj in fake_objs:
+    subprocess.check_call(['as'] + fake_obj.as_spec_no_io
+            + [fake_obj.fname_stem() + '.cdi.s', '-o', fake_obj.fname_stem() + '.cdi.o'])
+
+linker.link(linker.cdi_spec(objs_needed))
+
+# TODO: use upto_last, fix converter path, debug, generate non-cdi archives, cdi_ld_spec, fix library_positions in parse_spec  i -> libname or libname -> i, add test cases

@@ -6,7 +6,7 @@ class FunctControlFlowGraph:
 
     Function are accessed by their "uniq_label" which is in the form:
 
-        <source filename>.<assembly function name>
+        <asm filename>.<assembly function name>
 
     Notice that in C the assembly function name is simply the source name, while
     in C++ it is the source function name but mangled
