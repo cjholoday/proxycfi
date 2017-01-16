@@ -25,8 +25,8 @@ def gen_cdi_asm(cfg, asm_file_descrs, options):
             # can be reached from anywhere with sleds (Function pointers can
             # point to ANY function with the same signature, even static 
             # functions in a different translation unit)
-            asm_dest.write('.globl\t' + funct.uniq_label + '\n')
-            asm_dest.write(funct.uniq_label + ':\n')
+            asm_dest.write('.globl\t"{}"\n'.format(funct.uniq_label))
+            asm_dest.write('"{}":\n'.format(funct.uniq_label))
 
             funct.label_fixed_count = dict()
             for site in funct.sites:
@@ -50,8 +50,12 @@ def gen_cdi_asm(cfg, asm_file_descrs, options):
         asm_dest.close()
             
 def cdi_asm_name(asm_name):
-    assert asm_name[-2:] == '.s'
-    return asm_name[:-2] + '.cdi.s'
+    if asm_name.endswith('.fake.o'):
+        return asm_name[:-1 * len('.fake.o')] + '.cdi.s'
+    elif asm_name.endswith('.s'):
+        return asm_name[:-2] + '.cdi.s'
+    else:
+        assert False
 
 def write_lines(num_lines, asm_src, asm_dest, dwarf_loc):
     """Writes from file obj asm_src to file obj asm_dest num_lines lines"""
@@ -94,7 +98,8 @@ def convert_call_site(site, funct, asm_line, asm_dest,
         assert len(site.targets) == 1
         target_name = site.targets[0].uniq_label
         times_fixed = increment_dict(funct.label_fixed_count, target_name)
-        label = '_CDI_' + target_name + '_TO_' + funct.uniq_label + '_' + str(times_fixed)
+        label = '"_CDI_{}_TO_{}_{}"'.format(
+                target_name, funct.uniq_label, str(times_fixed))
 
         globl_decl = ''
         if funct.asm_filename != site.targets[0].asm_filename:
@@ -117,14 +122,14 @@ def convert_call_site(site, funct, asm_line, asm_dest,
 
         globl_decl = ''
         if funct.asm_filename != target.asm_filename:
-            globl_decl = '.globl\t' + return_label + '\n'
+            globl_decl = '.globl\t"{}"\n'.format(return_label)
 
         call_sled += '1:\n'
-        call_sled += '\tcmpq\t$' + target_name + ', ' + call_operand + '\n'
+        call_sled += '\tcmpq\t$"{}", {}\n'.format(target_name, call_operand)
         call_sled += '\tjne\t1f\n'
-        call_sled += '\tcall\t' + target_name + '\n'
+        call_sled += '\tcall\t"{}"\n'.format(target_name)
         call_sled += globl_decl
-        call_sled += return_label + ':\n'
+        call_sled += '"{}":\n'.format(return_label)
         call_sled += '\tjmp\t2f\n'
 
     call_sled += '1:\n'
@@ -134,10 +139,17 @@ def convert_call_site(site, funct, asm_line, asm_dest,
     asm_dest.write(call_sled)
 
         
+cpp_whitelist = ['_Z41__static_initialization_and_destruction_0ii',
+        '_GLOBAL__sub_I__Z3barv']
+
+    
+
 def convert_return_site(site, funct, asm_line, asm_dest, cfg,
         sled_id_faucet, dwarf_loc, options):
     # don't fix 'main' in this version
-    if funct.asm_name == 'main':
+    if (funct.asm_name == 'main' or 
+            funct.asm_name == '_Z41__static_initialization_and_destruction_0ii' or
+            funct.asm_name[:len('_GLOBAL__sub_I__')] == '_GLOBAL__sub_I__'):
         asm_dest.write(asm_line)
         return
 
@@ -148,7 +160,7 @@ def convert_return_site(site, funct, asm_line, asm_dest, cfg,
     for target_label, multiplicity in site.targets.iteritems():
         i = 1
         while i <= multiplicity:
-            sled_label = cdi_ret_prefix + target_label + '_' + str(i)
+            sled_label = '"{}{}_{}"'.format(cdi_ret_prefix, target_label, str(i))
             ret_sled += '\tcmpq\t$' + sled_label + ', -8(%rsp)\n'
             ret_sled += '\tje\t' + sled_label + '\n'
             i += 1
