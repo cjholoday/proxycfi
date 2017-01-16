@@ -3,11 +3,12 @@ import asm_parsing
 import operator
 from eprint import eprint
 import sys
+import os
 
 def gen_cfg(asm_file_descrs, options):
-    """Generate cfg from a list of asm_files. Produce funct names for each description
+    """Generate cfg from a list of asm files. Produce funct names for each description
 
-    asm_files should be a list containing objects of type 'AsmFile'
+    asm_file_descrs should be a list containing objects of type 'AsmFileDescription'
     """
 
     global_functs = []
@@ -21,13 +22,18 @@ def gen_cfg(asm_file_descrs, options):
         line_num = 0
 
         is_global = False
-        funct_name, line_num, is_global = (
+        funct_name, line_num, is_global, symbol_tuples = (
                 asm_parsing.goto_next_funct(asm_file, line_num, dwarf_loc))
         
+        dirname = os.path.dirname(descr.filename) + '/'
+        if dirname == '/':
+            dirname = ''
+
         while funct_name:
             funct, line_num = extract_funct(asm_file, funct_name, line_num, dwarf_loc)
             funct.asm_filename = descr.filename
             funct.is_global = is_global
+            funct.src_filename = dirname + funct.src_filename
             src_filename_set.add(funct.src_filename)
 
             if funct.is_global:
@@ -36,7 +42,7 @@ def gen_cfg(asm_file_descrs, options):
             cfg.add_funct(funct)
             descr.funct_names.append(funct.asm_name)
 
-            funct_name, line_num, is_global = (
+            funct_name, line_num, is_global, symbol_tuples = (
                     asm_parsing.goto_next_funct(asm_file, line_num, dwarf_loc))
 
         asm_file.close()
@@ -64,7 +70,6 @@ def gen_cfg(asm_file_descrs, options):
     # PLT calls, for which only the plt function name is known
     for funct in cfg:
         del(funct.direct_call_sites)
-                        
     try:
         build_indir_targets(cfg, src_filename_set, options)
         build_ret_dicts(cfg)
@@ -170,6 +175,7 @@ def build_indir_targets(cfg, src_filename_set, options):
     funct_types = read_function_types(src_filename_set, options)
     for funct in cfg:
         funct.ftype = funct_types[funct.src_filename + '.' + funct.asm_name]
+            
     
     fptr_types = read_fptr_types(src_filename_set, options)
 
@@ -299,10 +305,10 @@ def read_function_types(src_filename_set, options):
             loc_list = loc.split(':')
 
             funct_type = funct_cfg.FunctionType(mangled_str)
-            funct_type.src_filename = loc_list[0]
+            funct_type.src_filename = src_filename
             funct_type.src_line_num = int(loc_list[1])
             funct_type.src_name = loc_list[3]
-            key = funct_type.src_filename + '.' + funct_type.src_name
+            key = src_filename + '.' + funct_type.src_name
             funct_types[key] = funct_type
         funct_typefile.close()
 
