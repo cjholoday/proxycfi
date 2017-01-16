@@ -9,7 +9,8 @@ class AsmFileDescription:
         self.funct_names = [] 
 
     def check_filename(self):
-        if self.filename[-2:] != '.s':
+        if self.filename[-2:] != '.s' and (
+                self.filename[-1 * len('.fake.o'):] != '.fake.o'):
             eprint('error: non-assembly file passed:', self.filename)
             sys.exit(1)
         elif len(self.filename) >= len('.cdi.s') and self.filename[-6:] == '.cdi.s':
@@ -25,10 +26,17 @@ def goto_next_funct(asm_file, line_num, dwarf_loc):
 
     Precisely, the file ptr points to the line after '.LFB*' where * is a digit
     Returns '' if no functions are left in the file
+
+    Also returns a list of (symbol1, symbol2) tuples where symbol1 has been 
+    set as follows: ".set symbol1, symbol2". Tuples are only returned if symbol1
+    is a function symbol TODO: use the symbol tuples to handle constructor issues
+    in C++
     """
 
     prev_label = ''
     globl_decl = ''
+
+    symbol_tuples = []
 
     asm_line = asm_file.readline()
     line_num += 1
@@ -41,16 +49,34 @@ def goto_next_funct(asm_file, line_num, dwarf_loc):
             if first_word[-1] == ':':
                 if (first_word[:len('.LFB')] == '.LFB' 
                         and first_word[len('.LFB'):-1].isdigit()):
-                    return prev_label, line_num, prev_label == globl_decl
+                    return prev_label, line_num, prev_label == globl_decl, symbol_tuples
                 else:
                     prev_label = first_word[:-1]
             elif first_word == '.globl':
                 globl_decl = decode_line(asm_line, False)[2]
+            elif first_word == '.set' and asm_line[2][:2] == '_Z':
+                source = None
+                dest = None
+                # three cases:
+                #   1. dest, source
+                #   2. dest,source
+                #   3. dest , source
+                if asm_line[2][-1] == ',':
+                    dest = symbols[2][:-1]
+                    source = asm_line[3]
+                elif ',' in asm_line[2]:
+                    symbols = asm_line[2].split(',')
+                    dest = symbols[0]
+                    source = symbols[1]
+                else:
+                    dest = asm_line[2]
+                    source = asm_line[4]
+                symbol_tuples.append((dest, source))
 
         asm_line = asm_file.readline()
         line_num += 1
 
-    return '', line_num, False
+    return '', line_num, False, symbol_tuples
 
 class DwarfSourceLoc:
     # internal, don't touch
