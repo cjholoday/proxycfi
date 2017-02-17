@@ -212,7 +212,7 @@ def convert_plt_site(site, asm_line, funct, asm_dest):
                 str(funct.plt_call_multiplicity[(site.targets[0], funct.uniq_label)])))
     globl_decl = '.globl\t' + rlt_return_label + '\n'
 
-    asm_dest.write(globl_decl + rlt_return_label + ':\n' + asm_line)
+    asm_dest.write(asm_line + globl_decl + rlt_return_label + ':\n')
 
 def write_rlts(cfg, plt_sites, asm_dest, sled_id_faucet, options):
     """Write the RLT to asm_dest"""
@@ -258,4 +258,6 @@ def write_rlts(cfg, plt_sites, asm_dest, sled_id_faucet, options):
             options['--no-abort-messages'], asm_parsing.DwarfSourceLoc())
         rlt_entry += '\t.size {}, .-{}\n'.format(entry_label, entry_label)
         asm_dest.write(rlt_entry)
+
+
 
