@@ -32,6 +32,9 @@ if __name__ == "__main__":
     parser.add_argument('-nn', '--no-narrowing', action='store_true',
             help='if set, sleds won\'t be narrowed based on type signature',
             dest='--no-narrowing')
+    parser.add_argument('-sl', '--shared-library', action='store_true',
+            help='if set, generate code for use as a CDI shared library',
+            dest='--shared-library')
 
     options = vars(parser.parse_args(sys.argv[1:]))
     if options.get('--help'):
@@ -43,7 +46,8 @@ if __name__ == "__main__":
         asm_file_descrs.append(asm_parsing.AsmFileDescription(filename))
         asm_file_descrs[-1].check_filename()
 
-    cfg = gen_cfg(asm_file_descrs, options)
+    plt_sites = []
+    cfg = gen_cfg(asm_file_descrs, plt_sites, options)
     cfg.print_json_to('cdi_cfg.json')
 
-    gen_cdi_asm(cfg, asm_file_descrs, options)
+    gen_cdi_asm(cfg, asm_file_descrs, plt_sites, options)

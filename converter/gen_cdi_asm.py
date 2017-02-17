@@ -2,11 +2,12 @@ import funct_cfg
 import operator
 import asm_parsing
 
-def gen_cdi_asm(cfg, asm_file_descrs, options):
+def gen_cdi_asm(cfg, asm_file_descrs, plt_sites, options):
     """Writes cdi compliant assembly from cfg and assembly file descriptions"""
 
     sled_id_faucet = funct_cfg.SledIdFaucet()
 
+    rlts_written = False
     for descr in asm_file_descrs:
         asm_parsing.DwarfSourceLoc.wipe_filename_mapping()
         dwarf_loc = asm_parsing.DwarfSourceLoc()
@@ -39,6 +40,10 @@ def gen_cdi_asm(cfg, asm_file_descrs, options):
                 convert_to_cdi(site, funct, line_to_fix, asm_dest, cfg,
                         sled_id_faucet, dwarf_loc, options)
                         
+
+        if not rlts_written:
+            rlts_written = True
+            write_rlts(cfg, plt_sites, asm_dest, sled_id_faucet, options)
 
         # write the rest of the lines over
         src_line = asm_src.readline()
@@ -79,7 +84,7 @@ def convert_to_cdi(site, funct, asm_line, asm_dest, cfg,
     elif site.group == site.INDIR_JMP_SITE:
         convert_indir_jmp_site(site, funct, asm_line, asm_dest)
     elif site.group == site.PLT_SITE:
-        asm_dest.write(asm_line)
+        convert_plt_site(site, asm_line, funct, asm_dest)
     else:
         eprint('warning: site has invalid type: line ' + site.asm_line_num, 
                 'in function named \'' + funct.asm_name + '\'')
@@ -142,8 +147,6 @@ def convert_call_site(site, funct, asm_line, asm_dest,
 cpp_whitelist = ['_Z41__static_initialization_and_destruction_0ii',
         '_GLOBAL__sub_I__Z3barv']
 
-    
-
 def convert_return_site(site, funct, asm_line, asm_dest, cfg,
         sled_id_faucet, dwarf_loc, options):
     # don't fix 'main' in this version
@@ -193,4 +196,66 @@ def cdi_abort_str(sled_id, asm_filename, no_abort_msg, dwarf_loc):
         call_cdi_abort += '.-.CDI_sled_id_' + str(sled_id) + '\n'
 
     return call_cdi_abort
+
+def convert_plt_site(site, asm_line, funct, asm_dest):
+    if not hasattr(funct, 'plt_call_multiplicity'):
+        funct.plt_call_multiplicity = dict()
+
+    try:
+        funct.plt_call_multiplicity[(site.targets[0], funct.uniq_label)] += 1
+    except KeyError:
+        funct.plt_call_multiplicity[(site.targets[0], funct.uniq_label)] = 1
+
+    # create label for RLT to return to
+    rlt_return_label = ('_CDI_{}_TO_{}_{}'
+            .format(site.targets[0], funct.uniq_label, 
+                str(funct.plt_call_multiplicity[(site.targets[0], funct.uniq_label)])))
+    globl_decl = '.globl\t' + rlt_return_label + '\n'
+
+    asm_dest.write(globl_decl + rlt_return_label + ':\n' + asm_line)
+
+def write_rlts(cfg, plt_sites, asm_dest, sled_id_faucet, options):
+    """Write the RLT to asm_dest"""
+
+    # maps (shared library uniq label, rlt return target) -> multiplicity
+    multiplicity = dict()
+
+    # maps shared library uniq label -> set of potential functions to which to return
+    rlt_return_targets = dict()
+
+    # populate the multiplicity and rlt_return_targets dicts
+    for plt_site in plt_sites:
+        call_return_pair = (plt_site.targets[0], plt_site.enclosing_funct_uniq_label)
+
+        if plt_site.targets[0] not in rlt_return_targets:
+            rlt_return_targets[plt_site.targets[0]] = set()
+        rlt_return_targets[call_return_pair[0]].add(call_return_pair[1])
+
+        try:
+            multiplicity[call_return_pair] += 1
+        except KeyError:
+            multiplicity[call_return_pair] = 1
+
+    # create an RLT entry for each shared library function
+    for shared_lib_uniq_label, rlt_target_set in rlt_return_targets.iteritems():
+        rlt_entry = ''
+
+        entry_label = '_CDI_RLT_' + shared_lib_uniq_label
+        asm_dest.write('\t.type {}, @function\n'.format(entry_label))
+        asm_dest.write(entry_label + ':\n')
+
+        # Add sled entries for each RLT target
+        for rlt_target in rlt_target_set:
+            cdi_ret_prefix = '_CDI_' + shared_lib_uniq_label + '_TO_'
+            i = 1
+            while i <= multiplicity[(shared_lib_uniq_label, rlt_target)]:
+                sled_label = '"{}{}_{}"'.format(cdi_ret_prefix, rlt_target , str(i))
+                rlt_entry += '\tcmpq\t$' + sled_label + ', -8(%rsp)\n'
+                rlt_entry += '\tje\t' + sled_label + '\n'
+                i += 1
+
+        rlt_entry += cdi_abort_str(sled_id_faucet(), '',
+            options['--no-abort-messages'], asm_parsing.DwarfSourceLoc())
+        rlt_entry += '\t.size {}, .-{}\n'.format(entry_label, entry_label)
+        asm_dest.write(rlt_entry)
 

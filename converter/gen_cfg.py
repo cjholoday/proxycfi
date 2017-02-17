@@ -5,10 +5,12 @@ from eprint import eprint
 import sys
 import os
 
-def gen_cfg(asm_file_descrs, options):
+def gen_cfg(asm_file_descrs, plt_sites, options):
     """Generate cfg from a list of asm files. Produce funct names for each description
 
     asm_file_descrs should be a list containing objects of type 'AsmFileDescription'
+    plt_sites should be empty and will be filled with all site that call the PLT
+
     """
 
     global_functs = []
@@ -65,6 +67,7 @@ def gen_cfg(asm_file_descrs, options):
                         # the function is not defined in the source files
                         # so it must be from a shared library
                         dir_call_site.group = dir_call_site.PLT_SITE
+                        plt_sites.append(dir_call_site)
 
     # the direct call lists shouldn't be used because they are polluted with the
     # PLT calls, for which only the plt function name is known
@@ -90,6 +93,8 @@ def extract_funct(asm_file, funct_name, line_num, dwarf_loc):
     each site of a function has its return dictionary linked to the function's 
     return dictionary
     """
+    uniq_label = asm_file.name + '.' + funct_name
+
     start_line_num = line_num
     call_list = ["call","callf", "callq"]
     returns = ["ret", "retf", "iret", "retq", "iretq"]
@@ -128,7 +133,7 @@ def extract_funct(asm_file, funct_name, line_num, dwarf_loc):
                     asm_parsing.decode_line(asm_line, comment_continues))
 
         if key_symbol in call_list:
-            new_site = funct_cfg.Site(line_num, targets, CALL_SITE, dwarf_loc)
+            new_site = funct_cfg.Site(line_num, targets, CALL_SITE, dwarf_loc, uniq_label)
             if '%' not in arg_str:
                 new_site.targets.append(arg_str)
                 direct_call_sites.append(new_site)
@@ -136,10 +141,10 @@ def extract_funct(asm_file, funct_name, line_num, dwarf_loc):
         elif key_symbol in returns:
             # empty return dict passed so that every site's return dict is
             # a reference to the function's return dict
-            sites.append(funct_cfg.Site(line_num, empty_ret_dict, RETURN_SITE, dwarf_loc))
+            sites.append(funct_cfg.Site(line_num, empty_ret_dict, RETURN_SITE, dwarf_loc, uniq_label))
         elif key_symbol in jmp_list:
             if '%' in arg_str:
-                sites.append(funct_cfg.Site(line_num, targets, INDIR_JMP_SITE, dwarf_loc))
+                sites.append(funct_cfg.Site(line_num, targets, INDIR_JMP_SITE, dwarf_loc, uniq_label))
         asm_line = asm_file.readline()
         line_num += 1
     else:

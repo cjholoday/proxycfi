@@ -100,7 +100,7 @@ class SledIdFaucet:
 
     def __call__(self):
         self.__sled_id += 1
-        return self. __sled_id
+        return self.__sled_id
 
 class Site:
     CALL_SITE = 0
@@ -108,16 +108,20 @@ class Site:
     INDIR_JMP_SITE = 2
     PLT_SITE = 3
 
-    def __init__(self, line_num, targets, type_of_site, dwarf_loc):
+    def __init__(self, line_num, targets, type_of_site, dwarf_loc, uniq_label):
         assert type(line_num) is types.IntType
         assert type(type_of_site) is types.IntType
         assert (type_of_site == Site.CALL_SITE or 
                 type_of_site == Site.RETURN_SITE or
                 type_of_site == Site.INDIR_JMP_SITE)
 
+        self.enclosing_funct_uniq_label = uniq_label
         self.asm_line_num = line_num
         self.group = type_of_site
-        self.targets = targets
+
+        # targets are of "Function" type. len(targets) == 1 for a direct call site 
+        self.targets = targets 
+
         if dwarf_loc.valid():
             self.src_line_num = dwarf_loc.line_num
         else:
