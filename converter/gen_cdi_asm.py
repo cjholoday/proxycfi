@@ -1,6 +1,8 @@
 import funct_cfg
 import operator
 import asm_parsing
+import subprocess
+from eprint import eprint
 
 def gen_cdi_asm(cfg, asm_file_descrs, plt_sites, options):
     """Writes cdi compliant assembly from cfg and assembly file descriptions"""
@@ -8,6 +10,7 @@ def gen_cdi_asm(cfg, asm_file_descrs, plt_sites, options):
     sled_id_faucet = funct_cfg.SledIdFaucet()
 
     rlts_written = False
+    slts_written = False
     for descr in asm_file_descrs:
         asm_parsing.DwarfSourceLoc.wipe_filename_mapping()
         dwarf_loc = asm_parsing.DwarfSourceLoc()
@@ -45,12 +48,30 @@ def gen_cdi_asm(cfg, asm_file_descrs, plt_sites, options):
             rlts_written = True
             write_rlts(cfg, plt_sites, asm_dest, sled_id_faucet, options)
 
-        # write the rest of the lines over
+        # write the rest of the normal asm lines over
         src_line = asm_src.readline()
         while src_line:
             asm_dest.write(src_line)
             src_line = asm_src.readline()
 
+        # write the SLT for shared lib
+        if options['--shared-library'] and not slts_written:
+            slts_written = True
+
+            page_size = subprocess.check_output(['getconf', 'PAGESIZE'])
+            eprint('page size' + str(page_size))
+            asm_dest.write('\t.text\n')
+            asm_dest.write('\t.align {}\n'.format(page_size))
+            asm_dest.write('\t.globl _CDI_SLT\n')
+            asm_dest.write('\t.type _CDI_SLT, @function\n')
+            asm_dest.write('_CDI_SLT:\n')
+            for funct in cfg:
+                slt_entry_label = '"_CDI_SLT_{}"'.format(funct.uniq_label)
+                asm_dest.write('\t.globl {}\n'.format(slt_entry_label))
+                asm_dest.write(slt_entry_label + ':\n')
+                asm_dest.write('\tjmp 0\n')
+            asm_dest.write('\t.size _CDI_SLT, .-_CDI_SLT\n')
+        
         asm_src.close()
         asm_dest.close()
             
@@ -168,10 +189,13 @@ def convert_return_site(site, funct, asm_line, asm_dest, cfg,
             ret_sled += '\tje\t' + sled_label + '\n'
             i += 1
 
-    ret_sled += cdi_abort_str(sled_id_faucet(), funct.asm_filename,
-            options['--no-abort-messages'], dwarf_loc)
-    asm_dest.write(ret_sled)
+    if options['--shared-library']:
+        ret_sled += '\tjmp\t"_CDI_SLT_{}"\n'.format(funct.uniq_label)
+    else:
+        ret_sled += cdi_abort_str(sled_id_faucet(), funct.asm_filename,
+                options['--no-abort-messages'], dwarf_loc)
 
+    asm_dest.write(ret_sled)
 
 def convert_indir_jmp_site(site, funct, asm_line, asm_dest):
     pass
@@ -207,7 +231,7 @@ def convert_plt_site(site, asm_line, funct, asm_dest):
         funct.plt_call_multiplicity[(site.targets[0], funct.uniq_label)] = 1
 
     # create label for RLT to return to
-    rlt_return_label = ('_CDI_{}_TO_{}_{}'
+    rlt_return_label = ('"_CDI_{}_TO_{}_{}"'
             .format(site.targets[0], funct.uniq_label, 
                 str(funct.plt_call_multiplicity[(site.targets[0], funct.uniq_label)])))
     globl_decl = '.globl\t' + rlt_return_label + '\n'
@@ -240,7 +264,7 @@ def write_rlts(cfg, plt_sites, asm_dest, sled_id_faucet, options):
     for shared_lib_uniq_label, rlt_target_set in rlt_return_targets.iteritems():
         rlt_entry = ''
 
-        entry_label = '_CDI_RLT_' + shared_lib_uniq_label
+        entry_label = '"_CDI_RLT_{}"'.format(shared_lib_uniq_label)
         asm_dest.write('\t.type {}, @function\n'.format(entry_label))
         asm_dest.write(entry_label + ':\n')
 
