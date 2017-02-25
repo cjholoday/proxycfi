@@ -18,9 +18,6 @@ if __name__ == "__main__":
             'Convert N assembly files to N cdi-compliant assembly files')
     parser.add_argument('asm_filenames', nargs='+', 
             help='filenames of assembly files to be converted to CDI')
-    parser.add_argument('--no-abort-messages', action='store_true',
-            help='if set, abort location won\'t be printed. Saves space',
-            dest='--no-abort-messages')
     parser.add_argument('-v', '--verbose', action='store_true',
             help='prints out extra information', dest='--verbose')
     parser.add_argument('-pg', '--profile-gen', metavar='PROFILE',

@@ -32,7 +32,7 @@ def gen_cfg(asm_file_descrs, plt_sites, options):
             dirname = ''
 
         while funct_name:
-            funct, line_num = extract_funct(asm_file, funct_name, line_num, dwarf_loc)
+            funct, line_num = extract_funct(asm_file, funct_name, line_num, dwarf_loc, options)
             funct.asm_filename = descr.filename
             funct.is_global = is_global
             funct.src_filename = dirname + funct.src_filename
@@ -83,7 +83,7 @@ def gen_cfg(asm_file_descrs, plt_sites, options):
 
     return cfg
 
-def extract_funct(asm_file, funct_name, line_num, dwarf_loc):
+def extract_funct(asm_file, funct_name, line_num, dwarf_loc, options):
     """Constructs a function from the assembly file. 
 
     File pointer must point at first instruction of the function. The return 

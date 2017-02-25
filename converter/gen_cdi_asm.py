@@ -59,7 +59,6 @@ def gen_cdi_asm(cfg, asm_file_descrs, plt_sites, options):
             slts_written = True
 
             page_size = subprocess.check_output(['getconf', 'PAGESIZE'])
-            eprint('page size' + str(page_size))
             asm_dest.write('\t.text\n')
             asm_dest.write('\t.align {}\n'.format(page_size))
             asm_dest.write('\t.globl _CDI_SLT\n')
@@ -151,16 +150,19 @@ def convert_call_site(site, funct, asm_line, asm_dest,
             globl_decl = '.globl\t"{}"\n'.format(return_label)
 
         call_sled += '1:\n'
-        call_sled += '\tcmpq\t$"{}", {}\n'.format(target_name, call_operand)
-        call_sled += '\tjne\t1f\n'
-        call_sled += '\tcall\t"{}"\n'.format(target_name)
+        if options['--shared-library']:
+            call_sled += '\tcmpq\t$"{}(%rip)", {}\n'.format(target_name, call_operand)
+        else:
+            call_sled += '\tcmpq\t$"{}", {}\n'.format(target_name, call_operand)
+            call_sled += '\tjne\t1f\n'
+            call_sled += '\tcall\t"{}"\n'.format(target_name)
         call_sled += globl_decl
         call_sled += '"{}":\n'.format(return_label)
         call_sled += '\tjmp\t2f\n'
 
     call_sled += '1:\n'
     call_sled += cdi_abort_str(sled_id_faucet(), funct.asm_filename, 
-            options['--no-abort-messages'], dwarf_loc)
+            dwarf_loc, options)
     call_sled += '2:\n'
     asm_dest.write(call_sled)
 
@@ -193,23 +195,30 @@ def convert_return_site(site, funct, asm_line, asm_dest, cfg,
         ret_sled += '\tjmp\t"_CDI_SLT_{}"\n'.format(funct.uniq_label)
     else:
         ret_sled += cdi_abort_str(sled_id_faucet(), funct.asm_filename,
-                options['--no-abort-messages'], dwarf_loc)
+                dwarf_loc, options)
 
     asm_dest.write(ret_sled)
 
 def convert_indir_jmp_site(site, funct, asm_line, asm_dest):
     pass
 
-def cdi_abort_str(sled_id, asm_filename, no_abort_msg, dwarf_loc):
+def cdi_abort_str(sled_id, asm_filename, dwarf_loc, options):
     """Return string that aborts from cdi code with a useful debug message"""
 
     loc_str = asm_filename
     if dwarf_loc.valid():
         loc_str = str(dwarf_loc) + ':' + loc_str
 
+    
     call_cdi_abort = ''
-    if no_abort_msg:
-        call_cdi_abort = '\tmovq\t$0, %rdx\n\tcall _CDI_abort\n'
+    if options['--shared-library']:
+        call_cdi_abort += '\tmovq\t.CDI_sled_id_' + str(sled_id) + '(%rip), %rsi\n'
+        call_cdi_abort += '\tmovq\t.CDI_sled_id_' + str(sled_id) +'_len(%rip), %rdx\n'
+        #call_cdi_abort += '\tcall\t_CDI_abort\n' TODO: write fpic version of cdi abort
+        call_cdi_abort += '.CDI_sled_id_' + str(sled_id) + ':\n'
+        call_cdi_abort += '\t.string\t"' + loc_str + ' id=' + str(sled_id) + '"\n'
+        call_cdi_abort += '\t.set\t.CDI_sled_id_' + str(sled_id) + '_len, '
+        call_cdi_abort += '.-.CDI_sled_id_' + str(sled_id) + '\n'
     else:
         call_cdi_abort += '\tmovq\t $.CDI_sled_id_' + str(sled_id) + ', %rsi\n'
         call_cdi_abort += '\tmovq\t$.CDI_sled_id_' + str(sled_id) +'_len, %rdx\n'
@@ -231,12 +240,15 @@ def convert_plt_site(site, asm_line, funct, asm_dest):
         funct.plt_call_multiplicity[(site.targets[0], funct.uniq_label)] = 1
 
     # create label for RLT to return to
-    rlt_return_label = ('"_CDI_{}_TO_{}_{}"'
-            .format(site.targets[0], funct.uniq_label, 
+    rlt_return_label = ('_CDI_{}_TO_{}_{}'
+            .format(site.targets[0].replace('@', '_AT_', 1), funct.uniq_label, 
                 str(funct.plt_call_multiplicity[(site.targets[0], funct.uniq_label)])))
-    globl_decl = '.globl\t' + rlt_return_label + '\n'
 
-    asm_dest.write(asm_line + globl_decl + rlt_return_label + ':\n')
+    #globl_decl = '.globl\t' + rlt_return_label + '\n'
+    globl_decl = ''
+    restore_rbp = '\tmovq\t-16(%rsp), %rbp\n'
+
+    asm_dest.write(asm_line + globl_decl + rlt_return_label + ':\n' + restore_rbp)
 
 def write_rlts(cfg, plt_sites, asm_dest, sled_id_faucet, options):
     """Write the RLT to asm_dest"""
@@ -261,25 +273,31 @@ def write_rlts(cfg, plt_sites, asm_dest, sled_id_faucet, options):
             multiplicity[call_return_pair] = 1
 
     # create an RLT entry for each shared library function
-    for shared_lib_uniq_label, rlt_target_set in rlt_return_targets.iteritems():
+    for sl_funct_uniq_label, rlt_target_set in rlt_return_targets.iteritems():
         rlt_entry = ''
 
-        entry_label = '"_CDI_RLT_{}"'.format(shared_lib_uniq_label)
+        entry_label = '"_CDI_RLT_{}"'.format(sl_funct_uniq_label.replace('@', '_AT_', 1))
+
         asm_dest.write('\t.type {}, @function\n'.format(entry_label))
         asm_dest.write(entry_label + ':\n')
 
         # Add sled entries for each RLT target
         for rlt_target in rlt_target_set:
-            cdi_ret_prefix = '_CDI_' + shared_lib_uniq_label + '_TO_'
+            cdi_ret_prefix = '_CDI_' + sl_funct_uniq_label.replace('@', '_AT_', 1)
             i = 1
-            while i <= multiplicity[(shared_lib_uniq_label, rlt_target)]:
-                sled_label = '"{}{}_{}"'.format(cdi_ret_prefix, rlt_target , str(i))
-                rlt_entry += '\tcmpq\t$' + sled_label + ', -8(%rsp)\n'
+            while i <= multiplicity[(sl_funct_uniq_label, rlt_target)]:
+                sled_label = '{}_TO_{}_{}'.format(cdi_ret_prefix, rlt_target , str(i))
+                if options['--shared-library']:
+                    # rbp is restored after the jump equal (je)
+                    rlt_entry += '\tlea\t' + sled_label + '(%rip), %rbp\n'
+                    rlt_entry += '\tcmpq\t%rbp, -8(%rsp)\n'
+                else:
+                    rlt_entry += '\tcmpq\t$' + sled_label + ', -8(%rsp)\n'
                 rlt_entry += '\tje\t' + sled_label + '\n'
                 i += 1
 
         rlt_entry += cdi_abort_str(sled_id_faucet(), '',
-            options['--no-abort-messages'], asm_parsing.DwarfSourceLoc())
+            asm_parsing.DwarfSourceLoc(), options)
         rlt_entry += '\t.size {}, .-{}\n'.format(entry_label, entry_label)
         asm_dest.write(rlt_entry)
 
