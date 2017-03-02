@@ -47,9 +47,9 @@ IMPORTANT REMINDER: this guide assumes you're building inside cdi/cdi-gcc and th
     mkdir -p dest && mkdir -p build && cd $_
     mv ../gcc.6.1.0/gcc/c/norm-c-parser.c ../gcc.6.1.0/gcc/c/c-parser.c
     mv ../gcc.6.1.0/gcc/c/norm-c-typeck.c ../gcc.6.1.0/gcc/c/c-typeck.c
-    ../gcc-6.1.0/configure --prefix="$(pwd)/../dest/" \ 
-            --with-as=/usr/local/cdi/cdi-as --with-ld=/usr/local/cdi/cdi-ld \ 
-            --disable-lto --enable-languages=c --disable-bootstrap \ 
+    ../gcc-6.1.0/configure --prefix="$(pwd)/../dest/" \
+            --with-as=/usr/local/cdi/cdi-as --with-ld=/usr/local/cdi/cdi-ld \
+            --disable-lto --enable-languages=c --disable-bootstrap \
             2> config_errlog.txt | tee configlog.txt 
     make 2> errlog.txt | tee makelog.txt
 
