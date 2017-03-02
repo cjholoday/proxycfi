@@ -29,7 +29,7 @@ class FakeObjectFile:
         fname = self.path
         if '/' in self.path:
             fname = self.path[fname.rfind('/') + 1:]
-        return upto_last(fname, '.fake.o')
+        return basename(fname, '.fake.o')
 
     def construct_from_file(self, path):
         """Extracts info from fake object file
@@ -212,10 +212,18 @@ class Linker:
         """Returns CDI-compliant spec given dict: <archive name -> objs to use>"""
         if required_objs == None:
             required_objs = dict()
+
+        cdi_abort_added = False
         cdi_spec = []
         for i, word in enumerate(self.spec):
             if self.entry_types[i] == self.entry_type.OBJECT:
-                cdi_spec.append(upto_last(word, '.o') + '.cdi.o')
+                # add cdi_abort.cdi.o with the other object files
+                # it's possible we could put this at the beginning or end
+                # but it's less likely to cause an error here
+                if not cdi_abort_added:
+                    cdi_spec.append('/usr/local/cdi/cdi_abort.cdi.o')
+                    cdi_abort_added = True
+                cdi_spec.append(basename(word, '.o') + '.cdi.o')
             elif self.entry_types[i] == self.entry_type.ARCHIVE:
                 try:
                     cdi_spec += required_objs[os.path.realpath(word)]
@@ -240,8 +248,12 @@ class Linker:
         return cdi_spec
 
     def link(self, spec):
-        """Run the GNU linker on spec"""
-        pass
+        try:
+            print 'ld ' + ' '.join(spec)
+            subprocess.check_call(['ld'] + spec)
+        except subprocess.CalledProcessError:
+            eprint("\ncdi-ld: calling 'ld' with the following spec failed:\n\n{}"
+                    .format(' '.join(spec)))
 
     def gen_lib_search_dirs(self):
         # first find directories in which libraries are searched for
@@ -305,8 +317,8 @@ def get_archive_fake_objs(archive, objs_needed):
     fake_objs = []
     if archive.is_thin() and archive.path in objs_needed.keys():
         for fname in objs_needed[archive.path]:
-            corrected_fname = upto_last(fname, '.') + '.fake.o'
-            subprocess.check_call(['cp', upto_last(archive.path, '/')
+            corrected_fname = basename(fname, '.') + '.fake.o'
+            subprocess.check_call(['cp', basename(archive.path, '/')
                 + '/' + fname, corrected_fname])
             fake_objs.append(FakeObjectFile(corrected_fname))
     elif archive.path in objs_needed.keys():
@@ -327,7 +339,7 @@ def get_archive_fake_objs(archive, objs_needed):
             fake_objs.append(FakeObjectFile('.cdi/' + qualified_fname))
     return fake_objs
 
-def upto_last(string, cutoff):
+def basename(string, cutoff):
     return string[:string.rfind(cutoff)]
 
 def trim_path(path):
@@ -360,7 +372,7 @@ for path in linker.archive_paths:
 # the fake object files directly listed in the ld spec
 explicit_fake_objs = []
 for fname in linker.obj_fnames:
-    cdi_obj_name = upto_last(fname, '.') + '.fake.o'
+    cdi_obj_name = basename(fname, '.') + '.fake.o'
     subprocess.check_call(['mv', fname, cdi_obj_name])
     try:
         explicit_fake_objs.append(FakeObjectFile(cdi_obj_name))
@@ -403,7 +415,7 @@ if archives != []:
             if is_elf:
                 continue # already real object file
             else:
-                correct_fname = upto_last(fname, '.') + '.fake.o'
+                correct_fname = basename(fname, '.') + '.fake.o'
                 subprocess.check_call(['mv', fname, correct_fname])
                 subprocess.check_call(['as', correct_fname, '-o', fname])
         subprocess.check_call(['ar', 'rc', trim_path(archive.path)] + fnames)
@@ -421,6 +433,16 @@ if archives != []:
     os.chdir('..')
     verbose_linker_output = subprocess.check_output(['ld'] 
             + ld_spec_unsafe_archives + ['--verbose'])
+    outfile_next = False
+
+    # remove executable since it is non-CDI compiled
+    for word in ld_spec_unsafe_archives:
+        if word == '-o':
+            outfile_next = True
+        elif outfile_next:
+            subprocess.check_call(['rm', word])
+            break
+
     objs_needed = required_archive_objs(verbose_linker_output)
     
     # construct fake objects from archives
@@ -438,7 +460,7 @@ print 'Converting asm files to cdi-asm files...'
 sys.stdout.flush()
 
 cdi_ld_real_path = subprocess.check_output(['readlink', '-f', sys.argv[0]])
-cdi_ld_real_path = upto_last(cdi_ld_real_path, '/')
+cdi_ld_real_path = basename(cdi_ld_real_path, '/')
 converter_path = cdi_ld_real_path + '/../converter/gen_cdi.py'
 fake_obj_paths = [fake_obj.path for fake_obj in fake_objs]
 subprocess.check_call([converter_path] + CONVERTER_ARGS + fake_obj_paths)
@@ -448,8 +470,8 @@ sys.stdout.flush()
 
 for fake_obj in fake_objs:
     subprocess.check_call(['as'] + fake_obj.as_spec_no_io
-            + [upto_last(fake_obj.path, '.fake.o') + '.cdi.s',
-                '-o', upto_last(fake_obj.path, '.fake.o') + '.cdi.o'])
+            + [basename(fake_obj.path, '.fake.o') + '.cdi.s',
+                '-o', basename(fake_obj.path, '.fake.o') + '.cdi.o'])
 
 # the fake objs need to be moved back to their original filename in case
 # another compilation wants to use them as well. This code ASSUMES that
