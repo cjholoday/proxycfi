@@ -39,14 +39,23 @@ def parse_as_spec(spec):
 # Returns a list of dependencies of a .c source file
 # the source file itself is included in the list
 def get_dependencies(fname):
+    # Remove GCC_EXEC_PREFIX from the environment for normal gcc
+    # This allows normal gcc to find the programs it needs
+    try:
+        normal_gcc_env = os.environ.copy()
+        del normal_gcc_env['GCC_EXEC_PREFIX']
+    except KeyError:
+        pass
+
     try:
         # gcc may append '\' at the end of lines. don't return them
         raw_dep_list = subprocess.check_output(['gcc', '-MM', fname],
-                stderr=subprocess.STDOUT).split()[1:]
+                stderr=subprocess.STDOUT, env=normal_gcc_env
+                ).split()[1:]
         return [dep for dep in raw_dep_list if dep != '\\']
     except subprocess.CalledProcessError as err:
         raw_dep_list = subprocess.check_output(['gcc', '-MM', '-MG',
-            fname]).split()[1:]
+            fname], env=normal_gcc_env).split()[1:]
         raise MissingDependency([dep for dep in raw_dep_list if dep != '\\'])
 
 def absolute_directory(fname_path):
@@ -79,6 +88,8 @@ def absolute_directory(fname_path):
 #
 #   for more information, see the documentation
 ########################################################################
+
+
 
 as_spec = ' '.join(sys.argv[1:])
 input_asm_fname, output_obj_fname, as_spec_no_io = parse_as_spec(as_spec)

@@ -249,7 +249,6 @@ class Linker:
 
     def link(self, spec):
         try:
-            print 'ld ' + ' '.join(spec)
             subprocess.check_call(['ld'] + spec)
         except subprocess.CalledProcessError:
             eprint("\ncdi-ld: calling 'ld' with the following spec failed:\n\n{}"
