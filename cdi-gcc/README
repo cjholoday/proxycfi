@@ -66,8 +66,8 @@ Now we add the modifications to GCC. All of these files go into the cdi/cdi-gcc/
     mv ../gcc-6.1.0/gcc/c/c-parser.c ../gcc-6.1.0/gcc/c/norm-c-parser.c
     ln -s "$(pwd)/../../type_drop/cdi-c-typeck.c" ../gcc-6.1.0/gcc/c/c-typeck.c
     ln -s "$(pwd)/../../type_drop/cdi-c-parser.c" ../gcc-6.1.0/gcc/c/c-parser.c
-    ln -s "$(pwd)/../../type_drop/type_drop.c" ../gcc-6.1.0/gcc/c/cdi.c
-    ln -s "$(pwd)/../../type_drop/type_drop.h" ../gcc-6.1.0/gcc/c/cdi.h
+    ln -sf "$(pwd)/../../type_drop/type_drop.c" ../gcc-6.1.0/gcc/c/cdi.c
+    ln -sf "$(pwd)/../../type_drop/type_drop.h" ../gcc-6.1.0/gcc/c/cdi.h
 
 DO NOT RUN make distclean unless you want to start at part 2 again. Compile again with the changes to gcc:
     
