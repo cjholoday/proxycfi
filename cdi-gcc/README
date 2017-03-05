@@ -1,5 +1,5 @@
 +===========================================================================
-| Compiling a CDI version of GCC        Colton Holoday(choloday@umich.edu)
+| Compiling a CDI version of GCC        Colton Holoday (choloday@umich.edu)
 +===========================================================================
 
 This guide is only tested on Ubuntu version 16.04 with GCC version 6.1.0. Make sure you have the correct version of gcc! You can find it here: https://gcc.gnu.org/releases.html. Read the command line snippets before pasting them! They will often need to be modified.
@@ -42,6 +42,7 @@ In order to integrate gcc into a cdi build system we need to intercept the the l
 Now we compile GCC as before except with a custom assembler and linker. This should take 2-3 hours. Note the “mv” commands ensure that the c-parser.c and c-typeck.c are the original gcc versions. The “mv” commands will fail if this isn’t a recompile attempt, which is fine.
 
 IMPORTANT REMINDER: this guide assumes you're building inside cdi/cdi-gcc and that you've placed gcc-6.1.0 in cdi/cdi-gcc
+NOTE: If you're attemping to compile again, then make sure you run 'make distclean' and the commands above!
 
     [directory: cdi/cdi-gcc]
     mkdir -p dest && mkdir -p build && cd $_
