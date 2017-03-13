@@ -44,15 +44,16 @@ def gen_cdi_asm(cfg, asm_file_descrs, plt_sites, options):
                         sled_id_faucet, dwarf_loc, options)
                         
 
-        if not rlts_written:
-            rlts_written = True
-            write_rlts(cfg, plt_sites, asm_dest, sled_id_faucet, options)
 
         # write the rest of the normal asm lines over
         src_line = asm_src.readline()
         while src_line:
             asm_dest.write(src_line)
             src_line = asm_src.readline()
+
+        if not rlts_written:
+            rlts_written = True
+            write_rlts(cfg, plt_sites, asm_dest, sled_id_faucet, options)
 
         # write the SLT for shared lib
         if options['--shared-library'] and not slts_written:
@@ -271,6 +272,18 @@ def write_rlts(cfg, plt_sites, asm_dest, sled_id_faucet, options):
             multiplicity[call_return_pair] += 1
         except KeyError:
             multiplicity[call_return_pair] = 1
+
+    # create the RLT jump table
+    rlt_jump_table = '\t.section\t.CDI_RLT, "x"\n'
+    rlt_jump_table += '\t.type\t_CDI_RLT_JUMP_TABLE, @function\n'
+    rlt_jump_table += '_CDI_RLT_JUMP_TABLE:\n'
+    for sl_funct_uniq_label in rlt_return_targets.keys():
+        entry_label = '"_CDI_RLT_{}"'.format(sl_funct_uniq_label.replace('@', '_AT_', 1))
+        rlt_jump_table += '\tjmp {}\n'.format(entry_label)
+
+    rlt_jump_table += '\t.size\t_CDI_RLT_JUMP_TABLE, .-_CDI_RLT_JUMP_TABLE\n'
+    
+    asm_dest.write(rlt_jump_table)
 
     # create an RLT entry for each shared library function
     for sl_funct_uniq_label, rlt_target_set in rlt_return_targets.iteritems():
