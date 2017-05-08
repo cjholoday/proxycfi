@@ -1,0 +1,15 @@
+/home/misiker/Desktop/ld.so/build/dummy.o: \
+ /home/misiker/Desktop/ld.so/build/dummy.c ../include/stdc-predef.h \
+ /home/misiker/Desktop/ld.so/build/libc-modules.h \
+ ../include/libc-symbols.h /home/misiker/Desktop/ld.so/build/config.h \
+ ../sysdeps/generic/symbol-hacks.h
+
+../include/stdc-predef.h:
+
+/home/misiker/Desktop/ld.so/build/libc-modules.h:
+
+../include/libc-symbols.h:
+
+/home/misiker/Desktop/ld.so/build/config.h:
+
+../sysdeps/generic/symbol-hacks.h:

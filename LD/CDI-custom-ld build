@@ -1,0 +1,22 @@
+Source:
+http://www.linuxfromscratch.org/lfs/view/development/chapter06/binutils.html
+
+Download binutils source for your particular Ubuntu version from https://ftp.gnu.org/gnu/binutils/
+(check binutils version using "ld -v" command.) 
+
+Build:
+
+Inside the binutils main directory:
+mkdir -v build
+cd       build
+
+../configure --prefix=/usr/cdi       \
+             --enable-ld=default \
+             --enable-plugins    \
+             --enable-shared     \
+             --disable-werror    \
+             --with-system-zlib
+make tooldir=/usr/cdi
+make tooldir=/usr/cdi install
+
+If the build is succesful the binaries of the custom binutils can be found in /usr/cdi/bin directory.

@@ -280,7 +280,12 @@ for obj_file in $all_arch_objs; do
 done
 
 echo "$cd_ld_spec"
-${SCRIPT_DIR}/gnu-ld $cdi_ld_spec ${SCRIPT_DIR}/cdi_abort.o
+# using the gnu ld
+# ${SCRIPT_DIR}/gnu-ld $cdi_ld_spec ${SCRIPT_DIR}/cdi_abort.o --script=/usr/local/cdi/cdi-custom-ld-script.lds
+# using the CDI custom ld
+# ${SCRIPT_DIR}/cdi-ld-custom $cdi_ld_spec ${SCRIPT_DIR}/cdi_abort.o --script=/usr/local/cdi/cdi-custom-ld-script.lds
+# using the CDI custom ld and ld.so
+${SCRIPT_DIR}/cdi-ld-custom $cdi_ld_spec ${SCRIPT_DIR}/cdi_abort.o  --script=/usr/local/cdi/cdi-custom-ld-script.lds --dynamic-linker=/home/misiker/Desktop/ld.so/build/elf/ld-linux-x86-64.so.2 -rpath /lib/x86_64-linux-gnu
 
 for file in "$delete_files"; do
     rm -f "$file"

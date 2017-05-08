@@ -1,0 +1,6 @@
+./libtool: line 1118:  2143 Trace/breakpoint trap   (core dumped) ranlib .libs/libbfd.a
+make[4]: *** [libbfd.la] Error 133
+make[3]: *** [all-recursive] Error 1
+make[2]: *** [all] Error 2
+make[1]: *** [all-bfd] Error 2
+make: *** [all] Error 2

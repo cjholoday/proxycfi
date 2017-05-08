@@ -45,3 +45,5 @@ for asm in $asms; do
     cdi_asms="$cdi_asms ${asm/.s/.cdi.s}"
 done
 gcc --save-temps -shared -o "$libname" $cdi_asms
+
+# gcc --save-temps -shared -c $cdi_asms
