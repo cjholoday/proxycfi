@@ -249,7 +249,8 @@ def convert_plt_site(site, asm_line, funct, asm_dest):
     globl_decl = ''
     restore_rbp = '\tmovq\t-16(%rsp), %rbp\n'
 
-    asm_dest.write(asm_line + globl_decl + rlt_return_label + ':\n' + restore_rbp)
+    # do not restore rbp because shared libraries are not working yet
+    asm_dest.write(asm_line + globl_decl + rlt_return_label + ':\n') # + restore_rbp)
 
 def write_rlts(cfg, plt_sites, asm_dest, sled_id_faucet, options):
     """Write the RLT to asm_dest"""
@@ -274,8 +275,9 @@ def write_rlts(cfg, plt_sites, asm_dest, sled_id_faucet, options):
             multiplicity[call_return_pair] = 1
 
     # create the RLT jump table
-    rlt_jump_table = '\t.section\t.CDI_RLT, "x"\n'
-    rlt_jump_table += '\t.type\t_CDI_RLT_JUMP_TABLE, @function\n'
+    # TEMPORARILY REMOVED UNTIL MISIKER TELLS ME THE FIX:
+    # rlt_jump_table = '\t.section\t.CDI_RLT, "x"\n'
+    rlt_jump_table = '\t.type\t_CDI_RLT_JUMP_TABLE, @function\n'
     rlt_jump_table += '_CDI_RLT_JUMP_TABLE:\n'
     for sl_funct_uniq_label in rlt_return_targets.keys():
         entry_label = '"_CDI_RLT_{}"'.format(sl_funct_uniq_label.replace('@', '_AT_', 1))

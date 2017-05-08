@@ -361,6 +361,8 @@ class NonDeferredObjectFile(Exception):
 ########################################################################
 
 ld_spec = sys.argv[1:]
+print ' '.join(ld_spec)
+
 linker = Linker(ld_spec)
 linker.parse_spec()
 
@@ -462,6 +464,7 @@ cdi_ld_real_path = subprocess.check_output(['readlink', '-f', sys.argv[0]])
 cdi_ld_real_path = basename(cdi_ld_real_path, '/')
 converter_path = cdi_ld_real_path + '/../converter/gen_cdi.py'
 fake_obj_paths = [fake_obj.path for fake_obj in fake_objs]
+print 'fake obj paths: ' + ' '.join(fake_obj_paths)
 subprocess.check_call([converter_path] + CONVERTER_ARGS + fake_obj_paths)
 
 print 'Assembling cdi asm files...'
