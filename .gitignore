@@ -6,4 +6,7 @@
 *.o
 a.out
 *.json
+
 *.vim
+
+**.cdi
