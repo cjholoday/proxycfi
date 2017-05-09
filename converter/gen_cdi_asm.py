@@ -29,8 +29,8 @@ def gen_cdi_asm(cfg, asm_file_descrs, plt_sites, options):
             # can be reached from anywhere with sleds (Function pointers can
             # point to ANY function with the same signature, even static 
             # functions in a different translation unit)
-            asm_dest.write('.globl\t"{}"\n'.format(funct.uniq_label))
-            asm_dest.write('"{}":\n'.format(funct.uniq_label))
+            asm_dest.write('.globl\t"{}"\n'.format(fix_label(funct.uniq_label)))
+            asm_dest.write('"{}":\n'.format(fix_label(funct.uniq_label)))
 
             funct.label_fixed_count = dict()
             for site in funct.sites:
@@ -66,7 +66,7 @@ def gen_cdi_asm(cfg, asm_file_descrs, plt_sites, options):
             asm_dest.write('\t.type _CDI_SLT, @function\n')
             asm_dest.write('_CDI_SLT:\n')
             for funct in cfg:
-                slt_entry_label = '"_CDI_SLT_{}"'.format(funct.uniq_label)
+                slt_entry_label = '"_CDI_SLT_{}"'.format(fix_label(funct.uniq_label))
                 asm_dest.write('\t.globl {}\n'.format(slt_entry_label))
                 asm_dest.write(slt_entry_label + ':\n')
                 asm_dest.write('\tjmp 0\n')
@@ -122,10 +122,10 @@ def convert_call_site(site, funct, asm_line, asm_dest,
     indirect_call = '%' in arg_str
     if not indirect_call:
         assert len(site.targets) == 1
-        target_name = site.targets[0].uniq_label
+        target_name = fix_label(site.targets[0].uniq_label)
         times_fixed = increment_dict(funct.label_fixed_count, target_name)
         label = '"_CDI_{}_TO_{}_{}"'.format(
-                target_name, funct.uniq_label, str(times_fixed))
+                target_name, fix_label(funct.uniq_label), str(times_fixed))
 
         globl_decl = ''
         if funct.asm_filename != site.targets[0].asm_filename:
@@ -139,7 +139,8 @@ def convert_call_site(site, funct, asm_line, asm_dest,
     assert len(arg_str.split()) == 1
 
     for target in site.targets:
-        target_name = target.uniq_label
+        target_name = fix_label(target.uniq_label)
+        return_target = fix_label(funct.uniq_label)
         call_operand = arg_str.replace('*', '')
         times_fixed = increment_dict(funct.label_fixed_count, target_name)
 
@@ -180,7 +181,7 @@ def convert_return_site(site, funct, asm_line, asm_dest, cfg,
         asm_dest.write(asm_line)
         return
 
-    cdi_ret_prefix = '_CDI_' + funct.uniq_label + '_TO_'
+    cdi_ret_prefix = '_CDI_' + fix_label(funct.uniq_label) + '_TO_'
 
     ret_sled= '\taddq $8, %rsp\n'
 
@@ -193,7 +194,7 @@ def convert_return_site(site, funct, asm_line, asm_dest, cfg,
             i += 1
 
     if options['--shared-library']:
-        ret_sled += '\tjmp\t"_CDI_SLT_{}"\n'.format(funct.uniq_label)
+        ret_sled += '\tjmp\t"_CDI_SLT_{}"\n'.format(fix_label(funct.uniq_label))
     else:
         ret_sled += cdi_abort_str(sled_id_faucet(), funct.asm_filename,
                 dwarf_loc, options)
@@ -242,7 +243,7 @@ def convert_plt_site(site, asm_line, funct, asm_dest):
 
     # create label for RLT to return to
     rlt_return_label = ('_CDI_{}_TO_{}_{}'
-            .format(site.targets[0].replace('@', '_AT_', 1), funct.uniq_label, 
+            .format(fix_label(site.targets[0]), fix_label(funct.uniq_label), 
                 str(funct.plt_call_multiplicity[(site.targets[0], funct.uniq_label)])))
 
     #globl_decl = '.globl\t' + rlt_return_label + '\n'
@@ -280,7 +281,7 @@ def write_rlts(cfg, plt_sites, asm_dest, sled_id_faucet, options):
     rlt_jump_table = '\t.type\t_CDI_RLT_JUMP_TABLE, @function\n'
     rlt_jump_table += '_CDI_RLT_JUMP_TABLE:\n'
     for sl_funct_uniq_label in rlt_return_targets.keys():
-        entry_label = '"_CDI_RLT_{}"'.format(sl_funct_uniq_label.replace('@', '_AT_', 1))
+        entry_label = '"_CDI_RLT_{}"'.format(fix_label(sl_funct_uniq_label))
         rlt_jump_table += '\tjmp {}\n'.format(entry_label)
 
     rlt_jump_table += '\t.size\t_CDI_RLT_JUMP_TABLE, .-_CDI_RLT_JUMP_TABLE\n'
@@ -291,17 +292,19 @@ def write_rlts(cfg, plt_sites, asm_dest, sled_id_faucet, options):
     for sl_funct_uniq_label, rlt_target_set in rlt_return_targets.iteritems():
         rlt_entry = ''
 
-        entry_label = '"_CDI_RLT_{}"'.format(sl_funct_uniq_label.replace('@', '_AT_', 1))
+        entry_label = '"_CDI_RLT_{}"'.format(fix_label(sl_funct_uniq_label))
 
         asm_dest.write('\t.type {}, @function\n'.format(entry_label))
         asm_dest.write(entry_label + ':\n')
 
         # Add sled entries for each RLT target
         for rlt_target in rlt_target_set:
-            cdi_ret_prefix = '_CDI_' + sl_funct_uniq_label.replace('@', '_AT_', 1)
+            cdi_ret_prefix = '_CDI_' + fix_label(sl_funct_uniq_label)
             i = 1
             while i <= multiplicity[(sl_funct_uniq_label, rlt_target)]:
-                sled_label = '{}_TO_{}_{}'.format(cdi_ret_prefix, rlt_target , str(i))
+                print rlt_target
+                print fix_label(rlt_target)
+                sled_label = '{}_TO_{}_{}'.format(cdi_ret_prefix, fix_label(rlt_target) , str(i))
                 if options['--shared-library']:
                     # rbp is restored after the jump equal (je)
                     rlt_entry += '\tlea\t' + sled_label + '(%rip), %rbp\n'
@@ -316,5 +319,5 @@ def write_rlts(cfg, plt_sites, asm_dest, sled_id_faucet, options):
         rlt_entry += '\t.size {}, .-{}\n'.format(entry_label, entry_label)
         asm_dest.write(rlt_entry)
 
-
-
+def fix_label(label):
+    return label.replace('@', '_AT_').replace('/', '__')

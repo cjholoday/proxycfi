@@ -217,6 +217,18 @@ class Linker:
         cdi_abort_added = False
         cdi_spec = []
         for i, word in enumerate(self.spec):
+            is_libstem_archive = False
+            if self.entry_types[i] == self.entry_type.LIBSTEM:
+                if word[:2] == '-l':
+                    word = word[2:]
+                lib_path = self.find_lib(word)
+                if lib_path[-2:] == '.a':
+                    is_libstem_archive = True
+                    word = lib_path
+                else:
+                    cdi_spec.append(lib_path)
+                    continue
+
             if self.entry_types[i] == self.entry_type.OBJECT:
                 # add cdi_abort.cdi.o with the other object files
                 # it's possible we could put this at the beginning or end
@@ -225,25 +237,26 @@ class Linker:
                     cdi_spec.append('/usr/local/cdi/cdi_abort.cdi.o')
                     cdi_abort_added = True
                 cdi_spec.append(basename(word, '.o') + '.cdi.o')
-            elif self.entry_types[i] == self.entry_type.ARCHIVE:
+            elif self.entry_types[i] == self.entry_type.ARCHIVE or is_libstem_archive:
                 try:
-                    cdi_spec += required_objs[os.path.realpath(word)]
+                    qualified_obj_fnames = []
+                    for obj_fname in required_objs[os.path.realpath(word)]:
+
+                        # ld will need the CDI "fake" object file, which is extracted
+                        # into .cdi in the compilation directory. The object files 
+                        # are extracted into .cdi so that they do not conflict with
+                        # any files in the compilation directory. Furthermore,
+                        # the extracted object files are prefixed with the archive
+                        # from which they came so that there aren't naming collisions
+                        qualified_obj_fname = ('.cdi/' + trim_path(word) 
+                                + '__' + basename(obj_fname, '') + '.cdi.o')
+                        qualified_obj_fnames.append(qualified_obj_fname)
+                    cdi_spec += qualified_obj_fnames
                 except KeyError:
-                    pass
+                    pass # it is a possible an archive has no useful objects
             elif self.entry_types[i] == self.entry_type.SHARED_LIB:
                 cdi_spec.append(word)
                 pass # maybe do superficial test to see if shared lib is CDI
-            elif self.entry_types[i] == self.entry_type.LIBSTEM:
-                if word[:2] == '-l':
-                    word = word[2:]
-                lib_path = self.find_lib(word)
-                if lib_path[-2:] == '.a':
-                    try:
-                        cdi_spec += required_objs[os.path.realpath(word)]
-                    except KeyError:
-                        pass
-                else:
-                    cdi_spec.append(lib_path)
             elif self.entry_types[i] == self.entry_type.NORMAL:
                 cdi_spec.append(word)
         return cdi_spec
@@ -507,6 +520,9 @@ print 'Assembling cdi asm files...'
 sys.stdout.flush()
 
 for fake_obj in fake_objs:
+    print ' '.join(['as'] + fake_obj.as_spec_no_io
+            + [basename(fake_obj.path, '.fake.o') + '.cdi.s',
+                '-o', basename(fake_obj.path, '.fake.o') + '.cdi.o'])
     subprocess.check_call(['as'] + fake_obj.as_spec_no_io
             + [basename(fake_obj.path, '.fake.o') + '.cdi.s',
                 '-o', basename(fake_obj.path, '.fake.o') + '.cdi.o'])
@@ -521,3 +537,4 @@ print 'Linking...'
 sys.stdout.flush()
 cdi_spec = linker.get_cdi_spec(objs_needed)
 linker.link(cdi_spec)
+

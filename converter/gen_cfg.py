@@ -14,7 +14,6 @@ def gen_cfg(asm_file_descrs, plt_sites, options):
     """
 
     global_functs = []
-    src_filename_set = set()
 
     cfg = funct_cfg.FunctControlFlowGraph()
     for descr in asm_file_descrs:
@@ -36,7 +35,6 @@ def gen_cfg(asm_file_descrs, plt_sites, options):
             funct.asm_filename = descr.filename
             funct.is_global = is_global
             funct.src_filename = dirname + funct.src_filename
-            src_filename_set.add(funct.src_filename)
 
             if funct.is_global:
                 global_functs.append(funct)
@@ -74,7 +72,7 @@ def gen_cfg(asm_file_descrs, plt_sites, options):
     for funct in cfg:
         del(funct.direct_call_sites)
     try:
-        build_indir_targets(cfg, src_filename_set, options)
+        build_indir_targets(cfg, asm_file_descrs, options)
         build_ret_dicts(cfg)
     except NoTypeFile as warning:
         build_ret_dicts(cfg, True)
@@ -159,7 +157,7 @@ def extract_funct(asm_file, funct_name, line_num, dwarf_loc, options):
 
     return new_funct, line_num
     
-def build_indir_targets(cfg, src_filename_set, options):
+def build_indir_targets(cfg, asm_file_descrs, options):
     """Builds the target set of each function's indirect calls/jumps
     
     Currently only builds the targets for indirect calls
@@ -169,28 +167,38 @@ def build_indir_targets(cfg, src_filename_set, options):
         return (site.group == funct_cfg.Site.CALL_SITE 
                 and site.targets == [])
 
+
     if options['--no-narrowing']:
         for funct in cfg:
             fptr_sites = filter(is_indir_call_site, funct.sites)
             for fptr_site in fptr_sites:
                 fptr_site.targets = [f for f in cfg]
         return
+
+    funct_types = dict()
+    fptr_types = dict()
+    for descr in asm_file_descrs:
+        try:
+            parse_cdi_metadata(descr, funct_types, fptr_types, options)
+        except:
+            eprint("error: parsing CDI metadata from file '{}' failed. Aborting..."
+                    .format(descr.filename))
+            raise
     
     # associate function types with assembly functions (need to fix for C++)
-    funct_types = read_function_types(src_filename_set, options)
-    print str(src_filename_set)
-    print str(funct_types.keys())
     for funct in cfg:
-        funct.ftype = funct_types[funct.src_filename + '.' + funct.asm_name]
+        try:
+            funct.ftype = funct_types[funct.asm_filename + '.' + funct.asm_name]
+        except KeyError:
+            eprint("error: no type found for function '{}' from file '{}'"
+                    .format(funct.asm_name, funct.asm_filename))
+            exit(1)
             
-    
-    fptr_types = read_fptr_types(src_filename_set, options)
-
-    
     for funct in cfg:
         fptr_sites = filter(is_indir_call_site, funct.sites)
+        # TODO: what about object files with the same name?
         funct.fptr_types = fptr_types.get(
-                funct.src_filename + '.' + funct.asm_name, []) # fix for C++
+                funct.asm_filename + '.' + funct.asm_name, []) # fix for C++
         if fptr_sites:
             assign_targets(fptr_sites, funct, cfg, options)
         del(funct.fptr_types)
@@ -281,7 +289,7 @@ def build_ret_dicts(cfg):
             except KeyError:
                 eprint("warning: function cannot be found: " + target_label )
 
-def read_function_types(src_filename_set, options):
+def read_function_types(asm_descrs, options):
     """Reads in function type information and stores it in a dict
 
     The dict has the following mapping:
@@ -323,6 +331,55 @@ def read_function_types(src_filename_set, options):
         print '\n',
 
     return funct_types
+
+def parse_cdi_metadata(asm_descr, funct_types, fptr_types, options):
+    with open(asm_descr.filename, 'r') as asm_file:
+        state = 'normal'
+        for line in asm_file:
+            if line == '# assembly\n':
+                break
+            elif state == 'normal' and '# typeinfo' in line:
+                if line.endswith('ftypes\n'):
+                    state = 'parsing ftypes'
+                elif line.endswith('fptypes\n'):
+                    state = 'parsing fptypes'
+
+            elif state == 'parsing ftypes':
+                if line == '\n':
+                    state = 'normal'
+                    continue
+                if options['--verbose']:
+                    print line[2:-1] # don't print newline or '#'
+                loc, mangled_str = line.split()[1], line.split()[2]
+                loc_list = loc.split(':')
+
+                funct_type = funct_cfg.FunctionType(mangled_str)
+                funct_type.src_line_num = int(loc_list[1])
+                funct_type.src_name = loc_list[3]
+                key = asm_descr.filename + '.' + funct_type.src_name
+                funct_types[key] = funct_type
+            elif state == 'parsing fptypes':
+                if line == '\n':
+                    state = 'normal'
+                    continue
+                if options['--verbose']:
+                    print line [2:-1] # don't print newline or '#'
+                loc, type_str = line.split()[1], line.split()[2]
+                loc_list = loc.split(':')
+
+                fp_type = funct_cfg.FunctionType(type_str)
+                fp_type.src_filename = loc_list[0]
+                fp_type.src_line_num = int(loc_list[1])
+                fp_type.enclosing_funct_name = loc_list[3]
+
+                key = asm_descr.filename + '.' + fp_type.enclosing_funct_name
+                if key in fptr_types:
+                    fptr_types[key].append(fp_type)
+                else:
+                    fptr_types[key] = [fp_type]
+                if options['--verbose']:
+                    print 'In ' + fp_type.enclosing_funct_name + ': ' + str(fp_type)
+
 
 def read_fptr_types(src_filename_set, options):
     """Reads in the function pointer type information and stores it in a dict
@@ -370,3 +427,4 @@ def read_fptr_types(src_filename_set, options):
 
 class NoTypeFile(IOError):
     pass
+
