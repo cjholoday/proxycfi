@@ -102,6 +102,12 @@ fake_object.write('# as_spec_no_io ' + as_spec_no_io + '\n')
 fake_object.write('# source_directory {}\n'.format(absolute_directory(
     input_asm_fname)))
 
+# Be nice and check that the user has option --save-temps on
+if input_asm_fname.startswith('/tmp/'):
+    eprint("cdi-as: error: assembly file is temporary. Be sure to use "
+            "--save-temps when compiling in CDI")
+    sys.exit(1)
+
 # Are we using C or C++? 
 if os.path.isfile(input_src_fname_stem + '.c'):
     language = 'c'
@@ -112,8 +118,9 @@ if os.path.isfile(input_src_fname_stem + '.c'):
 
 elif os.path.isfile(input_src_fname_stem + '.cpp'):
     language = 'cpp'
+    eprint("cdi-as: error: c++ is not currently supported for CDI")
+    sys.exit(1)
 else:
-    fake_object.write('# warning source_file_missing\n')
     eprint("cdi-as: error: source file for '" + input_asm_fname + "' cannot "
             "be found")
     sys.exit(1)
