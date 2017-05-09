@@ -1,0 +1,9 @@
+**/*.ftypes
+**/*.fptypes
+**/*.json
+**/output
+**/*.i
+**/*.o
+**/*.s
+**/out
+**/log.txt
