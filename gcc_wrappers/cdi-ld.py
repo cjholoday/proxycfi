@@ -43,8 +43,9 @@ class FakeObjectFile:
         self.has_missing_dep = False
         self.as_spec_no_io = ''
         with open(path, 'r') as fake_obj:
-            elf_signature = '\x7FELF' # TODO verify #<deff instead
+            elf_signature = '\x7FELF' # TODO verify #<deff> instead
             if fake_obj.read(4) == elf_signature:
+                fake_obj.seek(0)
                 raise NonDeferredObjectFile()
             fake_obj.seek(0)
 
@@ -82,7 +83,7 @@ class FakeObjectFile:
 
 
 class Archive:
-    def __init__(self, name):
+    def __init__(self, path):
         self.path = path
         self.fake_objs = []
         self.thin = False
@@ -288,7 +289,7 @@ class Linker:
             self.libstem = libstem
 
 
-def required_archive_objs(verbose_output):
+def required_archive_objs(verbose_output, cdi_archives):
     """Given output from --verbose, returns dict {archive path -> objs needed}"""
     objs_needed = dict()
     
@@ -296,15 +297,27 @@ def required_archive_objs(verbose_output):
     # characters are allowed after '.o' since some build systems do it
     matcher = re.compile(r'^\([^()\s]+\.a\)[^()\s]+\.o[^()\s]*$')
 
-    for line in verbose_output:
+    for line in verbose_output.split('\n'):
         if matcher.match(line):
+            print 'MATCHING LINE: ' + line
             end_paren_idx = line.find(')')
-            archive_path = os.path.realpath(line[1:end_paren_idx])
+            archive_path = ''
+            rel_archive_path = line[1:end_paren_idx]
+            try:
+                if rel_archive_path[:len('.cdi/')] == '.cdi/':
+                    archive_path = cdi_archives[rel_archive_path[len('.cdi/'):]]
+                else:
+                    archive_path = os.path.realpath(line[1:end_paren_idx])
+            except IndexError:
+                archive_path = os.path.realpath(line[1:end_paren_idx])
+
+            print archive_path
             obj_fname = line[end_paren_idx + 1:]
             try:
                 objs_needed[archive_path].append(obj_fname)
             except KeyError:
                 objs_needed[archive_path] = [obj_fname]
+    return objs_needed
 
 def get_archive_fake_objs(archive, objs_needed):
     try:
@@ -334,11 +347,18 @@ def get_archive_fake_objs(archive, objs_needed):
         os.chdir('..')
         for fname in obj_fnames:
             qualified_fname = '{}__{}'.format(trim_path(archive.path), fname)
+            if not qualified_fname.endswith('.fake.o'):
+                qualified_fname = basename(qualified_fname, '') + '.fake.o'
+            print ' '
+            print qualified_fname
+            print ' '
             subprocess.check_call(['mv', '.cdi/' + fname, '.cdi/' + qualified_fname])
             fake_objs.append(FakeObjectFile('.cdi/' + qualified_fname))
     return fake_objs
 
 def basename(string, cutoff):
+    if cutoff == '':
+        return string[:string.rfind('.')]
     return string[:string.rfind(cutoff)]
 
 def trim_path(path):
@@ -405,6 +425,12 @@ if archives != []:
     sys.stdout.flush()
 
     subprocess.check_call(['mkdir', '-p', '.cdi'])
+
+    # we need to create non-cdi archives (see above). Therefore we need
+    # to remember the association between the non-cdi archives and the cdi-archives
+    # so that we can conclude which objects are needed for each cdi-archive
+    cdi_archives = dict() # mapping [non-cdi archive path -> cdi archive path]
+
     os.chdir('.cdi')
     for archive in archives:
         lines = subprocess.check_output(['ar', 'xv', archive.path]).strip().split('\n')
@@ -419,6 +445,12 @@ if archives != []:
                 correct_fname = basename(fname, '.') + '.fake.o'
                 subprocess.check_call(['mv', fname, correct_fname])
                 subprocess.check_call(['as', correct_fname, '-o', fname])
+
+
+        # TODO handle case where two archives have the same path but diff names
+        assert trim_path(archive.path) not in cdi_archives
+        cdi_archives[trim_path(archive.path)] = archive.path
+
         subprocess.check_call(['ar', 'rc', trim_path(archive.path)] + fnames)
 
     # create spec for non-cdi compilation
@@ -444,15 +476,19 @@ if archives != []:
             subprocess.check_call(['rm', word])
             break
 
-    objs_needed = required_archive_objs(verbose_linker_output)
+    objs_needed = required_archive_objs(verbose_linker_output, cdi_archives)
+    print str(objs_needed)
     
     # construct fake objects from archives
     if objs_needed:
-        for archive in objs_needed.keys(): 
+        for archive_path in objs_needed.keys(): 
             try:
-                archive_fake_objs += get_archive_fake_objs(archive, objs_needed)
+                archive_fake_objs += get_archive_fake_objs(Archive(archive_path),
+                    objs_needed)
             except NonDeferredObjectFile:
-                unsafe_archives.append(archive)
+                print ("Unable to find objects needed from archive '{}'."
+                        " This archive will remain non-CDI".format(archive_path))
+                unsafe_archives.append(Archive(archive_path))
 
 
 fake_objs = explicit_fake_objs + archive_fake_objs

@@ -178,6 +178,8 @@ def build_indir_targets(cfg, src_filename_set, options):
     
     # associate function types with assembly functions (need to fix for C++)
     funct_types = read_function_types(src_filename_set, options)
+    print str(src_filename_set)
+    print str(funct_types.keys())
     for funct in cfg:
         funct.ftype = funct_types[funct.src_filename + '.' + funct.asm_name]
             
