@@ -305,6 +305,7 @@ class Linker:
 def required_archive_objs(verbose_output, cdi_archives):
     """Given output from --verbose, returns dict {archive path -> objs needed}"""
     objs_needed = dict()
+    print verbose_output
     
     # matching strings in the form '(libname.a)obj_name.o'
     # characters are allowed after '.o' since some build systems do it
@@ -350,6 +351,7 @@ def get_archive_fake_objs(archive, objs_needed):
         obj_fnames = objs_needed[archive.path]
         conflict_list = []
         try:
+            print "obj fnames: " + str(obj_fnames)
             subprocess.check_call(['ar', 'x', archive.path] + obj_fnames)
         except subprocess.CalledProcessError:
             eprint("cdi-ld: error: cannot extract '{}' from non-thin "
@@ -437,7 +439,10 @@ if archives != []:
     print '   Generating objects from archives...'
     sys.stdout.flush()
 
-    subprocess.check_call(['mkdir', '-p', '.cdi'])
+
+    # stale files in .cdi can cause trouble
+    subprocess.check_call(['rm', '-rf', '.cdi'])
+    subprocess.check_call(['mkdir', '.cdi'])
 
     # we need to create non-cdi archives (see above). Therefore we need
     # to remember the association between the non-cdi archives and the cdi-archives
