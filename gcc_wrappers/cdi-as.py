@@ -2,6 +2,7 @@
 import sys
 import subprocess
 import os
+import re
 from eprint import eprint
 
 AS_ARG_REQUIRED_OPTIONS = ['--debug-prefix-map', '--defsym', '-I', '-o']
@@ -168,6 +169,17 @@ for dep_fname in deps:
         fake_object.write('# warning no_type_info {}\n'.format(dep_fname))
 
 fake_object.write('# assembly\n')
+
+# write the assembly over to the object file. Also check if compiled with -g
+is_debug_mode = False
+debug_matcher = re.compile(r'^\t.file [0-9]+ ".*"$')
 with open(input_asm_fname, 'r') as asm:
-    fake_object.write(asm.read())
+    for line in asm:
+        if not is_debug_mode and debug_matcher.match(line):
+            is_debug_mode = True
+        fake_object.write(line)
+
+if not is_debug_mode:
+    eprint("cdi-as: error: debug mode disabled. Compile with -g")
+    sys.exit(1)
 

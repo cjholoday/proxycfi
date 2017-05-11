@@ -78,7 +78,7 @@ class FakeObjectFile:
                 elif command == 'as_spec':
                     self.as_spec = words[2:]
                 else:
-                    eprint("cdi-ld: warning: invalid command '{}' in "
+                    eprint("\ncdi-ld: warning: invalid command '{}' in "
                             " fake object '{}'".format(command, path))
 
 
@@ -141,7 +141,7 @@ class Linker:
                         else:
                             self.shared_lib_paths.append(lib_path)
                 except Linker.NoMatchingLibrary as err:
-                    eprint('cdi-ld: error: no matching library for -l{}'.format(
+                    eprint('\ncdi-ld: error: no matching library for -l{}'.format(
                         err.libstem))
                     sys.exit(1)
             elif word[0] != '-' and prev not in LD_ARG_REQUIRED_OPTIONS:
@@ -189,7 +189,7 @@ class Linker:
                     elif os.path.isfile(lib_path):
                         record.append(lib_path)
                     else:
-                        eprint("cdi-ld: error: library file doesn't exist: '{}'"
+                        eprint("\ncdi-ld: error: library file doesn't exist: '{}'"
                                 .format(lib_path))
                         sys.exit(1)
                 elif entry_type == self.entry_type.OBJECT:
@@ -354,7 +354,7 @@ def get_archive_fake_objs(archive, objs_needed):
             print "obj fnames: " + str(obj_fnames)
             subprocess.check_call(['ar', 'x', archive.path] + obj_fnames)
         except subprocess.CalledProcessError:
-            eprint("cdi-ld: error: cannot extract '{}' from non-thin "
+            eprint("\ncdi-ld: error: cannot extract '{}' from non-thin "
                     "archive '{}'"
                     .format( "' '".join(obj_fnames), archive.path))
             sys.exit(1)
@@ -413,7 +413,7 @@ for fname in linker.obj_fnames:
     try:
         explicit_fake_objs.append(FakeObjectFile(cdi_obj_name))
     except NonDeferredObjectFile:
-        eprint("cdi-ld: error: '{}' is not a deferred object file"
+        eprint("\ncdi-ld: error: '{}' is not a deferred object file"
                 .format(fname))
         sys.exit(1)
 
@@ -482,8 +482,13 @@ if archives != []:
                 ld_spec_unsafe_archives[i] = '.cdi/' + trim_path(lib_path)
 
     os.chdir('..')
-    verbose_linker_output = subprocess.check_output(['ld'] 
-            + ld_spec_unsafe_archives + ['--verbose'])
+    ld_command = ['ld'] + ld_spec_unsafe_archives + ['--verbose']
+    try:
+        verbose_linker_output = subprocess.check_output(ld_command)
+    except subprocess.CalledProcessError:
+        eprint("\nUnable to compile without CDI with command '{}'".format(
+            ' '.join(ld_command)))
+        sys.exit(1)
     outfile_next = False
 
     # remove executable since it is non-CDI compiled
@@ -519,18 +524,30 @@ cdi_ld_real_path = basename(cdi_ld_real_path, '/')
 converter_path = cdi_ld_real_path + '/../converter/gen_cdi.py'
 fake_obj_paths = [fake_obj.path for fake_obj in fake_objs]
 print 'fake obj paths: ' + ' '.join(fake_obj_paths)
-subprocess.check_call([converter_path] + CONVERTER_ARGS + fake_obj_paths)
+
+converter_command = [converter_path] + CONVERTER_ARGS + fake_obj_paths
+try:
+    subprocess.check_call([converter_path] + CONVERTER_ARGS + fake_obj_paths)
+except subprocess.CalledProcessError:
+    eprint("\nConversion to CDI assembly failed with command: '{}'".format(
+        ' '.join(converter_command)))
+    sys.exit(1)
+
 
 print 'Assembling cdi asm files...'
 sys.stdout.flush()
 
 for fake_obj in fake_objs:
-    print ' '.join(['as'] + fake_obj.as_spec_no_io
-            + [basename(fake_obj.path, '.fake.o') + '.cdi.s',
-                '-o', basename(fake_obj.path, '.fake.o') + '.cdi.o'])
-    subprocess.check_call(['as'] + fake_obj.as_spec_no_io
-            + [basename(fake_obj.path, '.fake.o') + '.cdi.s',
-                '-o', basename(fake_obj.path, '.fake.o') + '.cdi.o'])
+    cdi_asm_fname = basename(fake_obj.path, '.fake.o') + '.cdi.s'
+    cdi_obj_fname = basename(fake_obj.path, '.fake.o') + '.cdi.o'
+    gcc_as_command = (['as'] + fake_obj.as_spec_no_io + 
+            [cdi_asm_fname, '-o', cdi_obj_fname])
+    try:
+        subprocess.check_call(gcc_as_command)
+    except subprocess.CalledProcessError:
+        eprint("\nAssembling '{}' failed with command '{}'".format(
+            cdi_asm_fname, gcc_as_command))
+        sys.exit(1)
 
 # the fake objs need to be moved back to their original filename in case
 # another compilation wants to use them as well. This code ASSUMES that
