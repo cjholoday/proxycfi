@@ -305,7 +305,6 @@ class Linker:
 def required_archive_objs(verbose_output, cdi_archives):
     """Given output from --verbose, returns dict {archive path -> objs needed}"""
     objs_needed = dict()
-    print verbose_output
     
     # matching strings in the form '(libname.a)obj_name.o'
     # characters are allowed after '.o' since some build systems do it

@@ -37,27 +37,28 @@ def parse_as_spec(spec):
 
     return input_asm_fname, output_obj_fname, as_spec_no_io
 
-# Returns a list of dependencies of a .c source file
-# the source file itself is included in the list
+# Returns a list of dependencies (.c and .h filenames)
 def get_dependencies(fname):
-    # Remove GCC_EXEC_PREFIX from the environment for normal gcc
-    # This allows normal gcc to find the programs it needs
-    try:
-        normal_gcc_env = os.environ.copy()
-        del normal_gcc_env['GCC_EXEC_PREFIX']
-    except KeyError:
-        pass
+    source_fnames = []
+    header_fnames = []
+    is_debug_mode = False
+    dwarf_file_matcher = re.compile(r'^\t.file [0-9]+ ".*"$')
+    with open(input_asm_fname, 'r') as asm:
+        for line in asm:
+            if dwarf_file_matcher.match(line):
+                is_debug_mode = True
+                fname = line.split()[2].strip('"')
+                if fname.endswith('.h'):
+                    header_fnames.append(fname)
+                else:
+                    source_fnames.append(fname)
 
-    try:
-        # gcc may append '\' at the end of lines. don't return them
-        raw_dep_list = subprocess.check_output(['gcc', '-MM', fname],
-                stderr=subprocess.STDOUT, env=normal_gcc_env
-                ).split()[1:]
-        return [dep for dep in raw_dep_list if dep != '\\']
-    except subprocess.CalledProcessError as err:
-        raw_dep_list = subprocess.check_output(['gcc', '-MM', '-MG',
-            fname], env=normal_gcc_env).split()[1:]
-        raise MissingDependency([dep for dep in raw_dep_list if dep != '\\'])
+    if not is_debug_mode:
+        eprint("cdi-as: error: debug mode is disabled. Use '--save-temps', '-g',"
+                " and '-fno-jump-tables' when compiling with CDI")
+        sys.exit(1)
+
+    return (source_fnames, header_fnames)
 
 def absolute_directory(fname_path):
     fname_index = fname_path.rfind('/') + 1
@@ -103,42 +104,19 @@ fake_object.write('# as_spec_no_io ' + as_spec_no_io + '\n')
 fake_object.write('# source_directory {}\n'.format(absolute_directory(
     input_asm_fname)))
 
-# Be nice and check that the user has option --save-temps on
+# Be nice and check that the user enabled option --save-temps
 if input_asm_fname.startswith('/tmp/'):
-    eprint("cdi-as: error: assembly file is temporary. Be sure to use "
-            "--save-temps when compiling in CDI")
+    eprint("cdi-as: error: assembly file is temporary. Use '--save-temps', '-g',"
+            " and '-fno-jump-tables' when compiling with CDI")
     sys.exit(1)
 
-# Are we using C or C++? 
-if os.path.isfile(input_src_fname_stem + '.c'):
-    language = 'c'
-    if os.path.isfile(input_src_fname_stem + '.cpp'):
-        eprint("cdi-as: warning: '{}' and '{}' are both present. Assuming "
-                "language is C".format(input_src_fname_stem + '.c',
-                    input_src_fname_stem + '.cpp'))
+source_deps, header_deps = get_dependencies(input_asm_fname)
 
-elif os.path.isfile(input_src_fname_stem + '.cpp'):
-    language = 'cpp'
-    eprint("cdi-as: error: c++ is not currently supported for CDI")
-    sys.exit(1)
-else:
-    eprint("cdi-as: error: source file for '" + input_asm_fname + "' cannot "
-            "be found")
-    sys.exit(1)
-
-try:
-    deps = get_dependencies(input_src_fname_stem + '.' + language)
-except MissingDependency as err:
-    deps = err.dep_list
-    fake_object.write('# warning missing_dependency\n')
-    eprint("cdi-as: warning: missing dependency associated with '" + 
-        input_src_fname_stem + '.' + language)
-
-fake_object.write('# dependencies ' + ' '.join(deps) + '\n')
+fake_object.write('# dependencies ' + ' '.join(source_deps) + ' ' + ' '.join(header_deps) + '\n')
 
 # find the function and function pointer type information from dependencies
 # and place them in the fake object file
-for dep_fname in deps:
+for dep_fname in source_deps:
     dep_used = False
     if os.path.isfile(dep_fname + '.ftypes'):
         ftypes = open(dep_fname + '.ftypes', 'r') 
@@ -170,16 +148,6 @@ for dep_fname in deps:
 
 fake_object.write('# assembly\n')
 
-# write the assembly over to the object file. Also check if compiled with -g
-is_debug_mode = False
-debug_matcher = re.compile(r'^\t.file [0-9]+ ".*"$')
+# write the input assembly over to the fake object file.
 with open(input_asm_fname, 'r') as asm:
-    for line in asm:
-        if not is_debug_mode and debug_matcher.match(line):
-            is_debug_mode = True
-        fake_object.write(line)
-
-if not is_debug_mode:
-    eprint("cdi-as: error: debug mode disabled. Compile with -g")
-    sys.exit(1)
-
+    fake_object.write(''.join(asm.readlines()))
