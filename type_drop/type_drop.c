@@ -47,11 +47,26 @@ void cdi_print_funct_decl_info(FILE *typefile, tree funct_decl, location_t loc) 
     }
 
     /* (filename):(line_num):(col_num):(function_name) */
-    fprintf(typefile, "%s:%d:%d:%s ", 
-            DECL_SOURCE_FILE(funct_decl), 
-            DECL_SOURCE_LINE(funct_decl),
-            DECL_SOURCE_COLUMN(funct_decl),
+    fprintf(stderr, "Printing bare text works\n");
+    fflush(typefile);
+    fprintf(typefile, "%s:",
+            DECL_SOURCE_FILE(funct_decl));
+    fflush(typefile);
+    fprintf(typefile, "%d:",
+            DECL_SOURCE_LINE(funct_decl));
+    fflush(typefile);
+    fprintf(typefile, "%d:",
+            DECL_SOURCE_COLUMN(funct_decl));
+    fflush(typefile);
+    fprintf(typefile, "%s ",
             IDENTIFIER_POINTER(DECL_NAME(funct_decl)));
+    fflush(typefile);
+    //fprintf(typefile, "%s:%d:%d:%s ", 
+            //DECL_SOURCE_FILE(funct_decl), 
+            //DECL_SOURCE_LINE(funct_decl),
+            //DECL_SOURCE_COLUMN(funct_decl),
+            //IDENTIFIER_POINTER(DECL_NAME(funct_decl)));
+
 
     cdi_print_mangled_funct(typefile, funct_decl, loc);
     fputc('\n', typefile);
@@ -270,74 +285,71 @@ bool cdi_is_function_ahead(c_parser *parser) {
 static const char * const FTYPE_EXT = ".ftypes";
 static const char * const FPTYPE_EXT = ".fptypes";
 
-static FILE *cdi_ftype_file_ptr;
-static FILE *cdi_fptype_file_ptr;
+static FILE *cdi_ftype_file_ptr = NULL;
+static FILE *cdi_fptype_file_ptr = NULL;
 
-static char cdi_fptype_filename[100];
-static char cdi_ftype_filename[100];
+static char *cdi_fptype_filename = NULL;
+static char *cdi_ftype_filename = NULL;
 
-static FILE *cdi_get_typefile(FILE **, char *, const char *);
+static FILE *cdi_get_typefile(FILE **, char **, const char *);
 
 FILE *cdi_ftype_file() {
-    return cdi_get_typefile(&cdi_ftype_file_ptr, cdi_ftype_filename, FTYPE_EXT);
+    return cdi_get_typefile(&cdi_ftype_file_ptr, &cdi_ftype_filename, FTYPE_EXT);
 }
 
 FILE *cdi_fptype_file() {
-    return cdi_get_typefile(&cdi_fptype_file_ptr, cdi_fptype_filename, FPTYPE_EXT);
+    return cdi_get_typefile(&cdi_fptype_file_ptr, &cdi_fptype_filename, FPTYPE_EXT);
 }
 
-static bool file_exists(const char * filename);
+static bool file_exists(const char* filename);
 
 static FILE *cdi_get_typefile(
-    FILE **typefile_ptr, char *typefile_name, const char *extension) {
+    FILE **typefile_ptr, char **curr_typefile_name, const char *extension) {
 
-    const char *curr_filename = LOCATION_FILE(input_location);
+    char *old_typefile_name = *curr_typefile_name;
 
-    // Ensure enough space for extension
-    int curr_filename_len = strlen(curr_filename);
-    if (curr_filename_len > 90) { 
-        char msg[300];
-        sprintf(msg, "filename too long (%d/90 characters): %.200s",
-                curr_filename_len, curr_filename);
-        cdi_warning_at(UNKNOWN_LOCATION, msg);
-        return NULL;
-    }
+    // Construct the new typefile filename (e.g. main.c.ftypes)
+    int new_typefile_len = strlen(LOCATION_FILE(input_location)) + strlen(extension);
+    char *new_typefile_name = (char*)xmalloc(sizeof(char) * new_typefile_len);
+    strcpy(new_typefile_name, LOCATION_FILE(input_location));
+    strcpy(new_typefile_name + strlen(LOCATION_FILE(input_location)), extension);
+
+    fprintf(stderr, "typefile requested: %s\n", new_typefile_name);
 
     // check if we have the same filename as last time
-    if (!strncmp(typefile_name, curr_filename, curr_filename_len)
-            && !strcmp(typefile_name + curr_filename_len, extension)) {
+    if (old_typefile_name && !strcmp(old_typefile_name, new_typefile_name)) {
+        free(new_typefile_name);
         return *typefile_ptr;
     }
     else if (*typefile_ptr) {
         fclose(*typefile_ptr);
+        free(old_typefile_name);
+
+        old_typefile_name = NULL;
+        *typefile_ptr = NULL;
+        *curr_typefile_name = NULL;
     }
 
-    strcpy(typefile_name, curr_filename);
-    strcat(typefile_name, extension);
+    FILE *new_typefile = fopen(new_typefile_name, "w");
+    if (!new_typefile) {
+        char *msg_format = "cannot open '%s' for printing '%s' information";
 
-    // warn if .c file has already been processed
-    if (file_exists(typefile_name) && curr_filename_len >= 2
-                && typefile_name[curr_filename_len - 2] == '.'
-                && typefile_name[curr_filename_len - 1] == 'c') {
-        char msg[200];
-        sprintf(msg, "file already exists: '%.100s'. "
-                "overwriting it", typefile_name);
-        cdi_warning_at(UNKNOWN_LOCATION, msg);
-    }
-
-    FILE *new_typefile_ptr = fopen(typefile_name, "w");
-    if (!new_typefile_ptr) {
-        char msg[200];
-        if (sprintf(msg, "cannot open %.50s for printing function "
-                    "type information", typefile_name) < 0) {
-            strcpy(msg, "cannot open file for printing function pointer type "
-                "information");
+        // this will be a little too large but a couple extra chars doesn't hurt
+        char *msg = (char*)xmalloc(strlen(msg_format)
+                + strlen(new_typefile_name) + strlen(extension));
+        if (sprintf(msg, msg_format, new_typefile_name, extension) < 0) {
+            msg = "cannot open ftypes/fptypes file";
         }
         cdi_warning_at(UNKNOWN_LOCATION, msg);
+
+        free(msg);
+        free(new_typefile_name);
         return NULL;
     }
-
-    return *typefile_ptr = new_typefile_ptr;
+   
+    fprintf(stderr, "new typefile successfully opened\n");
+    *curr_typefile_name = new_typefile_name;
+    return *typefile_ptr = new_typefile;
 }
 
 void cdi_print_arg_types(FILE *typefile, tree funct_tree, location_t loc) {
