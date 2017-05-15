@@ -116,7 +116,7 @@ fake_object.write('# dependencies ' + ' '.join(source_deps) + ' ' + ' '.join(hea
 
 # find the function and function pointer type information from dependencies
 # and place them in the fake object file
-for dep_fname in source_deps:
+for dep_fname in source_deps + header_deps:
     dep_used = False
     if os.path.isfile(dep_fname + '.ftypes'):
         ftypes = open(dep_fname + '.ftypes', 'r') 
