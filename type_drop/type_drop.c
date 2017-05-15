@@ -309,8 +309,46 @@ static FILE *cdi_get_typefile(
     char *old_typefile_name = *curr_typefile_name;
 
     // Construct the new typefile filename (e.g. main.c.ftypes)
+    gcc_assert(strlen(LOCATION_FILE(input_location)) > 0);
     int new_typefile_len = strlen(LOCATION_FILE(input_location)) + strlen(extension);
-    char *new_typefile_name = (char*)xmalloc(sizeof(char) * new_typefile_len);
+
+    /*
+    char *test0 = (char*)xmalloc(10);
+    free(test0);
+    test0 = NULL;
+
+    char *test1 = (char*)xmalloc(10);
+    for (int i = 0; i < 10; i++) {
+        test1[i] = 'x';
+    }
+    free(test1);
+    test1 = NULL;
+
+    char *test2 = (char*)xmalloc(strlen(LOCATION_FILE(input_location)));
+    strcpy(test2, LOCATION_FILE(input_location));
+    for (int i = 0; i < strlen(LOCATION_FILE(input_location)); i++) {
+        test2[i] = 'x';
+    }
+    free(test2);
+    test2 = NULL;
+
+    char *test3 = (char*)xmalloc(new_typefile_len);
+    strcpy(test3, LOCATION_FILE(input_location));
+    strcpy(test3 + strlen(LOCATION_FILE(input_location)), extension);
+    free(test3);
+    test3 = NULL;
+
+    fprintf(stderr, "new_typefile_len=%d\n", new_typefile_len);
+    fprintf(stderr, "input file = '%s'\n", LOCATION_FILE(input_location));
+    fprintf(stderr, "input file len = %d\n", strlen(LOCATION_FILE(input_location)));
+    fprintf(stderr, "extension='%s'\n", extension);
+    fprintf(stderr, "test3='%s'\n", test3);
+    free(test3);
+    test3 = NULL;
+    */
+
+    // +1 for the null byte terminating the c-string
+    char *new_typefile_name = (char*)xmalloc(new_typefile_len + 1);
     strcpy(new_typefile_name, LOCATION_FILE(input_location));
     strcpy(new_typefile_name + strlen(LOCATION_FILE(input_location)), extension);
 
@@ -319,6 +357,7 @@ static FILE *cdi_get_typefile(
     // check if we have the same filename as last time
     if (old_typefile_name && !strcmp(old_typefile_name, new_typefile_name)) {
         free(new_typefile_name);
+        new_typefile_name = NULL;
         return *typefile_ptr;
     }
     else if (*typefile_ptr) {
@@ -329,23 +368,42 @@ static FILE *cdi_get_typefile(
         *typefile_ptr = NULL;
         *curr_typefile_name = NULL;
     }
+    /*
+    test3 = (char*)xmalloc(new_typefile_len);
+    strcpy(test3, LOCATION_FILE(input_location));
+    strcpy(test3 + strlen(LOCATION_FILE(input_location)), extension);
+    free(test3);
+    test3 = NULL;
+    */
 
     FILE *new_typefile = fopen(new_typefile_name, "w");
     if (!new_typefile) {
-        char *msg_format = "cannot open '%s' for printing '%s' information";
+        const char *msg_format = "cannot open '%s' for printing '%s' information";
 
         // this will be a little too large but a couple extra chars doesn't hurt
         char *msg = (char*)xmalloc(strlen(msg_format)
-                + strlen(new_typefile_name) + strlen(extension));
+                + new_typefile_len + strlen(extension) + 1);
         if (sprintf(msg, msg_format, new_typefile_name, extension) < 0) {
-            msg = "cannot open ftypes/fptypes file";
+            cdi_warning_at(UNKNOWN_LOCATION, "cannot open ftypes/fptypes file");
         }
-        cdi_warning_at(UNKNOWN_LOCATION, msg);
+        else {
+            cdi_warning_at(UNKNOWN_LOCATION, msg);
+        }
 
         free(msg);
         free(new_typefile_name);
+        msg = NULL;
+        new_typefile_name = NULL;
         return NULL;
     }
+
+    /*
+    test3 = (char*)xmalloc(new_typefile_len);
+    strcpy(test3, LOCATION_FILE(input_location));
+    strcpy(test3 + strlen(LOCATION_FILE(input_location)), extension);
+    free(test3);
+    test3 = NULL;
+    */
    
     fprintf(stderr, "new typefile successfully opened\n");
     *curr_typefile_name = new_typefile_name;
