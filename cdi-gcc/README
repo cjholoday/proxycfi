@@ -107,3 +107,6 @@ You should now be able to use cdi-gcc to compile as you would with gcc. I sugges
     cdi-gcc -g --save-temps -fno-jump-tables printf.c benchmark.c && ./a.out
 
 REMEMBER:  You must use -g,  --save-temps, and -fno-jump-tables whenever compiling with cdi-gcc.
+
+If you want to recompile gcc after making changes to c-parser.c, c-typeck.c, or type_drop.c then simply run cdi/tools/recompile_gcc.bash
+
