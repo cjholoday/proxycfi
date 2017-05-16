@@ -4,6 +4,8 @@ import operator
 from eprint import eprint
 import sys
 import os
+import re
+import copy
 
 def gen_cfg(asm_file_descrs, plt_sites, options):
     """Generate cfg from a list of asm files. Produce funct names for each description
@@ -186,12 +188,35 @@ def build_indir_targets(cfg, asm_file_descrs, options):
             raise
     
     # associate function types with assembly functions (need to fix for C++)
+    split_functs = []
     for funct in cfg:
         try:
             funct.ftype = funct_types[funct.asm_filename + '.' + funct.asm_name]
         except KeyError:
-            eprint("error: no type found for function '{}' from file '{}'"
-                    .format(funct.asm_name, funct.asm_filename))
+            # gcc may have split a function for better inlining see if this is
+            # the case. Otherwise, we have inadequate type information
+            function_part_matcher = re.compile(r'^[^\s0-9][^\s.]*\.part\.[0-9]*$')
+            if function_part_matcher.match(funct.asm_name):
+                split_functs.append(funct)
+            else:
+                eprint("error: no type found for function '{}' from file '{}'"
+                        .format(funct.asm_name, funct.asm_filename))
+                exit(1)
+
+    # gcc may split a function so that it is better inlined. These are the 
+    # resulting auto-generated funcitons. They should have the same type 
+    # signature as the original function, so we copy the information over
+    for funct in split_functs:
+        try:
+            parent_funct_asm_name = funct.asm_name.split('.')[0]
+
+            # deepcopy just in case (future additions could make it necessary)
+            funct.ftype = copy.deepcopy(cfg.funct(funct.asm_filename + '.' 
+                + parent_funct_asm_name).ftype)
+        except KeyError:
+            eprint("error: '{}' from file '{}' appears to have split from"
+                    " a function named '{}', but no such function can be found"
+                    .format(funct.asm_name, funct.asm_filename, parent_funct_asm_name))
             exit(1)
             
     for funct in cfg:
