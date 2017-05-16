@@ -4,9 +4,13 @@
  *
  ****************************************************************************/
 
+#define CDI_ENTER() printf("Entering %s:%s\n", __FILE__, __func__)
+#define CDI_EXIT()  printf("Exiting  %s:%s\n", __FILE__, __func__)
+
 static bool cdi_function_ahead = false;
 
 void cdi_warning_at(location_t loc, const char *msg) {
+    CDI_ENTER();
     if (loc) {
         cdi_print_loc(stderr, loc);
     }
@@ -15,14 +19,18 @@ void cdi_warning_at(location_t loc, const char *msg) {
     }
 
     fprintf(stderr, ": cdi warning: %s\n", msg);
+    CDI_EXIT();
 }
     
 void cdi_set_function_ahead(bool is_ahead) {
+    CDI_ENTER();
     cdi_function_ahead = is_ahead;
+    CDI_EXIT();
 }
 
 void
 cdi_print_loc(FILE *stream, location_t loc) {
+    CDI_ENTER();
     if (!stream) {
         return;
     }
@@ -36,10 +44,13 @@ cdi_print_loc(FILE *stream, location_t loc) {
     else {
         fprintf(stream, "?:%d:%d", loc_info.line, loc_info.column);
     }
+    CDI_EXIT();
 }
 
 void cdi_print_funct_decl_info(FILE *typefile, tree funct_decl, location_t loc) {
+    CDI_ENTER();
     if (!typefile) {
+        CDI_EXIT();
         return;
     }
     else if (!funct_decl) {
@@ -70,14 +81,18 @@ void cdi_print_funct_decl_info(FILE *typefile, tree funct_decl, location_t loc) 
 
     cdi_print_mangled_funct(typefile, funct_decl, loc);
     fputc('\n', typefile);
+    CDI_EXIT();
 }
 
 void cdi_print_fp_info(FILE *typefile, tree fp_tree, location_t loc) {
+    CDI_ENTER();
     if (!typefile || !cdi_function_ahead) {
+        CDI_EXIT();
         return;
     }
     else if (!fp_tree) {
         cdi_warning_at(loc, "NULL fp_tree passed into cdi_print_fp_type_info");
+        CDI_EXIT();
         return;
     }
 
@@ -91,9 +106,11 @@ void cdi_print_fp_info(FILE *typefile, tree fp_tree, location_t loc) {
 
     if (funct_tree == NULL_TREE) {
         cdi_warning_at(loc, "removing indirections on fptor yields NULL tree");
+        CDI_EXIT();
         return;
     }
     else if (TREE_CODE(funct_tree) != FUNCTION_TYPE) {
+        CDI_EXIT();
         return;
     }
 
@@ -111,14 +128,18 @@ void cdi_print_fp_info(FILE *typefile, tree fp_tree, location_t loc) {
 
     cdi_print_mangled_funct(typefile, funct_tree, loc);
     fputc('\n', typefile);
+    CDI_EXIT();
 }
 
 void cdi_print_mangled_funct(FILE *typefile, tree funct_tree, location_t loc) {
+    CDI_ENTER();
     if (!typefile) { 
+        CDI_EXIT();
         return;
     }
     else if (!funct_tree) {
         cdi_warning_at(loc, "attempted to mangle NULL_TREE. Skipping");
+        CDI_EXIT();
         return;
     }
     else if (TREE_CODE(funct_tree) != FUNCTION_TYPE
@@ -127,6 +148,7 @@ void cdi_print_mangled_funct(FILE *typefile, tree funct_tree, location_t loc) {
         sprintf(msg, "attempted to mangle a non-function. "
                 "Tree code: %.5d. Skipping", TREE_CODE(funct_tree));
         cdi_warning_at(loc, msg);
+        CDI_EXIT();
         return;
     }
 
@@ -150,14 +172,17 @@ void cdi_print_mangled_funct(FILE *typefile, tree funct_tree, location_t loc) {
         fprintf(typefile, "%lu%s", strlen(funct_name), funct_name);
     }
     cdi_print_arg_types(typefile, funct_tree, loc);
+    CDI_EXIT();
 }
 
 void cdi_print_type(FILE* stream, tree type, location_t loc) {
+    CDI_ENTER();
     if (TREE_CODE(type) == FUNCTION_TYPE) {
         fputc('F', stream);
         cdi_print_type(stream, TREE_TYPE(type), loc);
         cdi_print_arg_types(stream, type, loc);
         fputc('E', stream);
+        CDI_EXIT();
         return;
     }
 
@@ -177,6 +202,7 @@ void cdi_print_type(FILE* stream, tree type, location_t loc) {
         if (type == NULL_TREE) {
             cdi_warning_at(loc, "argument is an impossible pointer type");
             fputc('?', stream);
+            CDI_EXIT();
             return;
         }
     }
@@ -187,10 +213,12 @@ void cdi_print_type(FILE* stream, tree type, location_t loc) {
      */
     if (TREE_CODE(type) == FUNCTION_TYPE) {
         cdi_print_type(stream, type, loc);
+        CDI_EXIT();
         return;
     }
     else if (TREE_CODE(type) == ARRAY_TYPE) {
         cdi_print_type(stream, TYPE_POINTER_TO(TREE_TYPE(type)), loc);
+        CDI_EXIT();
         return;
     }
     else if (RECORD_OR_UNION_TYPE_P(type) || TREE_CODE(type) == ENUMERAL_TYPE) {
@@ -207,6 +235,7 @@ void cdi_print_type(FILE* stream, tree type, location_t loc) {
     else { 
         cdi_print_builtin_type(stream, type, loc);
     }
+    CDI_EXIT();
 }
 
 /*
@@ -223,11 +252,26 @@ void cdi_print_type(FILE* stream, tree type, location_t loc) {
  * it's best to go to the source file and directly check the next characters
  */
 bool cdi_is_function_ahead(c_parser *parser) {
+    CDI_ENTER();
+    location_t parser_loc = c_parser_peek_token(parser)->location;
+    expanded_location parser_loc_info = expand_location(parser_loc);
+    const char *filename = NULL;
+    if (parser_loc_info.file) {
+        filename = parser_loc_info.file;
+    }
+    else {
+        filename = "?";
+    }
+    fprintf(stderr, "pass5\n");
+    fprintf(stderr, "parser location: (%s, %d, %d)\n", 
+            filename, parser_loc_info.line, parser_loc_info.column);
+
     enum cpp_ttype ahead1_type = c_parser_peek_token(parser)->type;
     enum cpp_ttype ahead2_type = c_parser_peek_2nd_token(parser)->type;
 
     if (ahead1_type == CPP_OPEN_PAREN ||
             (ahead1_type == CPP_CLOSE_PAREN && ahead2_type == CPP_OPEN_PAREN)) {
+        CDI_EXIT();
         return true;
     }
     else if (ahead1_type == CPP_CLOSE_PAREN
@@ -238,6 +282,7 @@ bool cdi_is_function_ahead(c_parser *parser) {
         if (!loc_info.file) {
             cdi_warning_at(UNKNOWN_LOCATION, "couldn't find source file the parser is parsing."
                     " Ignoring this potential function pointer");
+            CDI_EXIT();
             return false;
         }
 
@@ -247,6 +292,7 @@ bool cdi_is_function_ahead(c_parser *parser) {
             sprintf(msg, "couldn't open %.100s for reading. ignoring possible"
                     "function pointer", loc_info.file);
             cdi_warning_at(UNKNOWN_LOCATION, msg);
+            CDI_EXIT();
             return false;
         }
 
@@ -275,9 +321,11 @@ bool cdi_is_function_ahead(c_parser *parser) {
         }
 
         fclose(src);
+        CDI_EXIT();
         return c == '(';
     }
     else {
+        CDI_EXIT();
         return false;
     }
 }
@@ -305,6 +353,7 @@ static bool file_exists(const char* filename);
 
 static FILE *cdi_get_typefile(
     FILE **typefile_ptr, char **curr_typefile_name, const char *extension) {
+    CDI_ENTER();
 
     char *old_typefile_name = *curr_typefile_name;
 
@@ -358,6 +407,7 @@ static FILE *cdi_get_typefile(
     if (old_typefile_name && !strcmp(old_typefile_name, new_typefile_name)) {
         free(new_typefile_name);
         new_typefile_name = NULL;
+        CDI_EXIT();
         return *typefile_ptr;
     }
     else if (*typefile_ptr) {
@@ -394,6 +444,7 @@ static FILE *cdi_get_typefile(
         free(new_typefile_name);
         msg = NULL;
         new_typefile_name = NULL;
+        CDI_EXIT();
         return NULL;
     }
 
@@ -407,16 +458,19 @@ static FILE *cdi_get_typefile(
    
     fprintf(stderr, "new typefile successfully opened\n");
     *curr_typefile_name = new_typefile_name;
+    CDI_EXIT();
     return *typefile_ptr = new_typefile;
 }
 
 void cdi_print_arg_types(FILE *typefile, tree funct_tree, location_t loc) {
+    CDI_ENTER();
     function_args_iterator iter;
     function_args_iter_init (&iter, funct_tree);
     tree arg_type = function_args_iter_cond (&iter);
 
     if (arg_type == NULL_TREE || arg_type == void_list_node) { 
         fputc('v', typefile);
+        CDI_EXIT();
         return;
     }
 
@@ -452,6 +506,7 @@ integer_type_codes[itk_none] =
 void
 cdi_print_builtin_type(FILE *stream, tree type, location_t loc)
 {
+    CDI_ENTER();
     if (TYPE_CANONICAL (type))
         type = TYPE_CANONICAL (type);
     switch (TREE_CODE (type))
@@ -529,6 +584,7 @@ iagain:
                     IDENTIFIER_POINTER(TYPE_IDENTIFIER(type));
                 if (!strcmp(type_literal, "__float128")) {
                     fputc('g', stream);
+                    CDI_EXIT();
                     return;
                 }
 
@@ -631,6 +687,7 @@ iagain:
             cdi_warning_at(loc, "printing unknown tree type");
             fprintf(stderr, "unknown tree code: %d\n", TREE_CODE(type));
     }
+    CDI_EXIT();
 }
 
 static bool file_exists(const char *filename) {
