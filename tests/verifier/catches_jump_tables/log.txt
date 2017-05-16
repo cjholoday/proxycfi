@@ -1,0 +1,238 @@
+main.c: In function ‘main’:
+main.c:5:13: warning: implicit declaration of function ‘printf’ [-Wimplicit-function-declaration]
+             printf("case 0");
+             ^
+main.c:5:13: warning: incompatible implicit declaration of built-in function ‘printf’
+main.c:5:13: note: include ‘<stdio.h>’ or provide a declaration of ‘printf’
+--INDIRECT JUMP--
+Insecure jump details: 
+	section: 	.text
+	function: 	main
+	site address: 	0x40054a
+	jump address: 	rax
+	message: 	Indirect Jmp/Jcc
+
+Traceback (most recent call last):
+  File "./../../../verifier/verify.py", line 498, in <module>
+    if verifier.judge():
+  File "./../../../verifier/verify.py", line 111, in judge
+    self.verify(main)
+  File "./../../../verifier/verify.py", line 39, in verify
+    self.plt_start_addr, self.plt_size, self.plt_entry_size)
+  File "./../../../verifier/verify.py", line 300, in inspect
+    function, hex(int(i.address)), i.op_str, 'Indirect Jmp/Jcc')
+__main__.IndirectJump
+typefile requested: main.c.ftypes
+new typefile successfully opened
+Printing bare text works
+pass5
+parser location: (main.c, 3, 15)
+pass5
+parser location: (main.c, 5, 19)
+main.c: In function ‘main’:
+main.c:5:13: warning: implicit declaration of function ‘printf’ [-Wimplicit-function-declaration]
+             printf("case 0");
+             ^~~~~~
+main.c:5:13: warning: incompatible implicit declaration of built-in function ‘printf’
+main.c:5:13: note: include ‘<stdio.h>’ or provide a declaration of ‘printf’
+pass5
+parser location: (main.c, 8, 19)
+pass5
+parser location: (main.c, 11, 19)
+pass5
+parser location: (main.c, 14, 19)
+pass5
+parser location: (main.c, 17, 19)
+pass5
+parser location: (main.c, 20, 19)
+pass5
+parser location: (main.c, 23, 19)
+pass5
+parser location: (main.c, 26, 19)
+pass5
+parser location: (main.c, 29, 19)
+pass5
+parser location: (main.c, 32, 19)
+pass5
+parser location: (main.c, 35, 19)
+pass5
+parser location: (main.c, 38, 19)
+pass5
+parser location: (main.c, 41, 19)
+pass5
+parser location: (main.c, 44, 19)
+Entering ../../gcc-6.1.0/gcc/c/cdi.c:cdi_get_typefile
+Exiting  ../../gcc-6.1.0/gcc/c/cdi.c:cdi_get_typefile
+Entering ../../gcc-6.1.0/gcc/c/cdi.c:cdi_print_funct_decl_info
+Entering ../../gcc-6.1.0/gcc/c/cdi.c:cdi_print_mangled_funct
+Entering ../../gcc-6.1.0/gcc/c/cdi.c:cdi_print_type
+Entering ../../gcc-6.1.0/gcc/c/cdi.c:cdi_print_builtin_type
+Exiting  ../../gcc-6.1.0/gcc/c/cdi.c:cdi_print_builtin_type
+Exiting  ../../gcc-6.1.0/gcc/c/cdi.c:cdi_print_type
+Entering ../../gcc-6.1.0/gcc/c/cdi.c:cdi_print_arg_types
+Exiting  ../../gcc-6.1.0/gcc/c/cdi.c:cdi_print_arg_types
+Exiting  ../../gcc-6.1.0/gcc/c/cdi.c:cdi_print_mangled_funct
+Exiting  ../../gcc-6.1.0/gcc/c/cdi.c:cdi_print_funct_decl_info
+Entering ../../gcc-6.1.0/gcc/c/cdi.c:cdi_is_function_ahead
+Exiting  ../../gcc-6.1.0/gcc/c/cdi.c:cdi_is_function_ahead
+Entering ../../gcc-6.1.0/gcc/c/cdi.c:cdi_set_function_ahead
+Exiting  ../../gcc-6.1.0/gcc/c/cdi.c:cdi_set_function_ahead
+Entering ../../gcc-6.1.0/gcc/c/cdi.c:cdi_is_function_ahead
+Exiting  ../../gcc-6.1.0/gcc/c/cdi.c:cdi_is_function_ahead
+Entering ../../gcc-6.1.0/gcc/c/cdi.c:cdi_set_function_ahead
+Exiting  ../../gcc-6.1.0/gcc/c/cdi.c:cdi_set_function_ahead
+Entering ../../gcc-6.1.0/gcc/c/cdi.c:cdi_is_function_ahead
+Exiting  ../../gcc-6.1.0/gcc/c/cdi.c:cdi_is_function_ahead
+Entering ../../gcc-6.1.0/gcc/c/cdi.c:cdi_set_function_ahead
+Exiting  ../../gcc-6.1.0/gcc/c/cdi.c:cdi_set_function_ahead
+Entering ../../gcc-6.1.0/gcc/c/cdi.c:cdi_is_function_ahead
+Exiting  ../../gcc-6.1.0/gcc/c/cdi.c:cdi_is_function_ahead
+Entering ../../gcc-6.1.0/gcc/c/cdi.c:cdi_set_function_ahead
+Exiting  ../../gcc-6.1.0/gcc/c/cdi.c:cdi_set_function_ahead
+Entering ../../gcc-6.1.0/gcc/c/cdi.c:cdi_is_function_ahead
+Exiting  ../../gcc-6.1.0/gcc/c/cdi.c:cdi_is_function_ahead
+Entering ../../gcc-6.1.0/gcc/c/cdi.c:cdi_set_function_ahead
+Exiting  ../../gcc-6.1.0/gcc/c/cdi.c:cdi_set_function_ahead
+Entering ../../gcc-6.1.0/gcc/c/cdi.c:cdi_is_function_ahead
+Exiting  ../../gcc-6.1.0/gcc/c/cdi.c:cdi_is_function_ahead
+Entering ../../gcc-6.1.0/gcc/c/cdi.c:cdi_set_function_ahead
+Exiting  ../../gcc-6.1.0/gcc/c/cdi.c:cdi_set_function_ahead
+Entering ../../gcc-6.1.0/gcc/c/cdi.c:cdi_is_function_ahead
+Exiting  ../../gcc-6.1.0/gcc/c/cdi.c:cdi_is_function_ahead
+Entering ../../gcc-6.1.0/gcc/c/cdi.c:cdi_set_function_ahead
+Exiting  ../../gcc-6.1.0/gcc/c/cdi.c:cdi_set_function_ahead
+Entering ../../gcc-6.1.0/gcc/c/cdi.c:cdi_is_function_ahead
+Exiting  ../../gcc-6.1.0/gcc/c/cdi.c:cdi_is_function_ahead
+Entering ../../gcc-6.1.0/gcc/c/cdi.c:cdi_set_function_ahead
+Exiting  ../../gcc-6.1.0/gcc/c/cdi.c:cdi_set_function_ahead
+Entering ../../gcc-6.1.0/gcc/c/cdi.c:cdi_is_function_ahead
+Exiting  ../../gcc-6.1.0/gcc/c/cdi.c:cdi_is_function_ahead
+Entering ../../gcc-6.1.0/gcc/c/cdi.c:cdi_set_function_ahead
+Exiting  ../../gcc-6.1.0/gcc/c/cdi.c:cdi_set_function_ahead
+Entering ../../gcc-6.1.0/gcc/c/cdi.c:cdi_is_function_ahead
+Exiting  ../../gcc-6.1.0/gcc/c/cdi.c:cdi_is_function_ahead
+Entering ../../gcc-6.1.0/gcc/c/cdi.c:cdi_set_function_ahead
+Exiting  ../../gcc-6.1.0/gcc/c/cdi.c:cdi_set_function_ahead
+Entering ../../gcc-6.1.0/gcc/c/cdi.c:cdi_is_function_ahead
+Exiting  ../../gcc-6.1.0/gcc/c/cdi.c:cdi_is_function_ahead
+Entering ../../gcc-6.1.0/gcc/c/cdi.c:cdi_set_function_ahead
+Exiting  ../../gcc-6.1.0/gcc/c/cdi.c:cdi_set_function_ahead
+Entering ../../gcc-6.1.0/gcc/c/cdi.c:cdi_is_function_ahead
+Exiting  ../../gcc-6.1.0/gcc/c/cdi.c:cdi_is_function_ahead
+Entering ../../gcc-6.1.0/gcc/c/cdi.c:cdi_set_function_ahead
+Exiting  ../../gcc-6.1.0/gcc/c/cdi.c:cdi_set_function_ahead
+Entering ../../gcc-6.1.0/gcc/c/cdi.c:cdi_is_function_ahead
+Exiting  ../../gcc-6.1.0/gcc/c/cdi.c:cdi_is_function_ahead
+Entering ../../gcc-6.1.0/gcc/c/cdi.c:cdi_set_function_ahead
+Exiting  ../../gcc-6.1.0/gcc/c/cdi.c:cdi_set_function_ahead
+Entering ../../gcc-6.1.0/gcc/c/cdi.c:cdi_is_function_ahead
+Exiting  ../../gcc-6.1.0/gcc/c/cdi.c:cdi_is_function_ahead
+Entering ../../gcc-6.1.0/gcc/c/cdi.c:cdi_set_function_ahead
+Exiting  ../../gcc-6.1.0/gcc/c/cdi.c:cdi_set_function_ahead
+Entering ../../gcc-6.1.0/gcc/c/cdi.c:cdi_is_function_ahead
+Exiting  ..pass5
+parser location: (main.c, 47, 19)
+pass5
+parser location: (main.c, 50, 19)
+pass5
+parser location: (main.c, 53, 19)
+pass5
+parser location: (main.c, 56, 19)
+pass5
+parser location: (main.c, 59, 19)
+pass5
+parser location: (main.c, 62, 19)
+pass5
+parser location: (main.c, 65, 19)
+/../gcc-6.1.0/gcc/c/cdi.c:cdi_is_function_ahead
+Entering ../../gcc-6.1.0/gcc/c/cdi.c:cdi_set_function_ahead
+Exiting  ../../gcc-6.1.0/gcc/c/cdi.c:cdi_set_function_ahead
+Entering ../../gcc-6.1.0/gcc/c/cdi.c:cdi_is_function_ahead
+Exiting  ../../gcc-6.1.0/gcc/c/cdi.c:cdi_is_function_ahead
+Entering ../../gcc-6.1.0/gcc/c/cdi.c:cdi_set_function_ahead
+Exiting  ../../gcc-6.1.0/gcc/c/cdi.c:cdi_set_function_ahead
+Entering ../../gcc-6.1.0/gcc/c/cdi.c:cdi_is_function_ahead
+Exiting  ../../gcc-6.1.0/gcc/c/cdi.c:cdi_is_function_ahead
+Entering ../../gcc-6.1.0/gcc/c/cdi.c:cdi_set_function_ahead
+Exiting  ../../gcc-6.1.0/gcc/c/cdi.c:cdi_set_function_ahead
+Entering ../../gcc-6.1.0/gcc/c/cdi.c:cdi_is_function_ahead
+Exiting  ../../gcc-6.1.0/gcc/c/cdi.c:cdi_is_function_ahead
+Entering ../../gcc-6.1.0/gcc/c/cdi.c:cdi_set_function_ahead
+Exiting  ../../gcc-6.1.0/gcc/c/cdi.c:cdi_set_function_ahead
+Entering ../../gcc-6.1.0/gcc/c/cdi.c:cdi_is_function_ahead
+Exiting  ../../gcc-6.1.0/gcc/c/cdi.c:cdi_is_function_ahead
+Entering ../../gcc-6.1.0/gcc/c/cdi.c:cdi_set_function_ahead
+Exiting  ../../gcc-6.1.0/gcc/c/cdi.c:cdi_set_function_ahead
+Entering ../../gcc-6.1.0/gcc/c/cdi.c:cdi_is_function_ahead
+Exiting  ../../gcc-6.1.0/gcc/c/cdi.c:cdi_is_function_ahead
+Entering ../../gcc-6.1.0/gcc/c/cdi.c:cdi_set_function_ahead
+Exiting  ../../gcc-6.1.0/gcc/c/cdi.c:cdi_set_function_ahead
+Entering ../../gcc-6.1.0/gcc/c/cdi.c:cdi_is_function_ahead
+Exiting  ../../gcc-6.1.0/gcc/c/cdi.c:cdi_is_function_ahead
+Entering ../../gcc-6.1.0/gcc/c/cdi.c:cdi_set_function_ahead
+Exiting  ../../gcc-6.1.0/gcc/c/cdi.c:cdi_set_function_ahead
+Entering ../../gcc-6.1.0/gcc/c/cdi.c:cdi_is_function_ahead
+Exiting  ../../gcc-6.1.0/gcc/c/cdi.c:cdi_is_function_ahead
+Entering ../../gcc-6.1.0/gcc/c/cdi.c:cdi_set_function_ahead
+Exiting  ../../gcc-6.1.0/gcc/c/cdi.c:cdi_set_function_ahead
+cdi-as: warning: no ftypes/fptypes found with: '<built-in>'
+creating fake obj file for 'main.s'
+finished creating fake obj file for 'main.s'
+--eh-frame-hdr -m elf_x86_64 -dynamic-linker /lib64/ld-linux-x86-64.so.2 -o out /usr/lib/x86_64-linux-gnu/crt1.o /usr/lib/x86_64-linux-gnu/crti.o /home/colton/research/cdi/cdi-gcc/dest/bin/../lib/gcc/x86_64-pc-linux-gnu/6.1.0/crtbegin.o -L/home/colton/research/cdi/cdi-gcc/dest/bin/../lib/gcc/x86_64-pc-linux-gnu/6.1.0 -L/home/colton/research/cdi/cdi-gcc/dest/bin/../lib/gcc -L/home/colton/research/cdi/cdi-gcc/dest/bin/../lib/gcc/x86_64-pc-linux-gnu/6.1.0/../../../../lib64 -L/lib/x86_64-linux-gnu -L/lib/../lib64 -L/usr/lib/x86_64-linux-gnu -L/home/colton/research/cdi/cdi-gcc/dest/bin/../lib/gcc/x86_64-pc-linux-gnu/6.1.0/../../.. main.o -lgcc --as-needed -lgcc_s --no-as-needed -lc -lgcc --as-needed -lgcc_s --no-as-needed /home/colton/research/cdi/cdi-gcc/dest/bin/../lib/gcc/x86_64-pc-linux-gnu/6.1.0/crtend.o /usr/lib/x86_64-linux-gnu/crtn.o
+Compiling normally to learn which objects are needed for archives...
+   Generating non-archive object files...
+   Generating objects from archives...
+MATCHING LINE: (/usr/lib/x86_64-linux-gnu/libc_nonshared.a)elf-init.oS
+/usr/lib/x86_64-linux-gnu/libc_nonshared.a
+{'/usr/lib/x86_64-linux-gnu/libc_nonshared.a': ['elf-init.oS']}
+obj fnames: ['elf-init.oS']
+ 
+libc_nonshared.a__elf-init.fake.o
+ 
+Unable to find objects needed from archive '/usr/lib/x86_64-linux-gnu/libc_nonshared.a'. This archive will remain non-CDI
+Converting asm files to cdi-asm files...
+main.fake.o.main
+main.fake.o.main
+main.fake.o.main
+main.fake.o.main
+main.fake.o.main
+main.fake.o.main
+main.fake.o.main
+main.fake.o.main
+main.fake.o.main
+main.fake.o.main
+main.fake.o.main
+main.fake.o.main
+main.fake.o.main
+main.fake.o.main
+main.fake.o.main
+main.fake.o.main
+main.fake.o.main
+main.fake.o.main
+main.fake.o.main
+main.fake.o.main
+main.fake.o.main
+main.fake.o.main
+main.fake.o.main
+main.fake.o.main
+main.fake.o.main
+main.fake.o.main
+main.fake.o.main
+main.fake.o.main
+main.fake.o.main
+main.fake.o.main
+main.fake.o.main
+main.fake.o.main
+main.fake.o.main
+main.fake.o.main
+main.fake.o.main
+main.fake.o.main
+main.fake.o.main
+main.fake.o.main
+main.fake.o.main
+main.fake.o.main
+main.fake.o.main
+main.fake.o.main
+fake obj paths: main.fake.o
+Assembling cdi asm files...
+Linking...

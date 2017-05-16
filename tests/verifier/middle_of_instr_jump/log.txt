@@ -1,0 +1,16 @@
+--MIDDLE OF INSTRUCTION JUMP--
+Insecure jump details: 
+	section: 	.text
+	function: 	main
+	site address: 	
+	jump address: 	0x40054c
+	message: 	the rogue jump goes back into main
+
+Traceback (most recent call last):
+  File "./../../../verifier/verify.py", line 498, in <module>
+    if verifier.judge():
+  File "./../../../verifier/verify.py", line 111, in judge
+    self.verify(main)
+  File "./../../../verifier/verify.py", line 80, in verify
+    'goes back into ' + function.name)
+__main__.MiddleOfInstructionJump
