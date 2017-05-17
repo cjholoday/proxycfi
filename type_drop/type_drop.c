@@ -115,25 +115,11 @@ void cdi_print_funct_decl_info(FILE *typefile, tree funct_decl, location_t loc) 
     }
 
     /* (filename):(line_num):(col_num):(function_name) */
-    fprintf(stderr, "Printing bare text works\n");
-    fflush(typefile);
-    fprintf(typefile, "%s:",
-            DECL_SOURCE_FILE(funct_decl));
-    fflush(typefile);
-    fprintf(typefile, "%d:",
-            DECL_SOURCE_LINE(funct_decl));
-    fflush(typefile);
-    fprintf(typefile, "%d:",
-            DECL_SOURCE_COLUMN(funct_decl));
-    fflush(typefile);
-    fprintf(typefile, "%s ",
+    fprintf(typefile, "%s:%d:%d:%s ", 
+            DECL_SOURCE_FILE(funct_decl), 
+            DECL_SOURCE_LINE(funct_decl),
+            DECL_SOURCE_COLUMN(funct_decl),
             IDENTIFIER_POINTER(DECL_NAME(funct_decl)));
-    fflush(typefile);
-    //fprintf(typefile, "%s:%d:%d:%s ", 
-            //DECL_SOURCE_FILE(funct_decl), 
-            //DECL_SOURCE_LINE(funct_decl),
-            //DECL_SOURCE_COLUMN(funct_decl),
-            //IDENTIFIER_POINTER(DECL_NAME(funct_decl)));
 
 
     cdi_print_mangled_funct(typefile, funct_decl, loc);
