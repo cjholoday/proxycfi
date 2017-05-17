@@ -4,8 +4,65 @@
  *
  ****************************************************************************/
 
-#define CDI_ENTER() printf("Entering %s:%s\n", __FILE__, __func__)
-#define CDI_EXIT()  printf("Exiting  %s:%s\n", __FILE__, __func__)
+/* A linked list for source filenames
+ * This is used to tell if a ftypes or fptypes file has already been opened
+ *
+ * While a hash table would be faster, it's more complicated. This solution will
+ * suffice for now. 99% of the time there will only be 1-2 typefiles open
+ */
+typedef struct LinkedList {
+    char *filename;
+    LinkedList *next;
+} Node;
+
+/*
+ * Returns a Node* with the given filename and type info designation
+ * Returns NULL if no such node exists
+ */
+Node *get_node(Node* head, const char *filename) {
+    if (!head) {
+        return NULL;
+    }
+    else if (!strcmp(head->filename, filename)) {
+        return head;
+    }
+    else {
+        return get_node(head->next, filename);
+    }
+}
+
+/*
+ * Adds a node to a linked list. Returns the head.
+ * If head is NULL, then add_node creates a new linked list
+ */
+Node *add_node(Node* head, char *filename) {
+    Node *new_node = (Node*)xmalloc(sizeof(Node));
+    new_node->filename = filename;
+    new_node->next = head;
+
+    return new_node;
+}
+
+void print_node_helper(FILE *stream, const Node *head) {
+    if (!head) {
+        fprintf(stream, ")\n");
+        return;
+    }
+
+    fprintf(stream, "%s ", head->filename);
+    print_node_helper(stream, head->next);
+}
+
+void print_list(FILE *stream, const Node *head) {
+    fprintf(stream, "( ");
+    print_node_helper(stream, head);
+}
+
+
+#define CDI_ENTER() 
+#define CDI_EXIT() 
+//#define CDI_ENTER() printf("Entering %s:%s\n", __FILE__, __func__)
+//#define CDI_EXIT()  printf("Exiting  %s:%s\n", __FILE__, __func__)
 
 static bool cdi_function_ahead = false;
 
@@ -262,7 +319,6 @@ bool cdi_is_function_ahead(c_parser *parser) {
     else {
         filename = "?";
     }
-    fprintf(stderr, "pass5\n");
     fprintf(stderr, "parser location: (%s, %d, %d)\n", 
             filename, parser_loc_info.line, parser_loc_info.column);
 
@@ -339,19 +395,25 @@ static FILE *cdi_fptype_file_ptr = NULL;
 static char *cdi_fptype_filename = NULL;
 static char *cdi_ftype_filename = NULL;
 
-static FILE *cdi_get_typefile(FILE **, char **, const char *);
+static Node *ftype_fnames_head = NULL;
+static Node *fptype_fnames_head = NULL;
+
+static FILE *cdi_get_typefile(Node **fnames_head,
+    FILE **typefile_ptr, char **curr_typefile_name, const char *extension);
 
 FILE *cdi_ftype_file() {
-    return cdi_get_typefile(&cdi_ftype_file_ptr, &cdi_ftype_filename, FTYPE_EXT);
+    return cdi_get_typefile(&ftype_fnames_head,
+            &cdi_ftype_file_ptr, &cdi_ftype_filename, FTYPE_EXT);
 }
 
 FILE *cdi_fptype_file() {
-    return cdi_get_typefile(&cdi_fptype_file_ptr, &cdi_fptype_filename, FPTYPE_EXT);
+    return cdi_get_typefile(&fptype_fnames_head,
+            &cdi_fptype_file_ptr, &cdi_fptype_filename, FPTYPE_EXT);
 }
 
 static bool file_exists(const char* filename);
 
-static FILE *cdi_get_typefile(
+static FILE *cdi_get_typefile(Node **fnames_head,
     FILE **typefile_ptr, char **curr_typefile_name, const char *extension) {
     CDI_ENTER();
 
@@ -361,47 +423,25 @@ static FILE *cdi_get_typefile(
     gcc_assert(strlen(LOCATION_FILE(input_location)) > 0);
     int new_typefile_len = strlen(LOCATION_FILE(input_location)) + strlen(extension);
 
-    /*
-    char *test0 = (char*)xmalloc(10);
-    free(test0);
-    test0 = NULL;
-
-    char *test1 = (char*)xmalloc(10);
-    for (int i = 0; i < 10; i++) {
-        test1[i] = 'x';
-    }
-    free(test1);
-    test1 = NULL;
-
-    char *test2 = (char*)xmalloc(strlen(LOCATION_FILE(input_location)));
-    strcpy(test2, LOCATION_FILE(input_location));
-    for (int i = 0; i < strlen(LOCATION_FILE(input_location)); i++) {
-        test2[i] = 'x';
-    }
-    free(test2);
-    test2 = NULL;
-
-    char *test3 = (char*)xmalloc(new_typefile_len);
-    strcpy(test3, LOCATION_FILE(input_location));
-    strcpy(test3 + strlen(LOCATION_FILE(input_location)), extension);
-    free(test3);
-    test3 = NULL;
-
-    fprintf(stderr, "new_typefile_len=%d\n", new_typefile_len);
-    fprintf(stderr, "input file = '%s'\n", LOCATION_FILE(input_location));
-    fprintf(stderr, "input file len = %d\n", strlen(LOCATION_FILE(input_location)));
-    fprintf(stderr, "extension='%s'\n", extension);
-    fprintf(stderr, "test3='%s'\n", test3);
-    free(test3);
-    test3 = NULL;
-    */
-
     // +1 for the null byte terminating the c-string
     char *new_typefile_name = (char*)xmalloc(new_typefile_len + 1);
     strcpy(new_typefile_name, LOCATION_FILE(input_location));
     strcpy(new_typefile_name + strlen(LOCATION_FILE(input_location)), extension);
 
     fprintf(stderr, "typefile requested: %s\n", new_typefile_name);
+
+    Node *node = get_node(*fnames_head, LOCATION_FILE(input_location));
+    if (node) {
+        fprintf(stderr, "'%s' node '%s' already in linked list\n", 
+                extension, node->filename);
+    }
+    else {
+        char *new_fname = (char*)xmalloc(strlen(LOCATION_FILE(input_location)) + 1);
+        strcpy(new_fname, LOCATION_FILE(input_location));
+        *fnames_head = add_node(*fnames_head, new_fname);
+    }
+    print_list(stderr, *fnames_head);
+    
 
     // check if we have the same filename as last time
     if (old_typefile_name && !strcmp(old_typefile_name, new_typefile_name)) {
@@ -418,13 +458,6 @@ static FILE *cdi_get_typefile(
         *typefile_ptr = NULL;
         *curr_typefile_name = NULL;
     }
-    /*
-    test3 = (char*)xmalloc(new_typefile_len);
-    strcpy(test3, LOCATION_FILE(input_location));
-    strcpy(test3 + strlen(LOCATION_FILE(input_location)), extension);
-    free(test3);
-    test3 = NULL;
-    */
 
     FILE *new_typefile = fopen(new_typefile_name, "w");
     if (!new_typefile) {
@@ -447,14 +480,6 @@ static FILE *cdi_get_typefile(
         CDI_EXIT();
         return NULL;
     }
-
-    /*
-    test3 = (char*)xmalloc(new_typefile_len);
-    strcpy(test3, LOCATION_FILE(input_location));
-    strcpy(test3 + strlen(LOCATION_FILE(input_location)), extension);
-    free(test3);
-    test3 = NULL;
-    */
    
     fprintf(stderr, "new typefile successfully opened\n");
     *curr_typefile_name = new_typefile_name;
