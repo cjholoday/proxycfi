@@ -188,7 +188,7 @@ def convert_return_site(site, funct, asm_line, asm_dest, cfg,
     for target_label, multiplicity in site.targets.iteritems():
         i = 1
         while i <= multiplicity:
-            sled_label = '"{}{}_{}"'.format(cdi_ret_prefix, target_label, str(i))
+            sled_label = '"{}{}_{}"'.format(cdi_ret_prefix, fix_label(target_label), str(i))
             ret_sled += '\tcmpq\t$' + sled_label + ', -8(%rsp)\n'
             ret_sled += '\tje\t' + sled_label + '\n'
             i += 1
