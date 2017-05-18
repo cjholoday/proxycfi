@@ -144,7 +144,7 @@ def convert_call_site(site, funct, asm_line, asm_dest,
         call_operand = arg_str.replace('*', '')
         times_fixed = increment_dict(funct.label_fixed_count, target_name)
 
-        return_label = '_CDI_' + target_name + '_TO_' + funct.uniq_label 
+        return_label = '_CDI_' + target_name + '_TO_' + return_target
         return_label += '_' + str(times_fixed)
 
         globl_decl = ''
