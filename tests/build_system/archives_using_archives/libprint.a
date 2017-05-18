@@ -1,15 +1,22 @@
 !<arch>
-print.o/        1494279537  1000  1000  100664  11416     `
+print.o/        1495138353  1000  1000  100664  13842     `
 #<deff>
 # as_spec --64 -o print.o print.s
 # as_spec_no_io --64 
-# source_directory /home/colton/research/cdi/tests/archives/basic
-# dependencies print.c
+# source_directory /home/colton/research/cdi/tests/build_system/archives_using_archives
+# dependencies print.c /home/colton/research/cdi/cdi-gcc/dest/lib/gcc/x86_64-pc-linux-gnu/6.1.0/include/stddef.h /usr/include/x86_64-linux-gnu/bits/types.h /usr/include/libio.h /usr/include/stdio.h /usr/include/x86_64-linux-gnu/bits/sys_errlist.h
 # typeinfo print.c.ftypes
 # print.c:3:6:print _CDIv_Z5printPc
+# print.c:7:6:other_print1 _CDIv_Z12other_print1Pc
+# print.c:11:6:other_print2 _CDIv_Z12other_print2Pc
 
 # typeinfo print.c.fptypes
 
+# warning no_type_info /home/colton/research/cdi/cdi-gcc/dest/lib/gcc/x86_64-pc-linux-gnu/6.1.0/include/stddef.h
+# warning no_type_info /usr/include/x86_64-linux-gnu/bits/types.h
+# warning no_type_info /usr/include/libio.h
+# warning no_type_info /usr/include/stdio.h
+# warning no_type_info /usr/include/x86_64-linux-gnu/bits/sys_errlist.h
 # assembly
 	.file	"print.c"
 	.text
@@ -46,6 +53,58 @@ print:
 	.cfi_endproc
 .LFE0:
 	.size	print, .-print
+	.section	.rodata
+.LC1:
+	.string	"wrong function"
+	.text
+	.globl	other_print1
+	.type	other_print1, @function
+other_print1:
+.LFB1:
+	.loc 1 7 0
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset 6, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register 6
+	subq	$16, %rsp
+	movq	%rdi, -8(%rbp)
+	.loc 1 8 0
+	movl	$.LC1, %edi
+	call	puts
+	.loc 1 9 0
+	nop
+	leave
+	.cfi_def_cfa 7, 8
+	ret
+	.cfi_endproc
+.LFE1:
+	.size	other_print1, .-other_print1
+	.globl	other_print2
+	.type	other_print2, @function
+other_print2:
+.LFB2:
+	.loc 1 11 0
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset 6, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register 6
+	subq	$16, %rsp
+	movq	%rdi, -8(%rbp)
+	.loc 1 12 0
+	movl	$.LC1, %edi
+	call	puts
+	.loc 1 13 0
+	nop
+	leave
+	.cfi_def_cfa 7, 8
+	ret
+	.cfi_endproc
+.LFE2:
+	.size	other_print2, .-other_print2
 .Letext0:
 	.file 2 "/home/colton/research/cdi/cdi-gcc/dest/lib/gcc/x86_64-pc-linux-gnu/6.1.0/include/stddef.h"
 	.file 3 "/usr/include/x86_64-linux-gnu/bits/types.h"
@@ -54,15 +113,15 @@ print:
 	.file 6 "/usr/include/x86_64-linux-gnu/bits/sys_errlist.h"
 	.section	.debug_info,"",@progbits
 .Ldebug_info0:
-	.long	0x328
+	.long	0x380
 	.value	0x4
 	.long	.Ldebug_abbrev0
 	.byte	0x8
 	.uleb128 0x1
-	.long	.LASF54
-	.byte	0xc
-	.long	.LASF55
 	.long	.LASF56
+	.byte	0xc
+	.long	.LASF57
+	.long	.LASF58
 	.quad	.Ltext0
 	.quad	.Letext0-.Ltext0
 	.long	.Ldebug_line0
@@ -310,7 +369,7 @@ print:
 	.byte	0xc4
 	.byte	0
 	.uleb128 0xb
-	.long	.LASF57
+	.long	.LASF59
 	.byte	0x4
 	.byte	0x96
 	.uleb128 0x8
@@ -362,7 +421,7 @@ print:
 	.byte	0x13
 	.byte	0
 	.uleb128 0xe
-	.long	.LASF58
+	.long	.LASF60
 	.uleb128 0xf
 	.long	.LASF46
 	.byte	0x4
@@ -416,7 +475,43 @@ print:
 	.byte	0x1b
 	.long	0x2f3
 	.uleb128 0x12
-	.long	.LASF59
+	.long	.LASF54
+	.byte	0x1
+	.byte	0xb
+	.quad	.LFB2
+	.quad	.LFE2-.LFB2
+	.uleb128 0x1
+	.byte	0x9c
+	.long	0x32f
+	.uleb128 0x13
+	.string	"str"
+	.byte	0x1
+	.byte	0xb
+	.long	0x8f
+	.uleb128 0x2
+	.byte	0x91
+	.sleb128 -24
+	.byte	0
+	.uleb128 0x12
+	.long	.LASF55
+	.byte	0x1
+	.byte	0x7
+	.quad	.LFB1
+	.quad	.LFE1-.LFB1
+	.uleb128 0x1
+	.byte	0x9c
+	.long	0x35b
+	.uleb128 0x13
+	.string	"str"
+	.byte	0x1
+	.byte	0x7
+	.long	0x8f
+	.uleb128 0x2
+	.byte	0x91
+	.sleb128 -24
+	.byte	0
+	.uleb128 0x14
+	.long	.LASF61
 	.byte	0x1
 	.byte	0x3
 	.quad	.LFB0
@@ -655,6 +750,8 @@ print:
 	.uleb128 0x18
 	.uleb128 0x2116
 	.uleb128 0x19
+	.uleb128 0x1
+	.uleb128 0x13
 	.byte	0
 	.byte	0
 	.uleb128 0x13
@@ -670,6 +767,29 @@ print:
 	.uleb128 0x13
 	.uleb128 0x2
 	.uleb128 0x18
+	.byte	0
+	.byte	0
+	.uleb128 0x14
+	.uleb128 0x2e
+	.byte	0x1
+	.uleb128 0x3f
+	.uleb128 0x19
+	.uleb128 0x3
+	.uleb128 0xe
+	.uleb128 0x3a
+	.uleb128 0xb
+	.uleb128 0x3b
+	.uleb128 0xb
+	.uleb128 0x27
+	.uleb128 0x19
+	.uleb128 0x11
+	.uleb128 0x1
+	.uleb128 0x12
+	.uleb128 0x7
+	.uleb128 0x40
+	.uleb128 0x18
+	.uleb128 0x2116
+	.uleb128 0x19
 	.byte	0
 	.byte	0
 	.byte	0
@@ -692,7 +812,9 @@ print:
 	.string	"_IO_buf_end"
 .LASF28:
 	.string	"_old_offset"
-.LASF55:
+.LASF58:
+	.string	"/home/colton/research/cdi/tests/build_system/archives_using_archives"
+.LASF57:
 	.string	"print.c"
 .LASF23:
 	.string	"_IO_save_end"
@@ -704,12 +826,14 @@ print:
 	.string	"sizetype"
 .LASF33:
 	.string	"_offset"
-.LASF54:
+.LASF56:
 	.string	"GNU C11 6.1.0 -mtune=generic -march=x86-64 -g -fno-jump-tables"
 .LASF17:
 	.string	"_IO_write_ptr"
 .LASF12:
 	.string	"_flags"
+.LASF55:
+	.string	"other_print1"
 .LASF19:
 	.string	"_IO_buf_base"
 .LASF24:
@@ -718,8 +842,6 @@ print:
 	.string	"_IO_read_end"
 .LASF51:
 	.string	"stderr"
-.LASF56:
-	.string	"/home/colton/research/cdi/tests/archives/basic"
 .LASF32:
 	.string	"_lock"
 .LASF6:
@@ -728,7 +850,7 @@ print:
 	.string	"_cur_column"
 .LASF48:
 	.string	"_IO_2_1_stderr_"
-.LASF58:
+.LASF60:
 	.string	"_IO_FILE_plus"
 .LASF45:
 	.string	"_pos"
@@ -784,10 +906,12 @@ print:
 	.string	"_IO_backup_base"
 .LASF49:
 	.string	"stdin"
-.LASF59:
+.LASF61:
 	.string	"print"
 .LASF27:
 	.string	"_flags2"
+.LASF54:
+	.string	"other_print2"
 .LASF39:
 	.string	"_mode"
 .LASF15:
@@ -806,7 +930,7 @@ print:
 	.string	"stdout"
 .LASF47:
 	.string	"_IO_2_1_stdout_"
-.LASF57:
+.LASF59:
 	.string	"_IO_lock_t"
 	.ident	"GCC: (GNU) 6.1.0"
 	.section	.note.GNU-stack,"",@progbits
