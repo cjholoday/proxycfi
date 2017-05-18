@@ -312,7 +312,6 @@ def required_archive_objs(verbose_output, cdi_archives):
 
     for line in verbose_output.split('\n'):
         if matcher.match(line):
-            print 'MATCHING LINE: ' + line
             end_paren_idx = line.find(')')
             archive_path = ''
             rel_archive_path = line[1:end_paren_idx]
@@ -324,7 +323,6 @@ def required_archive_objs(verbose_output, cdi_archives):
             except IndexError:
                 archive_path = os.path.realpath(line[1:end_paren_idx])
 
-            print archive_path
             obj_fname = line[end_paren_idx + 1:]
             try:
                 objs_needed[archive_path].append(obj_fname)
@@ -348,9 +346,7 @@ def get_archive_fake_objs(archive, objs_needed):
             fake_objs.append(FakeObjectFile(corrected_fname))
     elif archive.path in objs_needed.keys():
         obj_fnames = objs_needed[archive.path]
-        conflict_list = []
         try:
-            print "obj fnames: " + str(obj_fnames)
             subprocess.check_call(['ar', 'x', archive.path] + obj_fnames)
         except subprocess.CalledProcessError:
             eprint("\ncdi-ld: error: cannot extract '{}' from non-thin "
@@ -363,9 +359,6 @@ def get_archive_fake_objs(archive, objs_needed):
             qualified_fname = '{}__{}'.format(trim_path(archive.path), fname)
             if not qualified_fname.endswith('.fake.o'):
                 qualified_fname = basename(qualified_fname, '') + '.fake.o'
-            print ' '
-            print qualified_fname
-            print ' '
             subprocess.check_call(['mv', '.cdi/' + fname, '.cdi/' + qualified_fname])
             fake_objs.append(FakeObjectFile('.cdi/' + qualified_fname))
     return fake_objs
@@ -395,7 +388,6 @@ class NonDeferredObjectFile(Exception):
 ########################################################################
 
 ld_spec = sys.argv[1:]
-print ' '.join(ld_spec)
 
 linker = Linker(ld_spec)
 linker.parse_spec()
@@ -435,7 +427,7 @@ if archives != []:
         subprocess.call(['as', fake_obj.path, '-o', 
             fake_obj.path[:-1 * len('.fake.o')] + '.o'] + fake_obj.as_spec_no_io)
 
-    print '   Generating objects from archives...'
+    print '   Finding needed objects from archives: '
     sys.stdout.flush()
 
 
@@ -499,30 +491,29 @@ if archives != []:
             break
 
     objs_needed = required_archive_objs(verbose_linker_output, cdi_archives)
-    print str(objs_needed)
+    for archive_path in objs_needed.keys():
+        print '        {} - {}'.format(archive_path, ' '.join(objs_needed[archive_path]))
     
     # construct fake objects from archives
-    if objs_needed:
-        for archive_path in objs_needed.keys(): 
-            try:
-                archive_fake_objs += get_archive_fake_objs(Archive(archive_path),
-                    objs_needed)
-            except NonDeferredObjectFile:
-                print ("Unable to find objects needed from archive '{}'."
-                        " This archive will remain non-CDI".format(archive_path))
-                unsafe_archives.append(Archive(archive_path))
+    for archive_path in objs_needed.keys(): 
+        try:
+            archive_fake_objs += get_archive_fake_objs(Archive(archive_path),
+                objs_needed)
+        except NonDeferredObjectFile:
+            print ("        Unable to find objects from archive '{}'."
+                    " It will remain non-CDI".format(archive_path))
+            unsafe_archives.append(Archive(archive_path))
 
 
 fake_objs = explicit_fake_objs + archive_fake_objs
 
-print 'Converting asm files to cdi-asm files...'
 sys.stdout.flush()
 
 cdi_ld_real_path = subprocess.check_output(['readlink', '-f', sys.argv[0]])
 cdi_ld_real_path = basename(cdi_ld_real_path, '/')
 converter_path = cdi_ld_real_path + '/../converter/gen_cdi.py'
 fake_obj_paths = [fake_obj.path for fake_obj in fake_objs]
-print 'fake obj paths: ' + ' '.join(fake_obj_paths)
+print 'Converting fake objects to cdi-asm files: ' + ' '.join(fake_obj_paths)
 
 converter_command = [converter_path] + CONVERTER_ARGS + fake_obj_paths
 try:

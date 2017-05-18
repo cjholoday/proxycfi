@@ -302,8 +302,6 @@ def write_rlts(cfg, plt_sites, asm_dest, sled_id_faucet, options):
             cdi_ret_prefix = '_CDI_' + fix_label(sl_funct_uniq_label)
             i = 1
             while i <= multiplicity[(sl_funct_uniq_label, rlt_target)]:
-                print rlt_target
-                print fix_label(rlt_target)
                 sled_label = '"{}_TO_{}_{}"'.format(cdi_ret_prefix, fix_label(rlt_target) , str(i))
                 if options['--shared-library']:
                     # rbp is restored after the jump equal (je)
