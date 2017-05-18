@@ -384,75 +384,68 @@ static char *cdi_ftype_filename = NULL;
 static Node *ftype_fnames_head = NULL;
 static Node *fptype_fnames_head = NULL;
 
-static FILE *cdi_get_typefile(Node **fnames_head,
-    FILE **typefile_ptr, char **curr_typefile_name, const char *extension);
+static Node *open_ftype_node = NULL;
+static Node *open_fptype_node = NULL;
+
+static FILE *cdi_get_typefile(Node **fnames_head, Node **open_node, 
+        FILE **curr_typefile, const char *extension);
 
 FILE *cdi_ftype_file() {
-    return cdi_get_typefile(&ftype_fnames_head,
-            &cdi_ftype_file_ptr, &cdi_ftype_filename, FTYPE_EXT);
+    return cdi_get_typefile(&ftype_fnames_head, &open_ftype_node,
+            &cdi_ftype_file_ptr, FTYPE_EXT);
 }
 
 FILE *cdi_fptype_file() {
-    return cdi_get_typefile(&fptype_fnames_head,
-            &cdi_fptype_file_ptr, &cdi_fptype_filename, FPTYPE_EXT);
+    return cdi_get_typefile(&fptype_fnames_head, &open_fptype_node,
+            &cdi_fptype_file_ptr, FPTYPE_EXT);
 }
 
 static bool file_exists(const char* filename);
 
-static FILE *cdi_get_typefile(Node **fnames_head,
-    FILE **typefile_ptr, char **curr_typefile_name, const char *extension) {
+static FILE *cdi_get_typefile(Node **fnames_head, Node **open_node, 
+        FILE **curr_typefile, const char *extension) {
     CDI_ENTER();
 
-    char *old_typefile_name = *curr_typefile_name;
+    fprintf(stderr, "typefile requested: %s%s\n", LOCATION_FILE(input_location),
+            extension);
 
-    // Construct the new typefile filename (e.g. main.c.ftypes)
-    gcc_assert(strlen(LOCATION_FILE(input_location)) > 0);
-    int new_typefile_len = strlen(LOCATION_FILE(input_location)) + strlen(extension);
+    if (*curr_typefile) {
+        if (!strcmp((*open_node)->filename, LOCATION_FILE(input_location))) {
+            return *curr_typefile;
+        }
+        fclose(*curr_typefile);
+        *curr_typefile = NULL;
+        *open_node = NULL;
+    }
 
-    // +1 for the null byte terminating the c-string
-    char *new_typefile_name = (char*)xmalloc(new_typefile_len + 1);
-    strcpy(new_typefile_name, LOCATION_FILE(input_location));
-    strcpy(new_typefile_name + strlen(LOCATION_FILE(input_location)), extension);
-
-    fprintf(stderr, "typefile requested: %s\n", new_typefile_name);
-
-    Node *node = get_node(*fnames_head, LOCATION_FILE(input_location));
-    if (node) {
+    char *file_mode = NULL;
+    Node *typefile_node = get_node(*fnames_head, LOCATION_FILE(input_location));
+    if (typefile_node) {
         fprintf(stderr, "'%s' node '%s' already in linked list\n", 
-                extension, node->filename);
+                extension, typefile_node->filename);
+        file_mode = "a";
     }
     else {
         char *new_fname = (char*)xmalloc(strlen(LOCATION_FILE(input_location)) + 1);
         strcpy(new_fname, LOCATION_FILE(input_location));
-        *fnames_head = add_node(*fnames_head, new_fname);
+        typefile_node = *fnames_head = add_node(*fnames_head, new_fname);
+        file_mode = "w";
     }
     print_list(stderr, *fnames_head);
-    
 
-    // check if we have the same filename as last time
-    if (old_typefile_name && !strcmp(old_typefile_name, new_typefile_name)) {
-        free(new_typefile_name);
-        new_typefile_name = NULL;
-        CDI_EXIT();
-        return *typefile_ptr;
-    }
-    else if (*typefile_ptr) {
-        fclose(*typefile_ptr);
-        free(old_typefile_name);
+    // +1 for the terminating null byte
+    char *typefile_name = (char*)xmalloc(
+            strlen(typefile_node->filename) + strlen(extension) + 1);
+    sprintf(typefile_name, "%s%s", typefile_node->filename, extension);
 
-        old_typefile_name = NULL;
-        *typefile_ptr = NULL;
-        *curr_typefile_name = NULL;
-    }
-
-    FILE *new_typefile = fopen(new_typefile_name, "w");
+    FILE *new_typefile = *curr_typefile = fopen(typefile_name, file_mode);
     if (!new_typefile) {
         const char *msg_format = "cannot open '%s' for printing '%s' information";
 
         // this will be a little too large but a couple extra chars doesn't hurt
         char *msg = (char*)xmalloc(strlen(msg_format)
-                + new_typefile_len + strlen(extension) + 1);
-        if (sprintf(msg, msg_format, new_typefile_name, extension) < 0) {
+                + strlen(typefile_name) + strlen(extension) + 1);
+        if (sprintf(msg, msg_format, typefile_name, extension) < 0) {
             cdi_warning_at(UNKNOWN_LOCATION, "cannot open ftypes/fptypes file");
         }
         else {
@@ -460,17 +453,15 @@ static FILE *cdi_get_typefile(Node **fnames_head,
         }
 
         free(msg);
-        free(new_typefile_name);
-        msg = NULL;
-        new_typefile_name = NULL;
-        CDI_EXIT();
-        return NULL;
     }
+    else {
+        *open_node = typefile_node;
+    }
+    
+    free(typefile_name);
    
-    fprintf(stderr, "new typefile successfully opened\n");
-    *curr_typefile_name = new_typefile_name;
     CDI_EXIT();
-    return *typefile_ptr = new_typefile;
+    return new_typefile;
 }
 
 void cdi_print_arg_types(FILE *typefile, tree funct_tree, location_t loc) {
