@@ -242,7 +242,7 @@ def convert_plt_site(site, asm_line, funct, asm_dest):
         funct.plt_call_multiplicity[(site.targets[0], funct.uniq_label)] = 1
 
     # create label for RLT to return to
-    rlt_return_label = ('_CDI_{}_TO_{}_{}'
+    rlt_return_label = ('"_CDI_{}_TO_{}_{}"'
             .format(fix_label(site.targets[0]), fix_label(funct.uniq_label), 
                 str(funct.plt_call_multiplicity[(site.targets[0], funct.uniq_label)])))
 
@@ -304,7 +304,7 @@ def write_rlts(cfg, plt_sites, asm_dest, sled_id_faucet, options):
             while i <= multiplicity[(sl_funct_uniq_label, rlt_target)]:
                 print rlt_target
                 print fix_label(rlt_target)
-                sled_label = '{}_TO_{}_{}'.format(cdi_ret_prefix, fix_label(rlt_target) , str(i))
+                sled_label = '"{}_TO_{}_{}"'.format(cdi_ret_prefix, fix_label(rlt_target) , str(i))
                 if options['--shared-library']:
                     # rbp is restored after the jump equal (je)
                     rlt_entry += '\tlea\t' + sled_label + '(%rip), %rbp\n'

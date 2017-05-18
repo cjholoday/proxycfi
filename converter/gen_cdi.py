@@ -45,6 +45,6 @@ if __name__ == "__main__":
 
     plt_sites = []
     cfg = gen_cfg(asm_file_descrs, plt_sites, options)
-    cfg.print_json_to('cdi_cfg.json')
+    # cfg.print_json_to('cdi_cfg.json')
 
     gen_cdi_asm(cfg, asm_file_descrs, plt_sites, options)
