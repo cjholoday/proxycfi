@@ -453,6 +453,7 @@ restore_original_objects_fptr = restore_original_objects
 # Otherwise fatal_error cannot restore them on error in this brief window
 for fname in linker.obj_fnames:
     try:
+        cdi_obj_name = basename(fname, '.') + '.fake.o'
         explicit_fake_objs.append(FakeObjectFile(cdi_obj_name))
     except NonDeferredObjectFile:
         fatal_error("'{}' is not a deferred object file".format(fname))
