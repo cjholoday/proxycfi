@@ -6,6 +6,14 @@ from eprint import eprint
 import re
 import copy
 
+ld_spec = sys.argv[1:]
+
+def fatal_error(message):
+    eprint('\n----------------------------------------------\n'
+            'cdi-ld: error: {}'.format(message))
+    eprint('\nSpec passed to cdi-ld.py: {}'.format(' '.join(ld_spec)))
+    sys.exit(1)
+
 CONVERTER_ARGS = []
 
 LD_ARG_REQUIRED_OPTIONS = ['-m', '-o', '-a', '-audit', '-A', '-b', '-c', '--depaudit', '-P', '-e', '--exclude-libs', '--exclude-modules-for-implib', '-f', '-F', '-G', '-h', '-l', '-L', '-O', '-R', '-T', '-dT', '-u', '-y', '-Y', '-z', '-assert', '-z', '--exclude-symbols', '--heap', '--image-base', '--major-image-version', '--major-os-version', '--major-subsystem-version', '--minor-image-version', '--minor-os-version', '--minor-subsystem-version', '--output-def', '--out-implib', '--dll-search-prefix', '--stack', '--subsystem', '--bank-window', '--got']
@@ -141,9 +149,8 @@ class Linker:
                         else:
                             self.shared_lib_paths.append(lib_path)
                 except Linker.NoMatchingLibrary as err:
-                    eprint('\ncdi-ld: error: no matching library for -l{}'.format(
-                        err.libstem))
-                    sys.exit(1)
+                    fatal_error('no matching library for -l{}'.format(err.libstem))
+
             elif word[0] != '-' and prev not in LD_ARG_REQUIRED_OPTIONS:
                 # three valid possibilities: object file, shared lib, archive
                 record = None
@@ -189,9 +196,8 @@ class Linker:
                     elif os.path.isfile(lib_path):
                         record.append(lib_path)
                     else:
-                        eprint("\ncdi-ld: error: library file doesn't exist: '{}'"
+                        fatal_error("library file doesn't exist: '{}'"
                                 .format(lib_path))
-                        sys.exit(1)
                 elif entry_type == self.entry_type.OBJECT:
                     # TODO: handle crt1.o properly
                     if (trim_path(word) == 'crt1.o' 
@@ -265,7 +271,7 @@ class Linker:
         try:
             subprocess.check_call(['ld'] + spec)
         except subprocess.CalledProcessError:
-            eprint("\ncdi-ld: calling 'ld' with the following spec failed:\n\n{}"
+            fatal_error("calling 'ld' with the following spec failed:\n\n{}"
                     .format(' '.join(spec)))
 
     def gen_lib_search_dirs(self):
@@ -349,10 +355,8 @@ def get_archive_fake_objs(archive, objs_needed):
         try:
             subprocess.check_call(['ar', 'x', archive.path] + obj_fnames)
         except subprocess.CalledProcessError:
-            eprint("\ncdi-ld: error: cannot extract '{}' from non-thin "
-                    "archive '{}'"
+            fatal_error("cannot extract '{}' from non-thin archive '{}'"
                     .format( "' '".join(obj_fnames), archive.path))
-            sys.exit(1)
 
         os.chdir('..')
         for fname in obj_fnames:
@@ -379,6 +383,8 @@ def trim_path(path):
 
 class NonDeferredObjectFile(Exception):
     pass
+
+
     
 ########################################################################
 # cdi-ld: a cdi wrapper for the gnu linker 'ld'
@@ -386,8 +392,6 @@ class NonDeferredObjectFile(Exception):
 #   files to real, cdi-compliant object files, and runs the gnu linker on them
 #
 ########################################################################
-
-ld_spec = sys.argv[1:]
 
 linker = Linker(ld_spec)
 linker.parse_spec()
@@ -404,9 +408,7 @@ for fname in linker.obj_fnames:
     try:
         explicit_fake_objs.append(FakeObjectFile(cdi_obj_name))
     except NonDeferredObjectFile:
-        eprint("\ncdi-ld: error: '{}' is not a deferred object file"
-                .format(fname))
-        sys.exit(1)
+        fatal_error("'{}' is not a deferred object file".format(fname))
 
 # only the needed object files are included from a given archive. Hence, we must
 # check which of the objects are needed for every archive. Instead of coding this
@@ -477,9 +479,8 @@ if archives != []:
     try:
         verbose_linker_output = subprocess.check_output(ld_command)
     except subprocess.CalledProcessError:
-        eprint("\nUnable to compile without CDI with command '{}'".format(
-            ' '.join(ld_command)))
-        sys.exit(1)
+        fatal_error("Unable to compile without CDI using linker command '{}'"
+                .format(' '.join(ld_command)))
     outfile_next = False
 
     # remove executable since it is non-CDI compiled
@@ -519,9 +520,8 @@ converter_command = [converter_path] + CONVERTER_ARGS + fake_obj_paths
 try:
     subprocess.check_call([converter_path] + CONVERTER_ARGS + fake_obj_paths)
 except subprocess.CalledProcessError:
-    eprint("\nConversion to CDI assembly failed with command: '{}'".format(
+    fatal_error("Conversion to CDI assembly failed with command: '{}'".format(
         ' '.join(converter_command)))
-    sys.exit(1)
 
 
 print 'Assembling cdi asm files...'
@@ -535,9 +535,8 @@ for fake_obj in fake_objs:
     try:
         subprocess.check_call(gcc_as_command)
     except subprocess.CalledProcessError:
-        eprint("\nAssembling '{}' failed with command '{}'".format(
+        fatal_error("Assembling '{}' failed with command '{}'".format(
             cdi_asm_fname, gcc_as_command))
-        sys.exit(1)
 
 # the fake objs need to be moved back to their original filename in case
 # another compilation wants to use them as well. This code ASSUMES that
