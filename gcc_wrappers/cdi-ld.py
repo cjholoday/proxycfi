@@ -106,8 +106,7 @@ class Linker:
         self.spec = spec
         self.lib_search_dirs = self.gen_lib_search_dirs()
         self.entry_type = enum(OBJECT='object', ARCHIVE='archive', OMIT='omit',
-                SHARED_LIB='shared_lib', NORMAL='normal',
-                LIBSTEM='libstem') # libstem is '-lm' or the 'm' in '-l m'
+                SHARED_LIB='shared_lib', NORMAL='normal', DUPLICATE='duplicate')
         self.cdi_options = []
         self.cdi_test = ''
 
@@ -131,11 +130,10 @@ class Linker:
 
         # indices that shouldn't be included in cdi spec
         self.bad_spec_indices = [] 
-        
 
         prev = ''
         for i, word in enumerate(self.spec):
-
+            # print str(((i, word)))
             if word[:2] == '-l' and word != '-l':
                 prev = '-l'
                 word = word[2:]
@@ -146,12 +144,15 @@ class Linker:
                     # don't allow duplicate archives/shared-libs
                     if (lib_path in self.archive_paths
                             or lib_path in self.shared_lib_paths):
-                        self.entry_types.append(self.entry_type.OMIT)
+                        self.entry_types.append(self.entry_type.DUPLICATE)
+                        self.spec[i] = '-g'
                     else:
-                        self.entry_types.append(self.entry_type.LIBSTEM)
+                        self.spec[i] = lib_path
                         if lib_path[-2:] == '.a':
+                            self.entry_types.append(self.entry_type.ARCHIVE)
                             self.archive_paths.append(lib_path)
                         else:
+                            self.entry_types.append(self.entry_type.SHARED_LIB)
                             self.shared_lib_paths.append(lib_path)
                 except Linker.NoMatchingLibrary as err:
                     fatal_error('no matching library for -l{}'.format(err.libstem))
@@ -219,23 +220,26 @@ class Linker:
                     lib_path = os.path.realpath(word)
                     if (lib_path in self.archive_paths
                             or lib_path in self.shared_lib_paths):
-                        self.entry_types[-1] = self.entry_type.OMIT
+                        self.entry_types[-1] = self.entry_type.DUPLICATE
+                        self.spec[i] = '-g'
                     elif os.path.isfile(lib_path):
                         record.append(lib_path)
                     else:
                         fatal_error("library file doesn't exist: '{}'"
                                 .format(lib_path))
                 elif entry_type == self.entry_type.OBJECT:
-                    # TODO: handle crt1.o properly
+                    # TODO: handle these objects properly
                     if (trim_path(word) == 'crt1.o' 
                             or trim_path(word) == 'crti.o'
                             or trim_path(word) == 'crtbegin.o'
                             or trim_path(word) == 'crtend.o'
-                            or trim_path(word) == 'crtn.o'):
+                            or trim_path(word) == 'crtn.o'
+                            or trim_path(word) == 'crtbeginS.o'):
                         self.entry_types[-1] = self.entry_type.NORMAL
                     else:
                         record.append(word)
             elif word == '-l':
+                self.spec[i] = '-g'
                 self.entry_types.append(self.entry_type.OMIT)
             else:
                 self.entry_types.append(self.entry_type.NORMAL)
@@ -250,27 +254,15 @@ class Linker:
         cdi_abort_added = False
         cdi_spec = []
         for i, word in enumerate(self.spec):
-            is_libstem_archive = False
-            if self.entry_types[i] == self.entry_type.LIBSTEM:
-                if word[:2] == '-l':
-                    word = word[2:]
-                lib_path = self.find_lib(word)
-                if lib_path[-2:] == '.a':
-                    is_libstem_archive = True
-                    word = lib_path
-                else:
-                    cdi_spec.append(lib_path)
-                    continue
-
             if self.entry_types[i] == self.entry_type.OBJECT:
                 # add cdi_abort.cdi.o with the other object files
                 # it's possible we could put this at the beginning or end
-                # but it's less likely to cause an error here
+                # of the spec but it's less likely to cause an error here
                 if not cdi_abort_added:
                     cdi_spec.append('/usr/local/cdi/cdi_abort.cdi.o')
                     cdi_abort_added = True
                 cdi_spec.append(basename(word, '.o') + '.cdi.o')
-            elif self.entry_types[i] == self.entry_type.ARCHIVE or is_libstem_archive:
+            elif self.entry_types[i] == self.entry_type.ARCHIVE:
                 try:
                     qualified_obj_fnames = []
                     for obj_fname in required_objs[os.path.realpath(word)]:
@@ -281,6 +273,7 @@ class Linker:
                         # any files in the compilation directory. Furthermore,
                         # the extracted object files are prefixed with the archive
                         # from which they came so that there aren't naming collisions
+                        # among the archive objects
                         qualified_obj_fname = ('.cdi/' + trim_path(word) 
                                 + '__' + basename(obj_fname, '') + '.cdi.o')
                         qualified_obj_fnames.append(qualified_obj_fname)
@@ -423,6 +416,7 @@ class NonDeferredObjectFile(Exception):
 linker = Linker(ld_spec)
 linker.parse_spec()
 
+
 converter_args = []
 if linker.cdi_test:
     converter_args += ['--test', linker.cdi_test]
@@ -518,10 +512,6 @@ if archives != []:
     for i, entry in enumerate(linker.spec):
         if linker.entry_types[i] == linker.entry_type.ARCHIVE:
             ld_spec_unsafe_archives[i] = '.cdi/' + trim_path(linker.spec[i])
-        elif linker.entry_types[i] == linker.entry_type.LIBSTEM:
-            lib_path = linker.find_lib(entry)
-            if lib_path[-2:] == '.a':
-                ld_spec_unsafe_archives[i] = '.cdi/' + trim_path(lib_path)
 
     os.chdir('..')
     ld_command = ['ld'] + ld_spec_unsafe_archives + ['--verbose']
