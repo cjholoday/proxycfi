@@ -6,9 +6,9 @@
 test_categories=$(find . -maxdepth 1 -type d -not -name .)
 
 for category in $test_categories; do
-    echo "---------------------------------------------------"
+    echo "==================================================="
     echo "Running '${category:2}' tests"
-    echo "---------------------------------------------------"
+    echo "==================================================="
 
     cd "$category"
     ./run_tests.bash
