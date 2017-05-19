@@ -32,11 +32,17 @@ if __name__ == "__main__":
     parser.add_argument('-sl', '--shared-library', action='store_true',
             help='if set, generate code for use as a CDI shared library',
             dest='--shared-library')
+    # TODO implement this functionality
+    parser.add_argument('-t', '--test', action='store', 
+            metavar='/path/to/file1.c:funct1 /path/to/file2.c:funct2',
+            help='tells the converter to set the return address of funct1 to funct2+offset\n'
+            'format: /path/to/file1.c:funct1 /path/to/file2.c:funct2+offset',
+            dest='--test')
 
     options = vars(parser.parse_args(sys.argv[1:]))
     if options.get('--help'):
         sys.exit(0)
-
+    
     asm_filenames = options['asm_filenames']
     asm_file_descrs = []
     for filename in asm_filenames:

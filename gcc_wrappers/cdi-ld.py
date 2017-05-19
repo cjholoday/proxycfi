@@ -8,13 +8,15 @@ import copy
 
 ld_spec = sys.argv[1:]
 
+restore_original_objects_fptr = None
 def fatal_error(message):
     eprint('\n----------------------------------------------\n'
             'cdi-ld: error: {}'.format(message))
     eprint('\nSpec passed to cdi-ld.py: {}'.format(' '.join(ld_spec)))
+    if restore_original_objects_fptr:
+        restore_original_objects_fptr()
     sys.exit(1)
-
-CONVERTER_ARGS = []
+ 
 
 LD_ARG_REQUIRED_OPTIONS = ['-m', '-o', '-a', '-audit', '-A', '-b', '-c', '--depaudit', '-P', '-e', '--exclude-libs', '--exclude-modules-for-implib', '-f', '-F', '-G', '-h', '-l', '-L', '-O', '-R', '-T', '-dT', '-u', '-y', '-Y', '-z', '-assert', '-z', '--exclude-symbols', '--heap', '--image-base', '--major-image-version', '--major-os-version', '--major-subsystem-version', '--minor-image-version', '--minor-os-version', '--minor-subsystem-version', '--output-def', '--out-implib', '--dll-search-prefix', '--stack', '--subsystem', '--bank-window', '--got']
 
@@ -106,6 +108,8 @@ class Linker:
         self.entry_type = enum(OBJECT='object', ARCHIVE='archive', OMIT='omit',
                 SHARED_LIB='shared_lib', NORMAL='normal',
                 LIBSTEM='libstem') # libstem is '-lm' or the 'm' in '-l m'
+        self.cdi_options = []
+        self.cdi_test = ''
 
     def parse_spec(self):
         """Extracts info from the spec and stores it in object variables
@@ -131,6 +135,7 @@ class Linker:
 
         prev = ''
         for i, word in enumerate(self.spec):
+
             if word[:2] == '-l' and word != '-l':
                 prev = '-l'
                 word = word[2:]
@@ -150,41 +155,63 @@ class Linker:
                             self.shared_lib_paths.append(lib_path)
                 except Linker.NoMatchingLibrary as err:
                     fatal_error('no matching library for -l{}'.format(err.libstem))
+            elif word.startswith('--cdi-options='):
+                self.options = word[len('--cdi-options='):].split(' ')
+                if '--spec' in self.options:
+                    print ' '.join(ld_spec)
+                    sys.exit(0)
 
+                # set this entry in the spec so that ld will work when 
+                # the spec is used to compile without CDI. -g is ignored by
+                # ld so this effectively deletes this entry
+                self.spec[i] = '-g'
+                self.entry_types.append(self.entry_type.OMIT)
+            elif word.startswith('--cdi-test='):
+                self.cdi_test = word[len('--cdi-test='):]
+                self.spec[i] = '-g'
+                self.entry_types.append(self.entry_type.OMIT)
             elif word[0] != '-' and prev not in LD_ARG_REQUIRED_OPTIONS:
                 # three valid possibilities: object file, shared lib, archive
                 record = None
                 entry_type = None
-                with open(word, 'rb') as mystery_file:
-                    discriminator = mystery_file.read(7) # TODO handle exception
-                    if discriminator[:len('\x7FELF')] == '\x7FELF':
-                        # use elf header to find type of elf file
-                        mystery_file.seek(16)
-                        e_type = mystery_file.read(1)
-                        if e_type == '\x00': # no type
-                            assert False # TODO: error message
-                        elif e_type == '\x01': # relocatable
-                            entry_type = self.entry_type.OBJECT
-                            record = self.obj_fnames
-                        elif e_type == '\x02': # executable
-                            assert False # TODO: error message
-                        elif e_type == '\x03': # shared object file
-                            entry_type = self.entry_type.SHARED_LIB
-                            record = self.shared_lib_paths
-                        elif e_type == '\x04': # core file
-                            assert False # TODO: error message
-                        else:
-                            print repr(e_type)
-                            assert False # TODO: error message
-                    elif discriminator == '!<arch>':
-                        entry_type = self.entry_type.ARCHIVE
-                        record = self.archive_paths
-                    elif discriminator == '#<deff>':
+                try:
+                    mystery_file = open(word, 'rb')
+                except IOError:
+                    fatal_error("non existent file '{}' passed to linker"
+                            .format(word))
+
+                discriminator = mystery_file.read(7) # TODO handle exception
+                if discriminator.startswith('\x7FELF'):
+                    # use elf header to find type of elf file
+                    mystery_file.seek(16)
+                    e_type = mystery_file.read(1)
+                    if e_type == '\x00': # no type
+                        fatal_error('linker passed elf file with e_type=NULL')
+                    elif e_type == '\x01': # relocatable
                         entry_type = self.entry_type.OBJECT
                         record = self.obj_fnames
+                    elif e_type == '\x02': # executable
+                        fatal_error('executable passed to linker')
+                    elif e_type == '\x03': # shared object file
+                        entry_type = self.entry_type.SHARED_LIB
+                        record = self.shared_lib_paths
+                    elif e_type == '\x04': # core file
+                        fatal_error('core file passed to linker')
                     else:
-                        print mystery_file.name
-                        assert False # TODO error message (not obj, lib, arch)
+                        fatal_error("linker passed elf file with undefined"
+                                " e_type: {}".format(repr(e_type)))
+                elif discriminator == '!<arch>':
+                    entry_type = self.entry_type.ARCHIVE
+                    record = self.archive_paths
+                elif discriminator == '#<deff>':
+                    entry_type = self.entry_type.OBJECT
+                    record = self.obj_fnames
+                else:
+                    entry_type = self.entry_type.NORMAL
+                    eprint("cdi-ld: warning: unknown file type passed to "
+                            "linker. It will be treated as a linker script:"
+                            " '{}'".format(mystery_file.name))
+                mystery_file.close()
 
                 self.entry_types.append(entry_type)
                 if (entry_type == self.entry_type.ARCHIVE 
@@ -396,6 +423,10 @@ class NonDeferredObjectFile(Exception):
 linker = Linker(ld_spec)
 linker.parse_spec()
 
+converter_args = []
+if linker.cdi_test:
+    converter_args += ['--test', linker.cdi_test]
+
 archives = []
 for path in linker.archive_paths:
     archives.append(Archive(path))
@@ -409,6 +440,17 @@ for fname in linker.obj_fnames:
         explicit_fake_objs.append(FakeObjectFile(cdi_obj_name))
     except NonDeferredObjectFile:
         fatal_error("'{}' is not a deferred object file".format(fname))
+
+# the fake objs need to be moved back to their original filename in case
+# another compilation wants to use them as well. This code ASSUMES that
+# linker.obj_fnames and explicit_fake_objs correspond index to index
+#
+# This is called on error or at the end of cdi-ld
+def restore_original_objects():
+    for i, fake_obj in enumerate(explicit_fake_objs):
+        subprocess.check_call(['mv', fake_obj.path, linker.obj_fnames[i]])
+
+restore_original_objects_fptr = restore_original_objects
 
 # only the needed object files are included from a given archive. Hence, we must
 # check which of the objects are needed for every archive. Instead of coding this
@@ -516,11 +558,11 @@ converter_path = cdi_ld_real_path + '/../converter/gen_cdi.py'
 fake_obj_paths = [fake_obj.path for fake_obj in fake_objs]
 print 'Converting fake objects to cdi-asm files: ' + ' '.join(fake_obj_paths)
 
-converter_command = [converter_path] + CONVERTER_ARGS + fake_obj_paths
+converter_command = [converter_path] + converter_args + fake_obj_paths
 try:
-    subprocess.check_call([converter_path] + CONVERTER_ARGS + fake_obj_paths)
+    subprocess.check_call(converter_command)
 except subprocess.CalledProcessError:
-    fatal_error("Conversion to CDI assembly failed with command: '{}'".format(
+    fatal_error("conversion to CDI assembly failed with command: '{}'".format(
         ' '.join(converter_command)))
 
 
@@ -538,14 +580,11 @@ for fake_obj in fake_objs:
         fatal_error("Assembling '{}' failed with command '{}'".format(
             cdi_asm_fname, gcc_as_command))
 
-# the fake objs need to be moved back to their original filename in case
-# another compilation wants to use them as well. This code ASSUMES that
-# linker.obj_fnames and explicit_fake_objs correspond index to index
-for i, fake_obj in enumerate(explicit_fake_objs):
-    subprocess.check_call(['mv', fake_obj.path, linker.obj_fnames[i]])
 
 print 'Linking...'
 sys.stdout.flush()
 cdi_spec = linker.get_cdi_spec(objs_needed)
 linker.link(cdi_spec)
+
+restore_original_objects()
 
