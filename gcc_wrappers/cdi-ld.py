@@ -436,12 +436,8 @@ explicit_fake_objs = []
 for fname in linker.obj_fnames:
     cdi_obj_name = basename(fname, '.') + '.fake.o'
     subprocess.check_call(['mv', fname, cdi_obj_name])
-    try:
-        explicit_fake_objs.append(FakeObjectFile(cdi_obj_name))
-    except NonDeferredObjectFile:
-        fatal_error("'{}' is not a deferred object file".format(fname))
 
-# the fake objs need to be moved back to their original filename in case
+# the fake objs will need to be moved back to their original filename in case
 # another compilation wants to use them as well. This code ASSUMES that
 # linker.obj_fnames and explicit_fake_objs correspond index to index
 #
@@ -450,7 +446,17 @@ def restore_original_objects():
     for i, fake_obj in enumerate(explicit_fake_objs):
         subprocess.check_call(['mv', fake_obj.path, linker.obj_fnames[i]])
 
+# used by fatal_error()
 restore_original_objects_fptr = restore_original_objects
+
+# All fake objects must be constructed after the filenames are moved
+# Otherwise fatal_error cannot restore them on error in this brief window
+for fname in linker.obj_fnames:
+    try:
+        explicit_fake_objs.append(FakeObjectFile(cdi_obj_name))
+    except NonDeferredObjectFile:
+        fatal_error("'{}' is not a deferred object file".format(fname))
+
 
 # only the needed object files are included from a given archive. Hence, we must
 # check which of the objects are needed for every archive. Instead of coding this
