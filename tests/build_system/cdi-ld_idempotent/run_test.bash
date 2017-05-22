@@ -7,7 +7,7 @@ rm -f *.o *.s *.json *.i *.ftypes *.fptypes output out
 
 cdi_flags="-g --save-temps -fno-jump-tables"
 ld_spec=$(cdi-gcc $cdi_flags main.c libcall_print.a libprint.a -o out \
-    -Wl,--cdi-options="--spec"  | sed 's/--cdi-options=--spec//g')
+    -Wl,--cdi-options="--spec"  | tail -1 | sed 's/--cdi-options=--spec//g')
 
 cdi-gcc $cdi_flags main.c libcall_print.a libprint.a -o out
 
