@@ -94,9 +94,10 @@ def absolute_directory(fname_path):
 
 
 as_spec = ' '.join(sys.argv[1:])
+print as_spec
 input_asm_fname, output_obj_fname, as_spec_no_io = parse_as_spec(as_spec)
 input_src_fname_stem = input_asm_fname[:input_asm_fname.rfind('.')]
-fake_object = open(input_src_fname_stem + '.o', 'w')
+fake_object = open(output_obj_fname, 'w')
 
 fake_object.write('#<deff>\n')
 fake_object.write('# as_spec ' + as_spec + '\n')
