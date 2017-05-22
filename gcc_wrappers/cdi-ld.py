@@ -109,6 +109,8 @@ class Linker:
                 SHARED_LIB='shared_lib', NORMAL='normal', DUPLICATE='duplicate')
         self.cdi_options = []
         self.cdi_test = ''
+        self.target = ''
+        self.is_building_shared_lib = False
 
     def parse_spec(self):
         """Extracts info from the spec and stores it in object variables
@@ -156,6 +158,12 @@ class Linker:
                             self.shared_lib_paths.append(lib_path)
                 except Linker.NoMatchingLibrary as err:
                     fatal_error('no matching library for -l{}'.format(err.libstem))
+            elif prev == '-o':
+                self.target = word
+                self.entry_types.append(self.entry_type.NORMAL)
+            elif word == '-shared':
+                self.is_building_shared_lib = True
+                self.entry_types.append(self.entry_type.NORMAL)
             elif word.startswith('--cdi-options='):
                 self.options = word[len('--cdi-options='):].split(' ')
                 if '--spec' in self.options:
@@ -234,10 +242,12 @@ class Linker:
                             or trim_path(word) == 'crtbegin.o'
                             or trim_path(word) == 'crtend.o'
                             or trim_path(word) == 'crtn.o'
-                            or trim_path(word) == 'crtbeginS.o'):
+                            or trim_path(word) == 'crtbeginS.o'
+                            or trim_path(word) == 'crtendS.o'):
                         self.entry_types[-1] = self.entry_type.NORMAL
                     else:
                         record.append(word)
+                        print str(linker.obj_fnames)
             elif word == '-l':
                 self.spec[i] = '-g'
                 self.entry_types.append(self.entry_type.OMIT)
@@ -245,6 +255,8 @@ class Linker:
                 self.entry_types.append(self.entry_type.NORMAL)
             prev = word
         assert len(self.spec) == len(self.entry_types)
+        if self.target == '':
+            self.target = 'a.out'
 
     def get_cdi_spec(self, required_objs):
         """Returns CDI-compliant spec given dict: <archive name -> objs to use>"""
@@ -259,9 +271,10 @@ class Linker:
                 # it's possible we could put this at the beginning or end
                 # of the spec but it's less likely to cause an error here
                 if not cdi_abort_added:
-                    cdi_spec.append('/usr/local/cdi/cdi_abort.cdi.o')
+                    if not self.is_building_shared_lib:
+                        cdi_spec.append('/usr/local/cdi/cdi_abort.cdi.o')
                     cdi_abort_added = True
-                cdi_spec.append(basename(word, '.o') + '.cdi.o')
+                cdi_spec.append(basename(word, '') + '.cdi.o')
             elif self.entry_types[i] == self.entry_type.ARCHIVE:
                 try:
                     qualified_obj_fnames = []
@@ -416,10 +429,11 @@ class NonDeferredObjectFile(Exception):
 linker = Linker(ld_spec)
 linker.parse_spec()
 
-
-converter_args = []
+converter_options = []
 if linker.cdi_test:
-    converter_args += ['--test', linker.cdi_test]
+    converter_options += ['--test', linker.cdi_test]
+
+
 
 archives = []
 for path in linker.archive_paths:
@@ -443,6 +457,7 @@ def restore_original_objects():
 # used by fatal_error()
 restore_original_objects_fptr = restore_original_objects
 
+
 # All fake objects must be constructed after the filenames are moved
 # Otherwise fatal_error cannot restore them on error in this brief window
 for fname in linker.obj_fnames:
@@ -452,10 +467,65 @@ for fname in linker.obj_fnames:
     except NonDeferredObjectFile:
         fatal_error("'{}' is not a deferred object file".format(fname))
 
+# create unsafe, non-cdi shared libraries. CDI shared libraries are for a 
+# future version
+if linker.is_building_shared_lib:
+    for i, fake_obj in enumerate(explicit_fake_objs):
+        print str(['as', fake_obj.path, '-o',
+            linker.obj_fnames[i]] + fake_obj.as_spec_no_io)
+        subprocess.call(['as', fake_obj.path, '-o',
+            linker.obj_fnames[i]] + fake_obj.as_spec_no_io)
+
+    print 'Building non-CDI shared library (CDI shared libraries not implemented yet)'
+    print '   Converting CDI archives to non-CDI archives'
+    sys.stdout.flush()
+
+    # stale files in .cdi can cause trouble
+    subprocess.check_call(['rm', '-rf', '.cdi'])
+    subprocess.check_call(['mkdir', '.cdi'])
+
+    # we need to create non-cdi archives (see above). Therefore we need
+    # to remember the association between the non-cdi archives and the cdi-archives
+    # so that we can conclude which objects are needed for each cdi-archive
+    os.chdir('.cdi')
+    for archive in archives:
+        lines = subprocess.check_output(['ar', 'xv', archive.path]).strip().split('\n')
+        fnames = map(lambda x: x[len('x - '):], lines)
+        for fname in fnames:
+            with open(fname, 'r') as fake_obj:
+                elf_signature = '\x7FELF'
+                is_elf = fake_obj.read(4) == elf_signature
+            if is_elf:
+                continue # already real object file
+            else:
+                correct_fname = basename(fname, '.') + '.fake.o'
+                subprocess.check_call(['mv', fname, correct_fname])
+                subprocess.check_call(['as', correct_fname, '-o', fname])
+
+        subprocess.check_call(['ar', 'rc', trim_path(archive.path)] + fnames)
+
+    # create spec for non-cdi compilation
+    ld_spec_unsafe_archives = copy.deepcopy(ld_spec)
+    for i, entry in enumerate(linker.spec):
+        if linker.entry_types[i] == linker.entry_type.ARCHIVE:
+            ld_spec_unsafe_archives[i] = '.cdi/' + trim_path(linker.spec[i])
+
+    os.chdir('..')
+
+    print "Linking shared library '{}'\n".format(linker.target)
+
+    ld_command = ['ld'] + ld_spec_unsafe_archives
+    try:
+        verbose_linker_output = subprocess.check_output(ld_command)
+    except subprocess.CalledProcessError:
+        fatal_error("Unable to compile without CDI using linker command '{}'"
+                .format(' '.join(ld_command)))
+    restore_original_objects()
+    sys.exit(0)
 
 # only the needed object files are included from a given archive. Hence, we must
 # check which of the objects are needed for every archive. Instead of coding this
-# ourselves, we instead use the existing gcc infastructure to find the needed
+# ourselves, we use the existing gcc infastructure to find the needed
 # object files: the linker spits out which object files are needed with the 
 # --verbose flag. To get this output, however, we need to compile the code
 # without CDI. The linker needs object files and we simply don't have the CDI
@@ -463,14 +533,17 @@ for fname in linker.obj_fnames:
 
 archive_fake_objs = []
 unsafe_archives = []
+objs_needed = dict()
 if archives != []:
     print 'Compiling normally to learn which objects are needed for archives...'
     print '   Generating non-archive object files...'
     sys.stdout.flush()
 
-    for fake_obj in explicit_fake_objs:
-        subprocess.call(['as', fake_obj.path, '-o', 
-            fake_obj.path[:-1 * len('.fake.o')] + '.o'] + fake_obj.as_spec_no_io)
+    # assemble non-cdi object files. Note that the object name must be the same
+    # as the object filename that was passed into cdi-ld.py
+    for i, fake_obj in enumerate(explicit_fake_objs):
+        subprocess.call(['as', fake_obj.path, '-o',
+            linker.obj_fnames[i]] + fake_obj.as_spec_no_io)
 
     print '   Finding needed objects from archives: '
     sys.stdout.flush()
@@ -516,6 +589,7 @@ if archives != []:
     os.chdir('..')
     ld_command = ['ld'] + ld_spec_unsafe_archives + ['--verbose']
     try:
+        eprint(' '.join(ld_command))
         verbose_linker_output = subprocess.check_output(ld_command)
     except subprocess.CalledProcessError:
         fatal_error("Unable to compile without CDI using linker command '{}'"
@@ -553,9 +627,13 @@ cdi_ld_real_path = subprocess.check_output(['readlink', '-f', sys.argv[0]])
 cdi_ld_real_path = basename(cdi_ld_real_path, '/')
 converter_path = cdi_ld_real_path + '/../converter/gen_cdi.py'
 fake_obj_paths = [fake_obj.path for fake_obj in fake_objs]
+if linker.is_building_shared_lib: 
+    converter_options.append('--shared-library')
+
 print 'Converting fake objects to cdi-asm files: ' + ' '.join(fake_obj_paths)
 
-converter_command = [converter_path] + converter_args + fake_obj_paths
+
+converter_command = [converter_path] + converter_options + fake_obj_paths
 try:
     subprocess.check_call(converter_command)
 except subprocess.CalledProcessError:
@@ -577,8 +655,14 @@ for fake_obj in fake_objs:
         fatal_error("Assembling '{}' failed with command '{}'".format(
             cdi_asm_fname, gcc_as_command))
 
+target_type = ''
+if linker.is_building_shared_lib:
+    target_type = 'shared library'
+else:
+    target_type = 'executable'
 
-print 'Linking...'
+print "Linking {} '{}'\n".format(target_type, linker.target)
+
 sys.stdout.flush()
 cdi_spec = linker.get_cdi_spec(objs_needed)
 linker.link(cdi_spec)
