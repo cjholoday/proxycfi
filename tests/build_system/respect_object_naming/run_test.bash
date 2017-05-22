@@ -6,7 +6,7 @@ rm -f *.o *.s *.json *.i *.ftypes *.fptypes output out main.custom_object_suffix
 #          (objects don't NEED to be suffixed with .o)
 
 cdi_flags="-g --save-temps -fno-jump-tables"
-cdi-gcc $cdi_flags main.c -c -o main.custom_object_suffix
+cdi-gcc $cdi_flags main.c libprint.a -c -o main.custom_object_suffix
 
 if [ "$?" != 0 ]; then
     echo ERROR: Compilation failed!
@@ -18,3 +18,23 @@ if [ ! -f main.custom_object_suffix ]; then
     exit 1
 fi
 
+cdi-gcc $cdi_flags main.custom_object_suffix libprint.a -o out
+
+if [ "$?" != 0 ]; then
+    echo ERROR: Compilation failed!
+    exit 1
+fi
+
+./out > output
+
+if [ "$?" != 0 ]; then
+    echo ERROR: Running the executable for the test failed!
+    exit 1
+fi
+
+diff output correct_output
+
+if [ "$?" != 0 ]; then
+    echo ERROR: Incorrect output!
+    exit 1
+fi
