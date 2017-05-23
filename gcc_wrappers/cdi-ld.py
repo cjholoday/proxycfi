@@ -135,7 +135,6 @@ class Linker:
 
         prev = ''
         for i, word in enumerate(self.spec):
-            # print str(((i, word)))
             if word[:2] == '-l' and word != '-l':
                 prev = '-l'
                 word = word[2:]
@@ -247,7 +246,6 @@ class Linker:
                         self.entry_types[-1] = self.entry_type.NORMAL
                     else:
                         record.append(word)
-                        print str(linker.obj_fnames)
             elif word == '-l':
                 self.spec[i] = '-g'
                 self.entry_types.append(self.entry_type.OMIT)
@@ -471,8 +469,6 @@ for fname in linker.obj_fnames:
 # future version
 if linker.is_building_shared_lib:
     for i, fake_obj in enumerate(explicit_fake_objs):
-        print str(['as', fake_obj.path, '-o',
-            linker.obj_fnames[i]] + fake_obj.as_spec_no_io)
         subprocess.call(['as', fake_obj.path, '-o',
             linker.obj_fnames[i]] + fake_obj.as_spec_no_io)
 
@@ -589,7 +585,6 @@ if archives != []:
     os.chdir('..')
     ld_command = ['ld'] + ld_spec_unsafe_archives + ['--verbose']
     try:
-        eprint(' '.join(ld_command))
         verbose_linker_output = subprocess.check_output(ld_command)
     except subprocess.CalledProcessError:
         fatal_error("Unable to compile without CDI using linker command '{}'"
