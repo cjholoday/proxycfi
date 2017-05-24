@@ -126,7 +126,16 @@ def gather_functions(binary, exec_sections):
                         offset = int(symbols[1], 16) - es.virtual_address
                         file_offset = es.file_offset + offset
                 if in_ex_sec:
-                    functions.append( Function(symbols[7],int(symbols[2]),
+
+                    # function size is displayed in hex when very large
+                    # try to extract an int using both formats
+                    funct_size = 0
+                    try:
+                        funct_size = int(symbols[2])
+                    except ValueError:
+                        funct_size = int(symbols[2], 16)
+
+                    functions.append( Function(symbols[7], funct_size,
                         file_offset, int(symbols[1], 16)))
         i += 1
     return functions
