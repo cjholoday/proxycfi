@@ -14,6 +14,8 @@ def funct_name(exec_name, funct_addr):
 
 
 
+# Print the trace table but with function addresses replaced by names. Syntax:
+#       ./addr_translation executable trace_table.out
 if __name__ == '__main__':
     exec_name = sys.argv[1]
     trace_table = open(sys.argv[2], 'r')
