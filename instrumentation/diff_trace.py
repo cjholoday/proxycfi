@@ -1,20 +1,9 @@
 #!/usr/bin/env python
 
 import sys
-import subprocess
 import itertools
 from eprint import eprint
-
-def funct_name(exec_name, funct_addr):
-    """Returns the name associated with address given. Requires -g
-    
-    funct_addr should be a hexadecimal string (e.g. '0x401c05')
-    """
-    
-    return subprocess.check_output(['addr2line', '-f', '-p', '-s',
-        '-e', exec_name, '-a', funct_addr]).split(' ')[1]
-
-
+from addr_translation import funct_name
 
 executable_fname = sys.argv[1]
 trace1 = open(sys.argv[2], 'r')
