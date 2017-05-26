@@ -8,6 +8,8 @@ addr_translate="../../../instrumentation/addr_translation.py"
 gcc main.c ../../../instrumentation/instrumentation.c \
     -finstrument-functions -g -o out
 
+# purpose: test that instrumentation is generated and that the trace diff'er
+# can handle a small, simple program
 
 if [ "$?" != 0 ]; then
     echo ERROR: Compilation failed!
