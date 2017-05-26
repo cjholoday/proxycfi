@@ -11,3 +11,8 @@ a.out
 *.json
 *.d
 out
+
+*
+!benchmark.c
+!printf.c
+
