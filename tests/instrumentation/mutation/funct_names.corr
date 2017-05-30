@@ -1,0 +1,10 @@
+1 main
+2 list_append
+3 list_prepend
+4 list_nth_data
+5 list_nth_entry
+6 list_length
+7 list_find_data
+8 int_ptr_equal
+9 list_data
+10 list_remove_data
