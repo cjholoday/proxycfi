@@ -350,8 +350,6 @@ FILE *cdi_fptype_file() {
             &cdi_fptype_file_ptr, FPTYPE_EXT);
 }
 
-static bool file_exists(const char* filename);
-
 static FILE *cdi_get_typefile(Node **fnames_head, Node **open_node, 
         FILE **curr_typefile, const char *extension) {
 
@@ -627,17 +625,5 @@ iagain:
             cdi_warning_at(loc, "printing unknown tree type");
             fprintf(stderr, "unknown tree code: %d\n", TREE_CODE(type));
     }
-}
-
-static bool file_exists(const char *filename) {
-    return access(filename, F_OK) != -1;
-       
-    /*
-    FILE *file = fopen(filename, "r");
-    if (file) {
-        fclose(file);
-    }
-    return file != NULL;
-    */
 }
 
