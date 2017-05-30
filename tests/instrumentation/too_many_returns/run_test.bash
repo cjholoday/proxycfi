@@ -25,9 +25,11 @@ fi
 # add another return
 printf '0\n' >> trace.out
 
-cp trace_table.out trace_table.temp.out
+"$addr_translate" out trace_table.out > funct_table.out
+
+cp trace_table.out funct_table.temp.out
 cp trace.out trace.temp.out
-"$diff_trace" out trace.out trace_table.out trace.temp.out trace_table.temp.out \
+"$diff_trace" out trace.out trace_table.out trace.temp.out funct_table.temp.out \
     2> /dev/null
 
 if [ "$?" == 0 ]; then

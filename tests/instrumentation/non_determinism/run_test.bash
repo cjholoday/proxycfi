@@ -16,8 +16,7 @@ if [ "$?" != 0 ]; then
 fi
 
 ./out > output
-"$addr_translate" out trace_table.out > funct_names1.out
-mv trace_table.out trace_table1.out
+"$addr_translate" out trace_table.out > funct_table1.out
 mv trace.out trace1.out
 
 
@@ -25,10 +24,10 @@ mv trace.out trace1.out
 sleep 2 
 
 ./out > output
-mv trace_table.out trace_table2.out
+"$addr_translate" out trace_table.out > funct_table2.out
 mv trace.out trace2.out
 
-"$diff_trace" out trace1.out trace_table1.out trace2.out trace_table2.out 2> /dev/null
+"$diff_trace" out trace1.out funct_table.out trace2.out funct_table2.out 2> /dev/null
 if [ "$?" == 0 ]; then
     echo ERROR: The tracing is identical when it shouldn\'t be!
     exit 1

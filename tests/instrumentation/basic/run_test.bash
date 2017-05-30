@@ -23,8 +23,8 @@ if [ "$?" != 0 ]; then
     exit 1
 fi
 
-"$addr_translate" out trace_table.out > funct_names.out
-diff funct_names.out funct_names.corr
+"$addr_translate" out trace_table.out > funct_table.out
+diff funct_table.out funct_table.corr
 
 if [ "$?" != 0 ]; then
     echo ERROR: The tracing is incorrect
@@ -39,7 +39,7 @@ if [ "$?" != 0 ]; then
 fi
 
 cp trace_table.out trace_table.temp.out
-"$diff_trace" out trace.out trace_table.out trace.corr trace_table.temp.out
+"$diff_trace" out trace.out funct_table.out trace.corr funct_table.corr
 
 if [ "$?" != 0 ]; then
     echo ERROR: The tracing is incorrect
