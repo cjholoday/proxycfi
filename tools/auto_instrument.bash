@@ -18,8 +18,9 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cdi_flags="-g --save-temps -fno-jump-tables"
 instrumenter="$SCRIPT_DIR/../instrumentation/instrumentation.o"
 
+# compile with -fPIC since shared libraries can be built in autotool compilations
 "$CC" $cdi_flags "$SCRIPT_DIR/../instrumentation/instrumentation.c" -c \
-    -o "$instrumenter"
+    -fPIC -o "$instrumenter"
 
 make distclean
 if [ -f "configure" ]; then

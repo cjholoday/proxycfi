@@ -2,3 +2,4 @@
 *.fptypes
 *.s
 *.o
+*.i
