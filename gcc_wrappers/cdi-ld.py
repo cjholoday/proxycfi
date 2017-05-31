@@ -107,8 +107,14 @@ class Linker:
         self.lib_search_dirs = self.gen_lib_search_dirs()
         self.entry_type = enum(OBJECT='object', ARCHIVE='archive', OMIT='omit',
                 SHARED_LIB='shared_lib', NORMAL='normal', DUPLICATE='duplicate')
+
+        # available options:
+        #   --spec : Print out the spec as passed to cdi-ld.py. Do not finish compilation
+        #   --abandon-cdi : Produce a non-CDI executable. This is useful for
+        #                   creating non-CDI code with CDI archives
         self.cdi_options = []
         self.cdi_test = ''
+
         self.target = ''
         self.is_building_shared_lib = False
 
@@ -164,8 +170,8 @@ class Linker:
                 self.is_building_shared_lib = True
                 self.entry_types.append(self.entry_type.NORMAL)
             elif word.startswith('--cdi-options='):
-                self.options = word[len('--cdi-options='):].split(' ')
-                if '--spec' in self.options:
+                self.cdi_options = word[len('--cdi-options='):].split(' ')
+                if '--spec' in self.cdi_options:
                     print ' '.join(ld_spec)
                     sys.exit(0)
 
@@ -590,6 +596,10 @@ if archives != []:
         fatal_error("Unable to compile without CDI using linker command '{}'"
                 .format(' '.join(ld_command)))
     outfile_next = False
+
+    if '--abandon-cdi' in linker.cdi_options:
+        print 'WARNING: CREATING NON CDI EXECUTABLE AS REQUESTED'
+        sys.exit(0)
 
     # remove executable since it is non-CDI compiled
     for word in ld_spec_unsafe_archives:
