@@ -7,3 +7,4 @@
 **/*.s
 **/out
 **/log.txt
+**.out
