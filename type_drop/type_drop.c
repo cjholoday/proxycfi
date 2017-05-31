@@ -169,6 +169,12 @@ void cdi_print_mangled_funct(FILE *typefile, tree funct_tree, location_t loc) {
         cdi_warning_at(loc, msg);
         return;
     }
+    else if (TREE_CODE(funct_tree) == FUNCTION_DECL &&
+            (DECL_STATIC_CONSTRUCTOR(funct_tree) || DECL_STATIC_DESTRUCTOR(funct_tree))) {
+        fprintf(typefile, "(CON/DE)STRUCTOR");
+        return;
+    }
+
 
     tree funct_decl = NULL_TREE;
     if (TREE_CODE(funct_tree) == FUNCTION_DECL) {

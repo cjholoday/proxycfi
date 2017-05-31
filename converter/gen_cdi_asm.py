@@ -190,6 +190,12 @@ def convert_return_site(site, funct, asm_line, asm_dest, cfg,
         asm_dest.write(asm_line)
         return
 
+    # constructors/destructors run before/after main so they do not need to be
+    # fixed up, at least for this version
+    if funct.ftype.mangled_str == '(CON/DE)STRUCTOR':
+        asm_dest.write(asm_line)
+        return
+
     cdi_ret_prefix = '_CDI_' + fix_label(funct.uniq_label) + '_TO_'
 
     ret_sled= '\taddq $8, %rsp\n'
