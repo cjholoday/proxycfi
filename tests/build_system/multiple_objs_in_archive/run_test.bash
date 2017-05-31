@@ -1,6 +1,6 @@
 #!/bin/bash
 
-rm -f *.o *.s *.json *.i *.ftypes *.fptypes output out
+rm -f *.o *.s *.json *.i *.ftypes *.fptypes output out *.a
 
 verify="../../../verifier/verify.py"
 addr_translate="../../../instrumentation/addr_translation.py"
