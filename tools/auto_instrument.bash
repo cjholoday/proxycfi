@@ -1,5 +1,13 @@
 #!/bin/bash
 
+# Run this in the directory of an autotools project and it will compile it
+# with instrumentation. The first argument passed is the C compiler to use with
+# instrumentation (namely, "gcc" or "cdi-gcc")
+#
+# The instrumented programs will be installed into ../{project name}-dest
+# where {project name} is the name of the directory in which this script is
+# being run
+
 cwd=$(pwd)
 cwd_base=$(basename "$cwd")
 destination="$cwd/../${cwd_base}-dest"
