@@ -20,9 +20,8 @@ def get_fptr_sites(filename, funct):
             try:
                 int(i.op_str,16)
             except ValueError:
-                print '{} + {}'.format(funct.name, hex(i.address - funct.virtual_address).rstrip('L'))
-
-
+                print '{} : {} + {}  '.format(hex(i.address).rstrip('L'), funct.name,
+                        hex(i.address - funct.virtual_address).rstrip('L'))
 
 binary_filename = sys.argv[1]
 binary = open(binary_filename, 'rb')

@@ -198,7 +198,7 @@ def convert_return_site(site, funct, asm_line, asm_dest, cfg,
 
     cdi_ret_prefix = '_CDI_' + fix_label(funct.uniq_label) + '_TO_'
 
-    ret_sled= '\taddq $8, %rsp\n'
+    ret_sled = '\taddq $8, %rsp\n'
 
     for target_label, multiplicity in site.targets.iteritems():
         i = 1
@@ -207,6 +207,21 @@ def convert_return_site(site, funct, asm_line, asm_dest, cfg,
             ret_sled += '\tcmpq\t$' + sled_label + ', -8(%rsp)\n'
             ret_sled += '\tje\t' + sled_label + '\n'
             i += 1
+    if options['--shared-lib-fptr-addrs']:
+        for addr in options['--shared-lib-fptr-addrs'].split(','):
+            addr = hex(int(addr, 16) + 2) # +2 since all jmps are 2 bytes long
+            lower_addr = '0x' + addr[-8:]
+            upper_addr = addr[:-8]
+            
+            ret_sled += '\tcmpl\t$'+lower_addr+', -8(%rsp)\n'
+            ret_sled += '\tjne\t1f\n'
+            ret_sled += '\tcmpl\t$'+upper_addr+', -4(%rsp)\n'
+            ret_sled += '\tjne\t1f\n'
+
+            ret_sled += '\tmov\t$'+addr+', %r11\n'
+            ret_sled += '\tjmp\t*%r11\n'
+
+            ret_sled += '1:\n'
 
     if options['--shared-library']:
         ret_sled += '\tjmp\t"_CDI_SLT_{}"\n'.format(fix_label(funct.uniq_label))

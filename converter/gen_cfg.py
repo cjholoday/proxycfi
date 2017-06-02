@@ -73,13 +73,13 @@ def gen_cfg(asm_file_descrs, plt_sites, options):
     # PLT calls, for which only the plt function name is known
     for funct in cfg:
         del(funct.direct_call_sites)
-    try:
-        build_indir_targets(cfg, asm_file_descrs, options)
-        build_ret_dicts(cfg)
-    except NoTypeFile as warning:
-        build_ret_dicts(cfg, True)
-        eprint(warning)
 
+    # try:
+    build_indir_targets(cfg, asm_file_descrs, options)
+    build_ret_dicts(cfg)
+    # except NoTypeFile as warning:
+    # build_ret_dicts(cfg, True)
+    # eprint(warning)
 
     return cfg
 

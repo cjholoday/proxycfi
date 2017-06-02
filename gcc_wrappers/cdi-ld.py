@@ -422,6 +422,18 @@ class NonDeferredObjectFile(Exception):
     pass
 
 
+
+def get_script_dir():
+    return os.path.dirname(os.path.realpath(__file__))
+
+def get_shared_lib_load_addr(linker, lib_path):
+    traced_output = subprocess.check_output(['./' + linker.target], 
+            env=dict(os.environ, **{'LD_TRACE_LOADED_OBJECTS':'1'}))
+    for line in traced_output.split('\n'):
+        if len(line.split()) == 4 and line.split()[2] == lib_path:
+            return int(line.split()[3].lstrip('(').rstrip(')'), 16)
+    
+
     
 ########################################################################
 # cdi-ld: a cdi wrapper for the gnu linker 'ld'
@@ -533,6 +545,7 @@ if linker.is_building_shared_lib:
 # without CDI. The linker needs object files and we simply don't have the CDI
 # object files ready
 
+fptr_addrs = []
 archive_fake_objs = []
 unsafe_archives = []
 objs_needed = dict()
@@ -601,6 +614,49 @@ if archives != []:
         print 'WARNING: CREATING NON CDI EXECUTABLE AS REQUESTED'
         sys.exit(0)
 
+    # TODO always create a non-CDI executable not just when there are archives
+    # for now, this code will always run since there is always an archive
+    # listed in the spec. This may not always be the case?
+
+    # check that ASLR is disabled
+    traced_output1 = subprocess.check_output(['./' + linker.target], 
+            env=dict(os.environ, **{'LD_TRACE_LOADED_OBJECTS':'1'}))
+    traced_output2 = subprocess.check_output(['./' + linker.target], 
+            env=dict(os.environ, **{'LD_TRACE_LOADED_OBJECTS':'1'}))
+    if traced_output1 != traced_output2:
+        fatal_error("load addresses aren't deterministic. Disable ASLR"
+                " (this can be done with "
+                "'echo 0 | sudo tee /proc/sys/kernel/randomize_va_space')")
+
+    # Find all function pointer calls from shared libraries back into the 
+    # executable code. We need jumps back to the shared libraries, even if those
+    # shared libraries are not CDI. Since non-CDI shared libraries have unknown
+    # function and fptr type information, every return sled must contain an entry
+    # fptr calls in shared libraries. TODO: get ftypes/fptypes info for CDI
+    # shared libraries and use that information to narrow the list of return
+    # sleds that need an entry for shared library fptr calls
+
+    fptr_addrs = []
+    for sl_path in linker.shared_lib_paths:
+        # TODO modify elfparse.py so that shared with only dynamic sym tables
+        # can still be examinedn for fptrs
+        find_fptrs_script = get_script_dir() + '/../verifier/find_fptrs.py'
+        try:
+            fptr_list = subprocess.check_output([find_fptrs_script, sl_path],
+                    stderr=subprocess.STDOUT).strip().split('\n')
+        except subprocess.CalledProcessError as err:
+            eprint("cdi-ld: warning: couldn't run script to find fptrs on '{}'"
+                    .format(sl_path))
+            continue
+        
+        # Use LD_TRACE_LOADED_OBJECTS to get the load addresses of the shared
+        # libraries. ASLR must be disabled for this to work
+        lib_load_addr = get_shared_lib_load_addr(linker, sl_path)
+        for line in fptr_list:
+            fptr_lib_offset = int(line.split()[0], 16)
+            fptr_addr = hex(lib_load_addr + fptr_lib_offset)
+            fptr_addrs.append(fptr_addr)
+
     # remove executable since it is non-CDI compiled
     for word in ld_spec_unsafe_archives:
         if word == '-o':
@@ -637,6 +693,10 @@ if linker.is_building_shared_lib:
 
 print 'Converting fake objects to cdi-asm files: ' + ' '.join(fake_obj_paths)
 
+
+if fptr_addrs:
+    converter_options.append('--shared-lib-fptr-addrs')
+    converter_options.append(','.join(fptr_addrs))
 
 converter_command = [converter_path] + converter_options + fake_obj_paths
 try:
