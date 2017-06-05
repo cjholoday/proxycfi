@@ -4,7 +4,8 @@ rm -f *.o *.s *.json *.i *.ftypes *.fptypes output out *.so
   
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )" 
 
-# purpose: generate an unsafe (non-CDI) shared library and link with it
+# purpose: test that cdi-ld.py can find the .symtab symbols even though they 
+# are stored separately from libc
 
 cdi_flags="-g --save-temps -fno-jump-tables"
 
