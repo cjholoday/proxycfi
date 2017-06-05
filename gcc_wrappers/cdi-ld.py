@@ -426,14 +426,46 @@ class NonDeferredObjectFile(Exception):
 def get_script_dir():
     return os.path.dirname(os.path.realpath(__file__))
 
-def get_shared_lib_load_addr(linker, lib_path):
+def shared_lib_load_addrs(linker):
+    """Get pairs of (shared lib path, load address). 
+
+    There must be an ELF executable CDI or otherwise already generated. Since
+    a non-CDI executable is generated for archive analysis, this is always the
+    case
+    """
+    lib_addr_pairs = []
     traced_output = subprocess.check_output(['./' + linker.target], 
             env=dict(os.environ, **{'LD_TRACE_LOADED_OBJECTS':'1'}))
-    for line in traced_output.split('\n'):
-        if len(line.split()) == 4 and line.split()[2] == lib_path:
-            return int(line.split()[3].lstrip('(').rstrip(')'), 16)
-    
+    for line in traced_output.splitlines():
+        # format of trace output: [symlink path] => [actual elf path] ([load addr])
+        symlink = line.split()[0]
+        path = ''
+        if len(line.split()) == 2:
+            # in this case the format is [actual elf path] ([load addr])
+            path = symlink
+        else:
+            path = line.split()[2]
 
+        if symlink.startswith('linux-vdso.so'):
+            # linux-vdso is injected into each process by the kernel, so we 
+            # must ignore it. Admittedly, if a user names their shared library
+            # linux-vdso.so then it won't be handled by cdi-ld.py. However, 
+            # they really do deserve to get burned for their naming abuse
+            continue
+        addr = int(line.split()[-1].lstrip('(').rstrip(')'), 16)
+        lib_addr_pairs.append((path, addr))
+    return lib_addr_pairs
+    
+def has_symbol_table(elf_path):
+    """Returns true if the elf executable at elf_path has a ".symtab" section"""
+
+    section_info = subprocess.check_output(['readelf', '-S', elf_path])
+    symtab_matcher = re.compile(r'\s*\[[\s0-9]*\] .symtab\s*SYMTAB')
+    for line in section_info.splitlines():
+        if symtab_matcher.match(line):
+            return True
+    else:
+        return False
     
 ########################################################################
 # cdi-ld: a cdi wrapper for the gnu linker 'ld'
@@ -636,26 +668,32 @@ if archives != []:
     # shared libraries and use that information to narrow the list of return
     # sleds that need an entry for shared library fptr calls
 
+    # the shared library paths from shared_lib_load_addrs() are more precise 
+    # than the shared libs passed to the linker as options. The ones passed as
+    # options are occasionally linker scripts, which complicates analysis since
+    # we would have to parse through the scripts. Even then, we wouldn't be sure
+    # what is used in the end. shared_lib_load_addrs() instead asks the non-CDI
+    # executable what shared libraries are used, which makes the GNU linker do
+    # the work for us
+
     fptr_addrs = []
-    for sl_path in linker.shared_lib_paths:
-        # TODO modify elfparse.py so that shared with only dynamic sym tables
-        # can still be examinedn for fptrs
+    for sl_path, lib_load_addr in shared_lib_load_addrs(linker):
         find_fptrs_script = get_script_dir() + '/../verifier/find_fptrs.py'
-        try:
-            fptr_list = subprocess.check_output([find_fptrs_script, sl_path],
-                    stderr=subprocess.STDOUT).strip().split('\n')
-        except subprocess.CalledProcessError as err:
-            eprint("cdi-ld: warning: couldn't run script to find fptrs on '{}'"
-                    .format(sl_path))
-            continue
-        
-        # Use LD_TRACE_LOADED_OBJECTS to get the load addresses of the shared
-        # libraries. ASLR must be disabled for this to work
-        lib_load_addr = get_shared_lib_load_addr(linker, sl_path)
+
+        fptr_list = []
+        if has_symbol_table(sl_path):
+            try:
+                fptr_list = subprocess.check_output([find_fptrs_script, sl_path],
+                        stderr=subprocess.STDOUT).strip().splitlines()
+            except subprocess.CalledProcessError as err:
+                fatal_error("cdi-ld: error: couldn't analyze '{}' for fptrs despite "
+                        "having a symbol table (.symtab)".format(sl_path))
         for line in fptr_list:
+            print line
             fptr_lib_offset = int(line.split()[0], 16)
             fptr_addr = hex(lib_load_addr + fptr_lib_offset)
             fptr_addrs.append(fptr_addr)
+            print fptr_addr
 
     # remove executable since it is non-CDI compiled
     for word in ld_spec_unsafe_archives:
