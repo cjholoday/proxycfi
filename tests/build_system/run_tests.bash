@@ -13,12 +13,16 @@ for test_dir in $test_dirs; do
     fi
 
     cd "$test_dir"
-    echo "running test '${test_dir:2}'"
+    pretty_test_dir="'${test_dir:2}'"
+
+    padding="................................................."
+    printf "running test ${pretty_test_dir}${padding:0:-${#pretty_test_dir}}"
+
     ./run_test.bash > log.txt 2>&1
     if [ "$?" != 0 ]; then
-        cat log.txt
-        echo "-----------------------------------------------------"
-        echo "error: test '${test_dir:2}' failed. See the output above."
+        printf "FAILED: run ./run_test.bash for more info\n"
+    else
+        printf "passed\n"
     fi
     cd ..
 done
