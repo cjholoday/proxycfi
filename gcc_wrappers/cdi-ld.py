@@ -682,30 +682,49 @@ if archives != []:
         eprint("cdi-ld: warning: linking with non-CDI shared library '{}'"
                 .format(sl_path))
 
-        find_fptrs_script = get_script_dir() + '/../verifier/find_fptrs.py'
-
         fptr_list = []
-        symbol_binary_path = ''
-        if has_symbol_table(sl_path):
-            symbol_binary_path = sl_path
-        else:
-            sl_realpath = os.path.realpath(sl_path)
-            for root, dirs, files in os.walk('/usr/lib/debug', topdown=True):
-                if trim_path(sl_realpath) in files:
-                    symbol_binary_path = os.path.join(root, trim_path(sl_realpath))
-                    break
-            else:
-                fatal_error("cannot find unstripped version of shared library '{}'"
-                        ". Either compile it with CDI or install an unstripped"
-                        " version")
+        
+        # look for cached fptr analysis
+        sl_realpath = os.path.realpath(sl_path)
         try:
-            fptr_list = subprocess.check_output([find_fptrs_script, sl_path,
-                symbol_binary_path], stderr=subprocess.STDOUT).strip().splitlines()
-        except subprocess.CalledProcessError as err:
-            fatal_error("cdi-ld: error: couldn't analyze '{}' for fptrs despite "
-                    "having an associated symbol table (.symtab) in file '{}'"
-                    .format(sl_path, symbol_binary_path))
+            cached_analysis = open(get_script_dir() + '/../cdi-gcc/cached_fptr_analysis/' + trim_path(sl_realpath), 'r')
+            fptr_list = cached_analysis.readlines()
+            cached_analysis.close()
+        except IOError:
+            print 'NOT USING CACHED'
+            find_fptrs_script = get_script_dir() + '/../verifier/find_fptrs.py'
 
+            symbol_binary_path = ''
+            if has_symbol_table(sl_path):
+                symbol_binary_path = sl_path
+            else:
+                for root, dirs, files in os.walk('/usr/lib/debug', topdown=True):
+                    if trim_path(sl_realpath) in files:
+                        symbol_binary_path = os.path.join(root, trim_path(sl_realpath))
+                        break
+                else:
+                    fatal_error("cannot find unstripped version of shared library '{}'"
+                            ". Either compile it with CDI or install an unstripped"
+                            " version")
+            try:
+                fptr_analysis = subprocess.check_output([find_fptrs_script, sl_path,
+                    symbol_binary_path], stderr=subprocess.STDOUT).strip()
+                fptr_list = fptr_analysis.splitlines()
+                
+                # cache the analysis for later
+                print get_script_dir() + '/../cdi-gcc/cached_fptr_analysis/' + sl_realpath
+                cached_analysis = open(get_script_dir() 
+                        + '/../cdi-gcc/cached_fptr_analysis/' 
+                        + trim_path(sl_realpath), 'w')
+                cached_analysis.write(fptr_analysis)
+                cached_analysis.close()
+            except subprocess.CalledProcessError as err:
+                fatal_error("couldn't analyze '{}' for fptrs despite "
+                        "having an associated symbol table (.symtab) in file '{}'"
+                        .format(sl_path, symbol_binary_path))
+            except IOError:
+                eprint("cdi-ld: warning: failed to cache fptr analysis for "
+                        "shared library '{}'".format(trim_path(sl_realpath)))
 
         for line in fptr_list:
             fptr_lib_offset = int(line.split()[0], 16)
