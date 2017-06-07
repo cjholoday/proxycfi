@@ -209,7 +209,6 @@ def convert_return_site(site, funct, asm_line, asm_dest, cfg,
             i += 1
     if options['--shared-lib-fptr-addrs']:
         for addr in options['--shared-lib-fptr-addrs'].split(','):
-            addr = hex(int(addr, 16) + 2) # +2 since all jmps are 2 bytes long
             lower_addr = '0x' + addr[-8:]
             upper_addr = addr[:-8]
             

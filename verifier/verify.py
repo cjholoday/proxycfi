@@ -487,9 +487,9 @@ if __name__ == "__main__":
         sys.exit(1)
 
     binary = open(args[0], 'rb')
-    exec_sections = elfparse.gather_exec_sections(binary)
+    exec_sections = elfparse.gather_exec_sections(binary.name)
 
-    functions = elfparse.gather_functions(binary, exec_sections)
+    functions = elfparse.gather_functions(binary.name, exec_sections)
     plt_start_addr, plt_size, plt_entry_size = elfparse.gather_plts(binary)
     
     verifier = Verifier(binary, exec_sections, functions, plt_start_addr, 

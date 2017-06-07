@@ -678,22 +678,40 @@ if archives != []:
 
     fptr_addrs = []
     for sl_path, lib_load_addr in shared_lib_load_addrs(linker):
+        # print sl_path, hex(lib_load_addr)
+        eprint("cdi-ld: warning: linking with non-CDI shared library '{}'"
+                .format(sl_path))
+
         find_fptrs_script = get_script_dir() + '/../verifier/find_fptrs.py'
 
         fptr_list = []
+        symbol_binary_path = ''
         if has_symbol_table(sl_path):
-            try:
-                fptr_list = subprocess.check_output([find_fptrs_script, sl_path],
-                        stderr=subprocess.STDOUT).strip().splitlines()
-            except subprocess.CalledProcessError as err:
-                fatal_error("cdi-ld: error: couldn't analyze '{}' for fptrs despite "
-                        "having a symbol table (.symtab)".format(sl_path))
+            symbol_binary_path = sl_path
+        else:
+            sl_realpath = os.path.realpath(sl_path)
+            for root, dirs, files in os.walk('/usr/lib/debug', topdown=True):
+                if trim_path(sl_realpath) in files:
+                    symbol_binary_path = os.path.join(root, trim_path(sl_realpath))
+                    break
+            else:
+                fatal_error("cannot find unstripped version of shared library '{}'"
+                        ". Either compile it with CDI or install an unstripped"
+                        " version")
+        try:
+            fptr_list = subprocess.check_output([find_fptrs_script, sl_path,
+                symbol_binary_path], stderr=subprocess.STDOUT).strip().splitlines()
+        except subprocess.CalledProcessError as err:
+            fatal_error("cdi-ld: error: couldn't analyze '{}' for fptrs despite "
+                    "having an associated symbol table (.symtab) in file '{}'"
+                    .format(sl_path, symbol_binary_path))
+
+
         for line in fptr_list:
-            print line
             fptr_lib_offset = int(line.split()[0], 16)
             fptr_addr = hex(lib_load_addr + fptr_lib_offset)
             fptr_addrs.append(fptr_addr)
-            print fptr_addr
+            # print '{}: {} + {} = {}'.format(line.split()[2], hex(lib_load_addr), hex(fptr_lib_offset), fptr_addr)
 
     # remove executable since it is non-CDI compiled
     for word in ld_spec_unsafe_archives:

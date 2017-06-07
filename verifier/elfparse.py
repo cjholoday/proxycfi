@@ -48,7 +48,7 @@ class Function:
         return (virtual_address >= self.virtual_address and 
                 virtual_address < self.virtual_address + self.size)
 
-def gather_exec_sections(binary):
+def gather_exec_sections(binary_name):
     """Outputs a list of the executable sections found in file object <binary>
     """
     
@@ -56,10 +56,10 @@ def gather_exec_sections(binary):
     
     try:
         raw_section_info = (
-                subprocess.check_output(['readelf', '-S', binary.name]))
+                subprocess.check_output(['readelf', '-S', binary_name]))
     
     except subprocess.CalledProcessError:
-        eprint('FATAL ERROR: Cannot use readelf -S on ' + binary.name)
+        eprint('FATAL ERROR: Cannot use readelf -S on ' + binary_name)
         sys.exit(1)
     
     raw_section_lines = raw_section_info.split('\n')
@@ -85,17 +85,17 @@ def gather_exec_sections(binary):
     return exec_sections
 
 
-def gather_functions(binary, exec_sections):
+def gather_functions(binary_name, exec_sections):
     """Outputs a list of functions from the ExecSections passed
     
     exec_sections should be a list of ExecSections
-    binary should be a file object for the executable being analyzed
+    binary_name should be a string path for the executable being analyzed
     """
     functions = []
     try:
-        readelf_text = subprocess.check_output(['readelf', '-s', binary.name])
+        readelf_text = subprocess.check_output(['readelf', '-s', binary_name])
     except subprocess.CalledProcessError as e:
-        eprint('FATAL ERROR: Cannot use readelf -s on ' + binary.name)
+        eprint('FATAL ERROR: Cannot use readelf -s on ' + binary_name)
         sys.exit(1)
     
     table_lines = readelf_text.splitlines()
@@ -109,7 +109,7 @@ def gather_functions(binary, exec_sections):
             break
         i += 1
     else:
-        eprint('FATAL ERROR: Symbol table (".symtab") not found in ' + binary.name)
+        eprint('FATAL ERROR: Symbol table (".symtab") not found in ' + binary_name)
         sys.exit(1)
 
     while i < len(table_lines):
