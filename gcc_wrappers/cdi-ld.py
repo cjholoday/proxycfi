@@ -154,6 +154,7 @@ class Linker:
                         self.entry_types.append(self.entry_type.DUPLICATE)
                         self.spec[i] = '-g'
                     else:
+                        print lib_path, self.spec[i]
                         self.spec[i] = lib_path
                         if lib_path[-2:] == '.a':
                             self.entry_types.append(self.entry_type.ARCHIVE)
@@ -466,6 +467,13 @@ def has_symbol_table(elf_path):
             return True
     else:
         return False
+
+def sl_linker_name(shared_lib_path):
+    """ /path/to/libshared_lib.so.1.0.0 -> libshared_lib.so """
+    trimmed_name = trim_path(shared_lib_path)
+    while not trimmed_name.endswith('.so'):
+        trimmed_name = trimmed_name[:-1]
+    return trimmed_name
     
 ########################################################################
 # cdi-ld: a cdi wrapper for the gnu linker 'ld'
@@ -647,7 +655,8 @@ if archives != []:
         sys.exit(0)
 
     # TODO always create a non-CDI executable not just when there are archives
-    # for now, this code will always run since there is always an archive
+    #
+    # For now, this code will always run since there is always an archive
     # listed in the spec. This may not always be the case?
 
     # check that ASLR is disabled
@@ -678,7 +687,6 @@ if archives != []:
 
     fptr_addrs = []
     for sl_path, lib_load_addr in shared_lib_load_addrs(linker):
-        # print sl_path, hex(lib_load_addr)
         eprint("cdi-ld: warning: linking with non-CDI shared library '{}'"
                 .format(sl_path))
 
@@ -691,12 +699,19 @@ if archives != []:
             fptr_list = cached_analysis.readlines()
             cached_analysis.close()
         except IOError:
-            print 'NOT USING CACHED'
             find_fptrs_script = get_script_dir() + '/../verifier/find_fptrs.py'
 
             symbol_binary_path = ''
+            local_sl_path = '/usr/local/lib/' + sl_linker_name(sl_path)
             if has_symbol_table(sl_path):
                 symbol_binary_path = sl_path
+            elif os.path.isfile(local_sl_path) and  has_symbol_table(local_sl_path):
+                sl_path = symbol_binary_path = local_sl_path
+                if trim_path(os.path.realpath(local_sl_path)) != trim_path(sl_realpath):
+                    eprint("cdi-ld: warning: using unstripped '{}' instead of "
+                            "'{}'. Note the differing version/major/minor"
+                            .format(os.path.realpath(local_sl_path),
+                                sl_realpath))
             else:
                 for root, dirs, files in os.walk('/usr/lib/debug', topdown=True):
                     if trim_path(sl_realpath) in files:
@@ -705,14 +720,13 @@ if archives != []:
                 else:
                     fatal_error("cannot find unstripped version of shared library '{}'"
                             ". Either compile it with CDI or install an unstripped"
-                            " version")
+                            " version".format(sl_realpath))
             try:
                 fptr_analysis = subprocess.check_output([find_fptrs_script, sl_path,
                     symbol_binary_path], stderr=subprocess.STDOUT).strip()
                 fptr_list = fptr_analysis.splitlines()
                 
                 # cache the analysis for later
-                print get_script_dir() + '/../cdi-gcc/cached_fptr_analysis/' + sl_realpath
                 cached_analysis = open(get_script_dir() 
                         + '/../cdi-gcc/cached_fptr_analysis/' 
                         + trim_path(sl_realpath), 'w')
