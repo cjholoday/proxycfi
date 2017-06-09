@@ -276,14 +276,13 @@ class Verifier:
         md = Cs(CS_ARCH_X86, CS_MODE_64)
         if self.print_instr_as_decoded:
             print '--------------:  ' + function.name
+        prev_instruction = None
         for i in md.disasm(buff, function.virtual_address):
             addresses.append(int(i.address))
             if self.print_instr_as_decoded:
                 print("0x%x:\t%s\t%s" %(i.address, i.mnemonic, i.op_str))
-            addresses
             if i.mnemonic in jmp_list:
                 try:
-
                     # Indirect calls and jumps have a * after the instruction and before the location
                     # which raises a value error exception in the casting
                     addr = int(i.op_str,16)
@@ -295,6 +294,13 @@ class Verifier:
                     else:
                         jmps.append(addr)
                 except ValueError:
+                    if prev_instruction and prev_instruction.mnemonic == 'movabs':
+                        register = prev_instruction.op_str.split(', ')[0]
+                        mov_addr = prev_instruction.op_str.split(', ')[1]
+                        if i.op_str == register:
+                            jmps.append(addr)
+                            prev_instruction = i
+                            continue
                     if self.exit_on_insecurity:
                         raise IndirectJump(self.target_section(function.virtual_address),
                                 function, hex(int(i.address)), i.op_str, 'Indirect Jmp/Jcc')
@@ -334,8 +340,7 @@ class Verifier:
 
             elif i.mnemonic in loop_list:
                 loops.append(int(i.op_str, 16))
-        
-
+            prev_instruction = i
         if self.print_instr_as_decoded:
             print '--------------:  ' + function.name + '\n'
 
