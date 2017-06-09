@@ -2,11 +2,8 @@
 	.globl	_CDI_abort
 	.type	_CDI_abort, @function
 .generic_msg:
-        .string "cdi: unsafe movement, aborting...\n"
+        .string "cdi: unsafe movement, aborting...\ncdi: sled: "
         .set .generic_msg_len, .-.generic_msg
-.debug_msg:
-        .string "cdi: sled: "
-        .set .debug_msg_len, .-.debug_msg
 .newline_char:
         .string "\n"
 
@@ -27,11 +24,6 @@ _CDI_abort:
         movq    $.generic_msg_len, %rdx
         movq    $1, %rax                    # write
         movq    $2, %rdi                    # to stderr
-        syscall                             # print generic message
-        movq    $1, %rax
-        movq    $2, %rdi
-        movq    $.debug_msg_len, %rdx
-        movq    $.debug_msg, %rsi
         syscall                             # print debug msg
         movq    $1, %rax                    
         movq    $2, %rdi                   
