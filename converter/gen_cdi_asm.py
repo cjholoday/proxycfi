@@ -12,6 +12,7 @@ def gen_cdi_asm(cfg, asm_file_descrs, plt_sites, options):
 
     rlts_written = False
     slts_written = False
+    callback_sled_written = False
     for descr in asm_file_descrs:
         asm_parsing.DwarfSourceLoc.wipe_filename_mapping()
         dwarf_loc = asm_parsing.DwarfSourceLoc()
@@ -50,6 +51,35 @@ def gen_cdi_asm(cfg, asm_file_descrs, plt_sites, options):
         debug_section_matcher = re.compile(r'^\t\.section\t\.debug_info.+')
         debug_section_found = False
 
+        if options['--shared-lib-fptr-addrs'] and not callback_sled_written:
+            callback_sled_written = True
+
+            callback_sled = '.globl _CDI_callback_sled\n'
+            callback_sled += '_CDI_callback_sled:\n'
+
+            upper_to_lower_addrs = dict()
+            for addr in options['--shared-lib-fptr-addrs'].split(','):
+                lower_addr = '0x' + addr[-8:]
+                upper_addr = addr[:-8]
+                try:
+                    upper_to_lower_addrs[upper_addr].append(lower_addr)
+                except KeyError:
+                    upper_to_lower_addrs[upper_addr] = [lower_addr]
+
+            for upper_addr, lower_addrs in upper_to_lower_addrs.iteritems():
+                callback_sled += '\tcmpl\t$'+upper_addr+', -4(%rsp)\n'
+                callback_sled += '\tjne\t1f\n'
+                for addr in lower_addrs:
+                    callback_sled += '\tcmpl\t$'+addr+', -8(%rsp)\n'
+                    callback_sled += '\tjne\t2f\n'
+                    callback_sled += '\tmov\t$'+upper_addr+addr[2:]+', %r11\n'
+                    callback_sled += '\tjmp\t*%r11\n'
+                    callback_sled += '2:\n'
+                callback_sled += '1:\n'
+            callback_sled += '\tmovq\t%r11, %rsi\n'
+            callback_sled += '\tcall _CDI_abort\n'
+            asm_dest.write(callback_sled)
+
         # write the rest of the normal asm lines over
         src_line = asm_src.readline()
         while src_line:
@@ -61,6 +91,7 @@ def gen_cdi_asm(cfg, asm_file_descrs, plt_sites, options):
         if not rlts_written:
             rlts_written = True
             write_rlts(cfg, plt_sites, asm_dest, sled_id_faucet, options)
+
 
         # write the SLT for shared lib
         if options['--shared-library'] and not slts_written:
@@ -207,22 +238,9 @@ def convert_return_site(site, funct, asm_line, asm_dest, cfg,
             ret_sled += '\tcmpq\t$' + sled_label + ', -8(%rsp)\n'
             ret_sled += '\tje\t' + sled_label + '\n'
             i += 1
-    if options['--shared-lib-fptr-addrs']:
-        for addr in options['--shared-lib-fptr-addrs'].split(','):
-            lower_addr = '0x' + addr[-8:]
-            upper_addr = addr[:-8]
-            
-            ret_sled += '\tcmpl\t$'+lower_addr+', -8(%rsp)\n'
-            ret_sled += '\tjne\t1f\n'
-            ret_sled += '\tcmpl\t$'+upper_addr+', -4(%rsp)\n'
-            ret_sled += '\tjne\t1f\n'
-
-            ret_sled += '\tmov\t$'+addr+', %r11\n'
-            ret_sled += '\tjmp\t*%r11\n'
-
-            ret_sled += '1:\n'
 
     if options['--shared-library']:
+        # TODO: implement callback sled for shared library
         ret_sled += '\tjmp\t"_CDI_SLT_{}"\n'.format(fix_label(funct.uniq_label))
     else:
         code, data = cdi_abort(sled_id_faucet(), funct.asm_filename,
@@ -249,6 +267,8 @@ def cdi_abort(sled_id, asm_filename, dwarf_loc, options):
     
     cdi_abort_code = cdi_abort_data = ''
     if options['--shared-library']:
+        eprint('cdi-ld: error: --shared-library unsupported in this version')
+        sys.exit(1)
         cdi_abort_code += '\tmovq\t.CDI_sled_id_' + str(sled_id) + '(%rip), %rsi\n'
         cdi_abort_code += '\tmovq\t.CDI_sled_id_' + str(sled_id) +'_len(%rip), %rdx\n'
         #cdi_abort_code += '\tcall\t_CDI_abort\n' TODO: write fpic version of cdi abort
@@ -258,8 +278,12 @@ def cdi_abort(sled_id, asm_filename, dwarf_loc, options):
         cdi_abort_data += '\t.set\t.CDI_sled_id_' + str(sled_id) + '_len, '
         cdi_abort_data += '.-.CDI_sled_id_' + str(sled_id) + '\n'
     else:
-        cdi_abort_code += '\tmovq\t $.CDI_sled_id_' + str(sled_id) + ', %rsi\n'
-        cdi_abort_code += '\tcall\t_CDI_abort\n'
+        if options['--shared-lib-fptr-addrs']:
+            cdi_abort_code += '\tmovq\t $.CDI_sled_id_' + str(sled_id) + ', %r11\n'
+            cdi_abort_code += '\tjmp\t_CDI_callback_sled\n'
+        else:
+            cdi_abort_code += '\tmovq\t $.CDI_sled_id_' + str(sled_id) + ', %rsi\n'
+            cdi_abort_code += '\tcall\t_CDI_abort\n'
 
         cdi_abort_msg = loc_str + ' id=' + str(sled_id)
         cdi_abort_data += '.CDI_sled_id_' + str(sled_id) + ':\n'

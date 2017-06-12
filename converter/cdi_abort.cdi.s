@@ -8,7 +8,7 @@
         .string "\n"
 
 # parameters:
-#   %rsi: pointer to a an unsigned designating the following string's length
+#   %rsi: pointer to [unsigned int len][string of len size]
 # 
 #   TODO: make this position independent
 _CDI_abort:
