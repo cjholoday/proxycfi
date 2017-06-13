@@ -287,7 +287,7 @@ def cdi_abort(sled_id, asm_filename, dwarf_loc, options):
 
         cdi_abort_msg = loc_str + ' id=' + str(sled_id)
         cdi_abort_data += '.CDI_sled_id_' + str(sled_id) + ':\n'
-        cdi_abort_data += '\t.long\t' + str(len(cdi_abort_msg)) + '\n'
+        cdi_abort_data += '\t.quad\t' + str(len(cdi_abort_msg)) + '\n'
         cdi_abort_data += '\t.string\t"' + cdi_abort_msg + '"\n'
 
     return (cdi_abort_code, cdi_abort_data)

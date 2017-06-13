@@ -8,7 +8,7 @@
         .string "\n"
 
 # parameters:
-#   %rsi: pointer to [unsigned int len][string of len size]
+#   %rsi: pointer to [quad][string of len size]
 # 
 #   TODO: make this position independent
 _CDI_abort:
@@ -28,8 +28,8 @@ _CDI_abort:
         movq    $1, %rax                    
         movq    $2, %rdi                   
         popq    %rsi
-        movl    (%rsi), %edx                # get string length
-        lea     4(%rsi), %rsi               # get address of string
+        movq    (%rsi), %rdx                # get string length
+        lea     8(%rsi), %rsi               # get address of string
         syscall                             # print sled specific info
         movq    $1, %rax                    
         movq    $2, %rdi                   
