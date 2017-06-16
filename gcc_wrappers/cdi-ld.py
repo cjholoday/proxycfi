@@ -5,6 +5,7 @@ import subprocess
 from eprint import eprint
 import re
 import copy
+import fcntl
 
 ld_spec = sys.argv[1:]
 
@@ -475,6 +476,63 @@ def sl_linker_name(shared_lib_path):
         trimmed_name = trimmed_name[:-1]
     return trimmed_name
     
+def sl_find_unstripped(binary_path):
+    if has_symbol_table(binary_path):
+        return binary_path
+
+    candidate_path = '/usr/local/lib/' + sl_linker_name(binary_path)
+    print candidate_path
+    if os.path.isfile(candidate_path) and has_symbol_table(candidate_path):
+        return candidate_path
+
+    for root, dirs, files in os.walk('/usr/lib/debug', topdown=True):
+        sl_trimmed_realpath = trim_path(os.path.realpath(binary_path))
+        if sl_trimmed_realpath in files:
+            return os.path.join(root, sl_trimmed_realpath)
+    else:
+        fatal_error("cannot find unstripped version of shared library '{}'"
+                ". Either compile it with CDI or install an unstripped"
+                " version".format(os.path.realpath(binary_path)))
+
+find_fptrs_script = get_script_dir() + '/../verifier/find_fptrs.py'
+def sl_get_fptr_addrs(binary_path, symbol_ref, lib_load_addr):
+    cached_analysis_path = (get_script_dir() 
+            + '/../cdi-gcc/cached_fptr_analysis/' 
+            + trim_path(os.path.realpath(binary_path)))
+
+    fptr_analysis = []
+    # either use cached analysis or create a new analysis and cache it
+    if (os.path.isfile(cached_analysis_path)
+            and os.path.getmtime(cached_analysis_path) >= os.path.getmtime(binary_path)
+            and os.path.getmtime(cached_analysis_path) >= os.path.getmtime(symbol_ref)):
+        with open(cached_analysis_path, 'r') as cached_analysis:
+            fptr_analysis = cached_analysis.readlines()
+    else:
+        try:
+            fptr_analysis = subprocess.check_output([find_fptrs_script, binary_path,
+                symbol_ref]).strip()
+            print fptr_analysis
+        except subprocess.CalledProcessError as err:
+            fatal_error("couldn't analyze '{}' for fptrs despite "
+                    "having an associated symbol table (.symtab) in file '{}'"
+                    .format(sl_path, symbol_binary_path))
+        try:
+            with open(cached_analysis_path, 'w') as cached_analysis:
+                cached_analysis.write(fptr_analysis)
+        except IOError:
+            eprint("cdi-ld: warning: failed to cache fptr analysis for "
+                    "shared library '{}'".format(trim_path(sl_realpath)))
+        fptr_analysis = fptr_analysis.splitlines()
+
+    fptr_addrs = []
+    for line in fptr_analysis:
+        fptr_lib_offset = int(line.split()[0], 16)
+        fptr_addr = hex(lib_load_addr + fptr_lib_offset)
+        fptr_addrs.append(fptr_addr)
+
+    return fptr_addrs
+
+
 ########################################################################
 # cdi-ld: a cdi wrapper for the gnu linker 'ld'
 #   Identifies necessary fake object files in archives, converts fake object
@@ -690,71 +748,21 @@ if archives != []:
         eprint("cdi-ld: warning: linking with non-CDI shared library '{}'"
                 .format(sl_path))
 
-        fptr_list = []
-        
-        # look for cached fptr analysis
-        sl_realpath = os.path.realpath(sl_path)
-        try:
-            cached_analysis = open(get_script_dir() + '/../cdi-gcc/cached_fptr_analysis/' + trim_path(sl_realpath), 'r')
-            fptr_list = cached_analysis.readlines()
-            cached_analysis.close()
-        except IOError:
-            find_fptrs_script = get_script_dir() + '/../verifier/find_fptrs.py'
+        # if it's in /usr/local/lib, then the reference contains code in addition
+        # to the symbol table. Therefore, it's unassociated with the shared
+        # library in the spec. Use this new binary instead
+        # FIXME: replace spec args
+        symbol_reference = sl_find_unstripped(sl_path)
+        if symbol_reference.startswith('/usr/local/lib/'):
+            sl_path = symbol_reference
+        fptr_addrs += sl_get_fptr_addrs(sl_path, symbol_reference, lib_load_addr)
 
-            symbol_binary_path = ''
-            local_sl_path = '/usr/local/lib/' + sl_linker_name(sl_path)
-            if has_symbol_table(sl_path):
-                symbol_binary_path = sl_path
-            elif os.path.isfile(local_sl_path) and  has_symbol_table(local_sl_path):
-                sl_path = symbol_binary_path = local_sl_path
-                if trim_path(os.path.realpath(local_sl_path)) != trim_path(sl_realpath):
-                    eprint("cdi-ld: warning: using unstripped '{}' instead of "
-                            "'{}'. Note the differing version/major/minor"
-                            .format(os.path.realpath(local_sl_path),
-                                sl_realpath))
-            else:
-                for root, dirs, files in os.walk('/usr/lib/debug', topdown=True):
-                    if trim_path(sl_realpath) in files:
-                        symbol_binary_path = os.path.join(root, trim_path(sl_realpath))
-                        break
-                else:
-                    fatal_error("cannot find unstripped version of shared library '{}'"
-                            ". Either compile it with CDI or install an unstripped"
-                            " version".format(sl_realpath))
-            try:
-                fptr_analysis = subprocess.check_output([find_fptrs_script, sl_path,
-                    symbol_binary_path], stderr=subprocess.STDOUT).strip()
-                fptr_list = fptr_analysis.splitlines()
-                
-                # cache the analysis for later
-                cached_analysis = open(get_script_dir() 
-                        + '/../cdi-gcc/cached_fptr_analysis/' 
-                        + trim_path(sl_realpath), 'w')
-                cached_analysis.write(fptr_analysis)
-                cached_analysis.close()
-            except subprocess.CalledProcessError as err:
-                fatal_error("couldn't analyze '{}' for fptrs despite "
-                        "having an associated symbol table (.symtab) in file '{}'"
-                        .format(sl_path, symbol_binary_path))
-            except IOError:
-                eprint("cdi-ld: warning: failed to cache fptr analysis for "
-                        "shared library '{}'".format(trim_path(sl_realpath)))
-
-        for line in fptr_list:
-            fptr_lib_offset = int(line.split()[0], 16)
-            fptr_addr = hex(lib_load_addr + fptr_lib_offset)
-            fptr_addrs.append(fptr_addr)
-            # print '{}: {} + {} = {}'.format(line.split()[2], hex(lib_load_addr), hex(fptr_lib_offset), fptr_addr)
-
-    # remove executable since it is non-CDI compiled
-    for word in ld_spec_unsafe_archives:
-        if word == '-o':
-            outfile_next = True
-        elif outfile_next:
-            subprocess.check_call(['rm', word])
-            break
+    # remove executable since it isn't CDI compiled
+    subprocess.check_call(['rm', linker.target])
 
     objs_needed = required_archive_objs(verbose_linker_output, cdi_archives)
+
+    # for code visibility, print all objects that are needed from archives
     for archive_path in objs_needed.keys():
         print '        {} - {}'.format(archive_path, ' '.join(objs_needed[archive_path]))
     
@@ -806,8 +814,8 @@ for fake_obj in fake_objs:
     try:
         subprocess.check_call(gcc_as_command)
     except subprocess.CalledProcessError:
-        fatal_error("Assembling '{}' failed with command '{}'".format(
-            cdi_asm_fname, gcc_as_command))
+        fatal_error("assembling '{}' failed with command '{}'".format(
+            cdi_asm_fname, ' '.join(gcc_as_command)))
 
 target_type = ''
 if linker.is_building_shared_lib:
