@@ -3,11 +3,11 @@ import os
 
 class LinkerSpec():
     class Fixup():
-        """Pass instances of these to LinkerSpec.cdi()
+        """Pass instances of these to LinkerSpec.fixup()
         
         Valid entry types: 'obj', 'ar', 'sl', 'misc'
         Index corresponds to the spec's obj_paths, ar_paths, sl_paths, miscs
-        Replacement can be a string or a list
+        Replacement can be a string or a list. 
         """
         def __init__(self, entry_type, idx, replacement):
             self.entry_type = entry_type
@@ -16,11 +16,12 @@ class LinkerSpec():
 
     def __init__(self, raw_spec, fatal_error_fptr):
         self.raw_spec = raw_spec
+        self.target_is_shared = False
         self.fatal_error = fatal_error_fptr
         self.decompose_raw_spec(raw_spec)
 
-    def cdi(self, fixups):
-        """Returns a cdi-spec for given a list of LinkerSpec.Fixup instances"""
+    def fixup(self, fixups):
+        """Returns a fixed up spec for given a list of LinkerSpec.Fixup instances"""
         obj_fixups = dict()
         sl_fixups = dict()
         ar_fixups = dict()
@@ -44,7 +45,7 @@ class LinkerSpec():
         ar_paths_idx = 0
         misc_paths_idx = 0
 
-        cdi_spec = []
+        fixed_spec = []
         for i, entry in enumerate(self.reconstruct_spec()):
             # get the fixup if it exists
             replacement = None
@@ -68,12 +69,12 @@ class LinkerSpec():
 
             if replacement:
                 if isinstance(replacement, basestring):
-                    cdi_spec.append(replacement)
+                    fixed_spec.append(replacement)
                 else:
-                    cdi_spec += replacement
+                    fixed_spec += replacement
             else:
-                cdi_spec.append(entry)
-        return cdi_spec
+                fixed_spec.append(entry)
+        return fixed_spec
 
 
     def decompose_raw_spec(self, raw_spec):
@@ -157,13 +158,13 @@ class LinkerSpec():
                 elif e_type == '\x01': # relocatable
                     # Fixing up startup objects is not very important since
                     # attackers will only have access to attack after a server starts
-                    if (trim_path(entry) == 'crt1.o' 
-                            or trim_path(entry) == 'crti.o'
-                            or trim_path(entry) == 'crtbegin.o'
-                            or trim_path(entry) == 'crtend.o'
-                            or trim_path(entry) == 'crtn.o'
-                            or trim_path(entry) == 'crtbeginS.o'
-                            or trim_path(entry) == 'crtendS.o'):
+                    if (os.path.basename(entry) == 'crt1.o' 
+                            or os.path.basename(entry) == 'crti.o'
+                            or os.path.basename(entry) == 'crtbegin.o'
+                            or os.path.basename(entry) == 'crtend.o'
+                            or os.path.basename(entry) == 'crtn.o'
+                            or os.path.basename(entry) == 'crtbeginS.o'
+                            or os.path.basename(entry) == 'crtendS.o'):
                         return 'misc'
                     self.fatal_error("linker passed non-CDI object file '{}'"
                             .format(mystery_file.name))
@@ -265,14 +266,14 @@ def gen_lib_search_dirs(linker_spec):
     return added_search_dirs + builtin_search_dirs 
 
 
-def trim_path(path):
-    """Removes excess path e.g. /usr/local/bin/filename -> filename"""
-    slash_index = path.rfind('/') 
-    if slash_index == -1:
-        return path
-    elif slash_index == len(path) - 1:
-        slash_index = path[:-1].rfind('/')
-    return path[slash_index + 1:]
+#def trim_path(path):
+#    """Removes excess path e.g. /usr/local/bin/filename -> filename"""
+#    slash_index = path.rfind('/') 
+#    if slash_index == -1:
+#        return path
+#    elif slash_index == len(path) - 1:
+#        slash_index = path[:-1].rfind('/')
+#    return path[slash_index + 1:]
 
 LD_ARG_REQUIRED_OPTIONS = ['-m', '-o', '-a', '-audit', '-A', '-b', '-c', '--depaudit', '-P', '-e', '--exclude-libs', '--exclude-modules-for-implib', '-f', '-F', '-G', '-h', '-l', '-L', '-O', '-R', '-T', '-dT', '-u', '-y', '-Y', '-z', '-assert', '-z', '--exclude-symbols', '--heap', '--image-base', '--major-image-version', '--major-os-version', '--major-subsystem-version', '--minor-image-version', '--minor-os-version', '--minor-subsystem-version', '--output-def', '--out-implib', '--dll-search-prefix', '--stack', '--subsystem', '--bank-window', '--got']
 
