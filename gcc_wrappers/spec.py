@@ -67,7 +67,9 @@ class LinkerSpec():
                 fatal_error("Invalid entry type found in LinkerSpec: '{}'"
                         .format(self.entry_types[i]))
 
-            if replacement:
+            if replacement == '':
+                continue # '' means this entry should be deleted from the spec
+            elif replacement:
                 if isinstance(replacement, basestring):
                     fixed_spec.append(replacement)
                 else:
@@ -93,9 +95,13 @@ class LinkerSpec():
         self.miscs = []
         self.cdi_options = []
         self.entry_types = []
+        self.target = ''
 
         prev_entry = ''
         for entry in raw_spec:
+            if entry == '-l':
+                prev_entry = entry
+                continue
             entry_type = self.get_entry_type(entry, prev_entry)
             if entry_type == 'libstem':
                 if entry[:2] == '-l':
@@ -113,7 +119,7 @@ class LinkerSpec():
             if entry_type == 'obj':
                 self.obj_paths.append(entry)
             elif entry_type == 'ar':
-                self.ar_paths.append(entry)
+                self.ar_paths.append(os.path.realpath(entry))
             elif entry_type == 'sl':
                 self.sl_paths.append(entry)
             elif entry_type == 'misc':
@@ -122,8 +128,8 @@ class LinkerSpec():
                     self.target = entry
                 elif entry == '-shared':
                     self.target_is_shared = True
-            elif word.startswith('--cdi-options='):
-                self.cdi_options = word[len('--cdi-options='):].split(' ')
+            elif entry.startswith('--cdi-options='):
+                self.cdi_options = entry[len('--cdi-options='):].split(' ')
             else:
                 self.fatal_error("Unknown spec entry type '{}'".format(entry_type))
             prev_entry = entry
@@ -220,7 +226,7 @@ class LinkerSpec():
                     yield sls.next()
                 elif entry_type == 'misc':
                     yield miscs.next()
-                elif word.startswith('--cdi-options='):
+                elif entry_type.startswith('cdi_options'):
                     yield ''
                 else:
                     self.fatal_error("Invalid spec entry type '{}'".format(entry_type))

@@ -35,6 +35,10 @@ def chop_suffix(string, cutoff = ''):
 ########################################################################
 
 lspec = spec.LinkerSpec(raw_ld_spec, fatal_error)
+if lspec.cdi_options:
+    if '--spec' in lspec.cdi_options:
+        print ' '.join(lspec.raw())
+        sys.exit(0)
 
 archives = []
 for i, path in enumerate(lspec.ar_paths):
@@ -42,7 +46,7 @@ for i, path in enumerate(lspec.ar_paths):
     archives[-1].fixup_idx = i
 
 # the fake object files directly listed in the ld spec
-for path in lspec.obj_paths:
+for i, path in enumerate(lspec.obj_paths):
     fake_obj_name = chop_suffix(path) + '.fake.o'
     subprocess.check_call(['mv', path, fake_obj_name])
 
@@ -52,72 +56,44 @@ for path in lspec.obj_paths:
 # explicit_original_objs will not be modified in any way
 #
 # This is called on error or at the end of cdi-ld
-explicit_original_objs = copy.deepcopy(lspec.obj_paths)
 def restore_original_objects():
     for i, fake_obj in enumerate(explicit_fake_objs):
-        subprocess.check_call(['mv', fake_obj.path, explicit_original_objs[i]])
+        subprocess.check_call(['mv', fake_obj.path, lspec.obj_paths[i]])
 
 # used by fatal_error()
 restore_original_objects_fptr = restore_original_objects
 
-
 # All fake objects must be constructed after the filenames are moved
 # Otherwise fatal_error cannot restore them on error in this brief window
+cdi_obj_fixups = []
 explicit_fake_objs = []
 for i, obj_path in enumerate(lspec.obj_paths):
     try:
         cdi_obj_name = chop_suffix(obj_path) + '.fake.o'
         explicit_fake_objs.append(fake_types.FakeObjectFile(cdi_obj_name))
         explicit_fake_objs[-1].fixup_idx = i
-    except NonDeferredObjectFile:
+        cdi_obj_fixups.append(spec.LinkerSpec.Fixup('obj', i, 
+            chop_suffix(obj_path) + '.cdi.o'))
+        explicit_fake_objs[-1].fixup_idx = i
+    except fake_types.NonDeferredObjectFile:
         fatal_error("'{}' is not a deferred object file".format(obj_path))
 
 # create unsafe, non-cdi shared libraries. CDI shared libraries are for a 
 # future version
 if lspec.target_is_shared:
-    for i, fake_obj in enumerate(explicit_fake_objs):
-        subprocess.call(['as', fake_obj.path, '-o',
-            linker.obj_fnames[i]] + fake_obj.as_spec_no_io)
+    normify.fake_objs_normify(explicit_fake_objs)
 
     print 'Building non-CDI shared library (CDI shared libraries not implemented yet)'
-    print '   Converting CDI archives to non-CDI archives'
     sys.stdout.flush()
 
     # stale files in .cdi can cause trouble
     subprocess.check_call(['rm', '-rf', '.cdi'])
     subprocess.check_call(['mkdir', '.cdi'])
 
-    # we need to create non-cdi archives (see above). Therefore we need
-    # to remember the association between the non-cdi archives and the cdi-archives
-    # so that we can conclude which objects are needed for each cdi-archive
-    os.chdir('.cdi')
-    for archive in archives:
-        lines = subprocess.check_output(['ar', 'xv', archive.path]).strip().split('\n')
-        fnames = map(lambda x: x[len('x - '):], lines)
-        for fname in fnames:
-            with open(fname, 'r') as fake_obj:
-                elf_signature = '\x7FELF'
-                is_elf = fake_obj.read(4) == elf_signature
-            if is_elf:
-                continue # already real object file
-            else:
-                correct_fname = chop_suffix(fname, '.') + '.fake.o'
-                subprocess.check_call(['mv', fname, correct_fname])
-                subprocess.check_call(['as', correct_fname, '-o', fname])
+    normification_fixups = normify.ar_normify(archives)
+    print "Linking shared library '{}'\n".format(lspec.target)
 
-        subprocess.check_call(['ar', 'rc', os.path.basename(archive.path)] + fnames)
-
-    # create spec for non-cdi compilation
-    ld_spec_unsafe_archives = copy.deepcopy(ld_spec)
-    for i, entry in enumerate(linker.spec):
-        if linker.entry_types[i] == linker.entry_type.ARCHIVE:
-            ld_spec_unsafe_archives[i] = '.cdi/' + os.path.basename(linker.spec[i])
-
-    os.chdir('..')
-
-    print "Linking shared library '{}'\n".format(linker.target)
-
-    ld_command = ['ld'] + ld_spec_unsafe_archives
+    ld_command = ['ld'] + lspec.fixup(normification_fixups + fake_obj_fixups)
     try:
         verbose_linker_output = subprocess.check_output(ld_command)
     except subprocess.CalledProcessError:
@@ -141,8 +117,9 @@ if archives != []:
     print 'Compiling normally to learn which objects are needed for archives...'
     sys.stdout.flush()
 
-    normification_fixups = normify.ar_normify(archives)
-    normify.fake_objs_normify(explicit_fake_objs)
+    normification_fixups = []
+    normification_fixups += normify.ar_normify(archives)
+    normification_fixups += normify.fake_objs_normify(explicit_fake_objs)
 
     try:
         normified_spec = lspec.fixup(normification_fixups)
@@ -186,7 +163,6 @@ if archives != []:
     # what is used in the end. sl_load_addrs() instead asks the non-CDI
     # executable what shared libraries are used, which makes the GNU linker do
     # the work for us
-
     fptr_addrs = []
     for sl_path, lib_load_addr in lib_utils.sl_load_addrs(lspec.target):
         eprint("cdi-ld: warning: linking with non-CDI shared library '{}'"
@@ -206,7 +182,6 @@ if archives != []:
 
     # Extract needed fake objects out of archives
     ar_fake_objs, ar_fixups = lib_utils.ar_extract_req_objs(verbose_linker_output, archives)
-    print ar_fake_objs
 
 fake_objs = explicit_fake_objs + ar_fake_objs
 
@@ -264,17 +239,11 @@ subprocess.check_call(['as',
     lib_utils.get_script_dir() + '/../converter/cdi_abort.cdi.s', '-o',
     '.cdi/cdi_abort.cdi.o'])
 
-
-fake_obj_fixups = []
-for obj in explicit_fake_objs:
-    fake_obj_fixups.append(spec.LinkerSpec.Fixup('obj', obj.fixup_idx,
-        obj.path.replace('.fake.o', '.cdi.o')))
-
 # put cdi_abort.cdi.o with the other obj files
-fake_obj_fixups[-1].replacement = [
-        fake_obj_fixups[-1].replacement, '.cdi/cdi_abort.cdi.o']
+cdi_obj_fixups[-1].replacement = [
+        cdi_obj_fixups[-1].replacement, '.cdi/cdi_abort.cdi.o']
 
-cdi_fixups = ar_fixups + fake_obj_fixups
+cdi_fixups = ar_fixups + cdi_obj_fixups
 
 try:
     cdi_spec = lspec.fixup(cdi_fixups)

@@ -45,7 +45,15 @@ def ar_extract_req_objs(verbose_output, archives):
 
     ar_fixups = []
     fake_objs = []
+    ar_handled = dict() # maps { ar_realpath -> was_already_handled}
     for archive in archives:
+        # ignore duplicate archives
+        if ar_handled.get(os.path.realpath(archive.path)):
+            ar_fixups.append(spec.LinkerSpec.Fixup('ar', archive.fixup_idx, ''))
+            continue
+        else:
+            ar_handled[os.path.realpath(archive.path)] = True
+
         ar_fixup = spec.LinkerSpec.Fixup('ar', archive.fixup_idx, [])
 
         if archive.is_thin() and archive.path in objs_needed.keys():

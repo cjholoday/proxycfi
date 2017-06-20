@@ -35,7 +35,6 @@ def ar_normify(archives):
                 continue # already real object file
             else:
                 correct_obj_fname = chop_suffix(obj_fname, '.') + '.fake.o'
-                print correct_obj_fname, '-o', obj_fname
                 subprocess.check_call(['mv', obj_fname, correct_obj_fname])
                 subprocess.check_call(['as', correct_obj_fname, '-o', obj_fname])
 
@@ -47,9 +46,14 @@ def ar_normify(archives):
     return ar_fixups
 
 def fake_objs_normify(fake_objs):
+    """Assembles fake objects into non-CDI objects. Returns a list of fixups"""
+
+    fixups = []
     for i, fake_obj in enumerate(fake_objs):
-        subprocess.call(['as', fake_obj.path, '-o',
-            fake_obj.path.replace('.fake.o', '.o')] + fake_obj.as_spec_no_io)
+        target = fake_obj.path.replace('.fake.o', '.o')
+        subprocess.call(['as', fake_obj.path, '-o', target] + fake_obj.as_spec_no_io)
+        fixups.append(spec.LinkerSpec.Fixup('obj', fake_obj.fixup_idx, target))
+    return fixups
 
 def chop_suffix(string, cutoff = ''):
     if cutoff == '':
