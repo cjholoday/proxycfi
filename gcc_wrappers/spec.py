@@ -1,5 +1,9 @@
 import subprocess
+import lib_utils
 import os
+
+import lscript_parsing
+from error import fatal_error
 
 class LinkerSpec():
     class Fixup():
@@ -110,7 +114,9 @@ class LinkerSpec():
                     entry = find_lib(entry, self)
                 except NoMatchingLibrary as err:
                     self.fatal_error('no matching library for -l{}'.format(err.libstem))
-                if entry.endswith('.a'):
+                if entry.endswith('.so') and not is_elf(entry):
+                    script_libs = lscript_parsing.extract_lscript_spec_entries(entry)
+                elif entry.endswith('.so'):
                     entry_type = 'ar'
                 else:
                     entry_type = 'sl'
@@ -271,15 +277,9 @@ def gen_lib_search_dirs(linker_spec):
     # note the order: -L/--library-path directories are favored
     return added_search_dirs + builtin_search_dirs 
 
-
-#def trim_path(path):
-#    """Removes excess path e.g. /usr/local/bin/filename -> filename"""
-#    slash_index = path.rfind('/') 
-#    if slash_index == -1:
-#        return path
-#    elif slash_index == len(path) - 1:
-#        slash_index = path[:-1].rfind('/')
-#    return path[slash_index + 1:]
+def is_elf(mystery_file_path):
+    with open(mystery_file_path, 'rb') as mystery_file:
+        return mystery_file.read(len('\x7FELF')) == '\x7FELF'
 
 LD_ARG_REQUIRED_OPTIONS = ['-m', '-o', '-a', '-audit', '-A', '-b', '-c', '--depaudit', '-P', '-e', '--exclude-libs', '--exclude-modules-for-implib', '-f', '-F', '-G', '-h', '-l', '-L', '-O', '-R', '-T', '-dT', '-u', '-y', '-Y', '-z', '-assert', '-z', '--exclude-symbols', '--heap', '--image-base', '--major-image-version', '--major-os-version', '--major-subsystem-version', '--minor-image-version', '--minor-os-version', '--minor-subsystem-version', '--output-def', '--out-implib', '--dll-search-prefix', '--stack', '--subsystem', '--bank-window', '--got']
 

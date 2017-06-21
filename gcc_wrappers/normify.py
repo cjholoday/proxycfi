@@ -2,6 +2,8 @@ import spec
 import subprocess
 import os
 
+from error import fatal_error
+
 def ar_normify(archives):
     """Creates non-CDI archives and returns a list of fixups
     

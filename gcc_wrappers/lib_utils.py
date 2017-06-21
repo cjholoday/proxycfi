@@ -4,6 +4,8 @@ import re
 
 import spec
 import fake_types
+from eprint import eprint
+from error import fatal_error
 
 def ar_extract_req_objs(verbose_output, archives):
     """Extracts required objs from archives and return ([fake objs], [ar_fixups])
@@ -92,6 +94,50 @@ def ar_extract_req_objs(verbose_output, archives):
         ar_fixups.append(ar_fixup)
     return fake_objs, ar_fixups
 
+def sl_get_cdi_fixups(lspec, binary_path):
+    """Returns a list of fixups for creating CDI shared libraries"""
+
+    sl_cdi_paths = []
+    for sl_path, garbage in sl_trace_bin(binary_path):
+        sl_realpath = os.path.realpath(sl_path)
+
+        # Full CDI shared libraries are stored in cdi/lib
+        candidate = '/usr/local/cdi/lib/' + sl_realpath
+        if os.path.isfile(candidate):
+            sl_cdi_paths.append(candidate)
+            continue
+
+        # Unsafe, unstripped non-CDI shared libraries are stored in cdi/ulib
+        candidate = '/usr/local/cdi/ulib/' + sl_realpath
+        if os.path.isfile(candidate):
+            eprint("cdi-ld: warning: compiling against non-CDI shared library"
+                    " '{}'".format(candidate))
+            sl_cdi_paths.append(candidate)
+            continue
+
+        symbol_ref = sl_find_symbol_ref(sl_path)
+        sl_cdi_paths.append(sl_path)
+        if symbol_ref == sl_path:
+            eprint("cdi-ld: warning: compiling against non-CDI shared library"
+                    " '{}'".format(sl_path))
+        else:
+            eprint("cdi-ld: warning: compiling against non-CDI shared library"
+                    " '{}' with symbol reference '{}'".format(sl_path, symbol_ref))
+
+
+    # void all the shared libraries in the spec
+    sl_fixups = []
+    for i, sl_path in enumerate(lspec.sl_paths):
+        if os.path.basename(sl_path).startswith('ld-linux-x86-64.so'):
+            continue # ld-linux-x86-64.so cannot be moved away from -dynamic-linker
+        sl_fixups.append(spec.LinkerSpec.Fixup('sl', i, ''))
+
+    # place all shared libraries together, as far back in the spec as possible
+    sl_fixups[-1].replacement = sl_cdi_paths
+    sl_cdi_paths.remove('/lib64/ld-linux-x86-64.so.2')
+    print sl_cdi_paths
+    return sl_fixups
+
 def has_symbol_table(elf_path):
     """Returns true if the elf executable at elf_path has a ".symtab" section"""
 
@@ -110,22 +156,23 @@ def sl_linker_name(shared_lib_path):
         trimmed_name = trimmed_name[:-1]
     return trimmed_name
     
-def sl_find_unstripped(binary_path):
-    if has_symbol_table(binary_path):
-        return binary_path
+def sl_find_symbol_ref(sl_path):
+    sl_realpath = os.path.realpath(sl_path)
+    if has_symbol_table(sl_path):
+        return sl_path
 
-    candidate_path = '/usr/local/lib/' + sl_linker_name(binary_path)
+    candidate_path = '/usr/local/cdi/ulib/debug/' + sl_realpath
     if os.path.isfile(candidate_path) and has_symbol_table(candidate_path):
         return candidate_path
 
     for root, dirs, files in os.walk('/usr/lib/debug', topdown=True):
-        sl_trimmed_realpath = os.path.basename(os.path.realpath(binary_path))
+        sl_trimmed_realpath = os.path.basename(sl_realpath)
         if sl_trimmed_realpath in files:
             return os.path.join(root, sl_trimmed_realpath)
     else:
         fatal_error("cannot find unstripped version of shared library '{}'"
                 ". Either compile it with CDI or install an unstripped"
-                " version".format(os.path.realpath(binary_path)))
+                " version".format(sl_realpath))
 
 def get_script_dir():
     return os.path.dirname(os.path.realpath(__file__))
@@ -167,7 +214,7 @@ def sl_get_fptr_addrs(binary_path, symbol_ref, lib_load_addr):
 
     return fptr_addrs
 
-def sl_load_addrs(execname):
+def sl_trace_bin(execname):
     """Get pairs of (shared lib path, load address). 
 
     There must be an ELF executable CDI or otherwise already generated. Since
@@ -197,7 +244,15 @@ def sl_load_addrs(execname):
         lib_addr_pairs.append((path, addr))
     return lib_addr_pairs
 
+def sl_aslr_is_enabled(binary_path):
+    traced_output1 = subprocess.check_output(['./' + binary_path], 
+            env=dict(os.environ, **{'LD_TRACE_LOADED_OBJECTS':'1'}))
+    traced_output2 = subprocess.check_output(['./' + binary_path], 
+            env=dict(os.environ, **{'LD_TRACE_LOADED_OBJECTS':'1'}))
+    return  traced_output1 != traced_output2
+
 def chop_suffix(string, cutoff = ''):
     if cutoff == '':
         return string[:string.rfind('.')]
     return string[:string.rfind(cutoff)]
+

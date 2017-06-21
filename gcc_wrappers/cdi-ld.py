@@ -2,7 +2,6 @@
 import sys
 import os
 import subprocess
-from eprint import eprint
 import re
 import copy
 
@@ -10,18 +9,10 @@ import spec
 import normify
 import lib_utils
 import fake_types
+import error
+from error import fatal_error
+from eprint import eprint
 
-raw_ld_spec = sys.argv[1:]
-
-restore_original_objects_fptr = None
-def fatal_error(message):
-    eprint('\n----------------------------------------------\n'
-            'cdi-ld: error: {}'.format(message))
-    eprint('\nSpec passed to cdi-ld.py: {}'.format(' '.join(raw_ld_spec)))
-    if restore_original_objects_fptr:
-        restore_original_objects_fptr()
-    sys.exit(1)
- 
 def chop_suffix(string, cutoff = ''):
     if cutoff == '':
         return string[:string.rfind('.')]
@@ -33,6 +24,9 @@ def chop_suffix(string, cutoff = ''):
 #   files to real, cdi-compliant object files, and runs the gnu linker on them
 #
 ########################################################################
+
+error.raw_ld_spec = raw_ld_spec = sys.argv[1:]
+print ' '.join(raw_ld_spec)
 
 lspec = spec.LinkerSpec(raw_ld_spec, fatal_error)
 if lspec.cdi_options:
@@ -102,6 +96,10 @@ if lspec.target_is_shared:
     restore_original_objects()
     sys.exit(0)
 
+###############################################################################
+# Compile without CDI to learn the needed objects, exact shared libraries used,
+# and the shared library load addresses
+#
 # only the needed object files are included from a given archive. Hence, we must
 # check which of the objects are needed for every archive. Instead of coding this
 # ourselves, we use the existing gcc infastructure to find the needed
@@ -109,79 +107,88 @@ if lspec.target_is_shared:
 # --verbose flag. To get this output, however, we need to compile the code
 # without CDI. The linker needs object files and we simply don't have the CDI
 # object files ready
+###############################################################################
 
 fptr_addrs = []
 ar_fake_objs = []
 ar_fixups = []
-if archives != []:
-    print 'Compiling normally to learn which objects are needed for archives...'
-    sys.stdout.flush()
 
-    normification_fixups = []
-    normification_fixups += normify.ar_normify(archives)
-    normification_fixups += normify.fake_objs_normify(explicit_fake_objs)
+#
+print 'Compiling normally to learn which objects are needed for archives...'
+sys.stdout.flush()
 
-    try:
-        normified_spec = lspec.fixup(normification_fixups)
-        ld_command = ['ld'] + normified_spec + ['--verbose']
-        verbose_linker_output = subprocess.check_output(ld_command)
-    except subprocess.CalledProcessError:
-        fatal_error("Unable to compile without CDI using linker command '{}'"
-                .format(' '.join(ld_command)))
+normification_fixups = []
+normification_fixups += normify.ar_normify(archives)
+normification_fixups += normify.fake_objs_normify(explicit_fake_objs)
 
-    if '--abandon-cdi' in lspec.cdi_options:
-        print 'WARNING: CREATING NON CDI EXECUTABLE AS REQUESTED'
-        sys.exit(0)
+try:
+    normified_spec = lspec.fixup(normification_fixups)
+    ld_command = ['ld'] + normified_spec + ['--verbose']
+    verbose_linker_output = subprocess.check_output(ld_command)
+except subprocess.CalledProcessError:
+    fatal_error("Unable to compile without CDI using linker command '{}'"
+            .format(' '.join(ld_command)))
 
-    # TODO always create a non-CDI executable not just when there are archives
-    #
-    # For now, this code will always run since there is always an archive
-    # listed in the spec. This may not always be the case?
+if '--abandon-cdi' in lspec.cdi_options:
+    print 'WARNING: CREATING NON CDI EXECUTABLE AS REQUESTED'
+    sys.exit(0)
 
-    # check that ASLR is disabled
-    traced_output1 = subprocess.check_output(['./' + lspec.target], 
-            env=dict(os.environ, **{'LD_TRACE_LOADED_OBJECTS':'1'}))
-    traced_output2 = subprocess.check_output(['./' + lspec.target], 
-            env=dict(os.environ, **{'LD_TRACE_LOADED_OBJECTS':'1'}))
-    if traced_output1 != traced_output2:
-        fatal_error("load addresses aren't deterministic. Disable ASLR"
-                " (this can be done with "
-                "'echo 0 | sudo tee /proc/sys/kernel/randomize_va_space')")
+# Extract needed fake objects out of archives
+ar_fake_objs, ar_fixups = lib_utils.ar_extract_req_objs(verbose_linker_output, archives)
 
-    # Find all function pointer calls from shared libraries back into the 
-    # executable code. We need jumps back to the shared libraries, even if those
-    # shared libraries are not CDI. Since non-CDI shared libraries have unknown
-    # function and fptr type information, every return sled must contain an entry
-    # fptr calls in shared libraries. TODO: get ftypes/fptypes info for CDI
-    # shared libraries and use that information to narrow the list of return
-    # sleds that need an entry for shared library fptr calls
+if lib_utils.sl_aslr_is_enabled(lspec.target):
+    fatal_error("load addresses aren't deterministic. Disable ASLR"
+            " (this can be done with "
+            "'echo 0 | sudo tee /proc/sys/kernel/randomize_va_space')")
 
-    # the shared library paths from sl_load_addrs() are more precise 
-    # than the shared libs passed to the linker as options. The ones passed as
-    # options are occasionally linker scripts, which complicates analysis since
-    # we would have to parse through the scripts. Even then, we wouldn't be sure
-    # what is used in the end. sl_load_addrs() instead asks the non-CDI
-    # executable what shared libraries are used, which makes the GNU linker do
-    # the work for us
-    fptr_addrs = []
-    for sl_path, lib_load_addr in lib_utils.sl_load_addrs(lspec.target):
-        eprint("cdi-ld: warning: linking with non-CDI shared library '{}'"
-                .format(sl_path))
+# Recompile with cdi shared libraries / unstripped unsafe shared libraries
+# in order to handle shared library callbacks when non-CDI shared libraries
+# are compiled
+sl_fixups = lib_utils.sl_get_cdi_fixups(lspec, lspec.target)
+# normification_fixups += sl_fixups
+try:
+    normified_spec = lspec.fixup(normification_fixups)
+    ld_command = ['ld'] + normified_spec
+    subprocess.check_call(ld_command)
+except subprocess.CalledProcessError:
+    fatal_error("Unable to compile without CDI using linker command '{}'"
+            .format(' '.join(ld_command)))
 
-        # if it's in /usr/local/lib, then the reference contains code in addition
-        # to the symbol table. Therefore, it's unassociated with the shared
-        # library in the spec. Use this new binary instead
-        # FIXME: replace spec args
-        symbol_reference = lib_utils.sl_find_unstripped(sl_path)
-        if symbol_reference.startswith('/usr/local/lib/'):
-            sl_path = symbol_reference
-        fptr_addrs += lib_utils.sl_get_fptr_addrs(sl_path, symbol_reference, lib_load_addr)
 
-    # remove executable since it isn't CDI compiled
-    subprocess.check_call(['rm', lspec.target])
+# Find all function pointer calls from shared libraries back into the 
+# executable code. We need jumps back to the shared libraries, even if those
+# shared libraries are not CDI. Since non-CDI shared libraries have unknown
+# function and fptr type information, every return sled must contain an entry
+# fptr calls in shared libraries. TODO: get ftypes/fptypes info for CDI
+# shared libraries and use that information to narrow the list of return
+# sleds that need an entry for shared library fptr calls
 
-    # Extract needed fake objects out of archives
-    ar_fake_objs, ar_fixups = lib_utils.ar_extract_req_objs(verbose_linker_output, archives)
+# the shared library paths from sl_load_addrs() are more precise 
+# than the shared libs passed to the linker as options. The ones passed as
+# options are occasionally linker scripts, which complicates analysis since
+# we would have to parse through the scripts. Even then, we wouldn't be sure
+# what is used in the end. sl_load_addrs() instead asks the non-CDI
+# executable what shared libraries are used, which makes the GNU linker do
+# the work for us
+fptr_addrs = []
+for sl_path, lib_load_addr in lib_utils.sl_trace_bin(lspec.target):
+    if sl_path.startswith('/usr/local/cdi/lib/'):
+        continue # this shared library is CDI so fptr analysis is unneeded
+
+    # if it's in /usr/local/lib, then the reference contains code in addition
+    # to the symbol table. Therefore, it's unassociated with the shared
+    # library in the spec. Use this new binary instead
+    # FIXME: replace spec args
+    symbol_reference = lib_utils.sl_find_symbol_ref(sl_path)
+    if symbol_reference.startswith('/usr/local/lib/'):
+        sl_path = symbol_reference
+    fptr_addrs += lib_utils.sl_get_fptr_addrs(sl_path, symbol_reference, lib_load_addr)
+
+print '---'
+print '\n'.join(lspec.sl_paths)
+# remove executable since it isn't CDI compiled
+subprocess.check_call(['rm', lspec.target])
+
 
 fake_objs = explicit_fake_objs + ar_fake_objs
 
@@ -243,7 +250,7 @@ subprocess.check_call(['as',
 cdi_obj_fixups[-1].replacement = [
         cdi_obj_fixups[-1].replacement, '.cdi/cdi_abort.cdi.o']
 
-cdi_fixups = ar_fixups + cdi_obj_fixups
+cdi_fixups = ar_fixups + cdi_obj_fixups + sl_fixups
 
 try:
     cdi_spec = lspec.fixup(cdi_fixups)
