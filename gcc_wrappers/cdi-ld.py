@@ -25,8 +25,8 @@ def chop_suffix(string, cutoff = ''):
 #
 ########################################################################
 
+sys.stdout.flush()
 error.raw_ld_spec = raw_ld_spec = sys.argv[1:]
-print ' '.join(raw_ld_spec)
 
 lspec = spec.LinkerSpec(raw_ld_spec, fatal_error)
 if lspec.cdi_options:
@@ -36,8 +36,12 @@ if lspec.cdi_options:
 
 archives = []
 for i, path in enumerate(lspec.ar_paths):
-    archives.append(fake_types.Archive(path))
-    archives[-1].fixup_idx = i
+    # FIXME: This is VERY unportable
+    # To get a CDI version of libc_nonshared.a we would need to (presumably) 
+    # compile GCC, which is simply not possible right now.
+    if path != '/usr/lib/x86_64-linux-gnu/libc_nonshared.a':
+        archives.append(fake_types.Archive(path))
+        archives[-1].fixup_idx = i
 
 # the fake object files directly listed in the ld spec
 for i, path in enumerate(lspec.obj_paths):
@@ -75,7 +79,6 @@ for i, obj_path in enumerate(lspec.obj_paths):
 # create unsafe, non-cdi shared libraries. CDI shared libraries are for a 
 # future version
 if lspec.target_is_shared:
-    normify.fake_objs_normify(explicit_fake_objs)
 
     print 'Building non-CDI shared library (CDI shared libraries not implemented yet)'
     sys.stdout.flush()
@@ -84,10 +87,12 @@ if lspec.target_is_shared:
     subprocess.check_call(['rm', '-rf', '.cdi'])
     subprocess.check_call(['mkdir', '.cdi'])
 
-    normification_fixups = normify.ar_normify(archives)
+    normification_fixups = []
+    normification_fixups += normify.fake_objs_normify(explicit_fake_objs)
+    normification_fixups += normify.ar_normify(archives)
     print "Linking shared library '{}'\n".format(lspec.target)
 
-    ld_command = ['ld'] + lspec.fixup(normification_fixups + fake_obj_fixups)
+    ld_command = ['ld'] + lspec.fixup(normification_fixups)
     try:
         verbose_linker_output = subprocess.check_output(ld_command)
     except subprocess.CalledProcessError:
@@ -113,7 +118,6 @@ fptr_addrs = []
 ar_fake_objs = []
 ar_fixups = []
 
-#
 print 'Compiling normally to learn which objects are needed for archives...'
 sys.stdout.flush()
 
@@ -184,8 +188,6 @@ for sl_path, lib_load_addr in lib_utils.sl_trace_bin(lspec.target):
         sl_path = symbol_reference
     fptr_addrs += lib_utils.sl_get_fptr_addrs(sl_path, symbol_reference, lib_load_addr)
 
-print '---'
-print '\n'.join(lspec.sl_paths)
 # remove executable since it isn't CDI compiled
 subprocess.check_call(['rm', lspec.target])
 

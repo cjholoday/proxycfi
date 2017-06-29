@@ -1,6 +1,7 @@
 import subprocess
 import os
 import re
+import sys
 
 import spec
 import fake_types
@@ -135,7 +136,6 @@ def sl_get_cdi_fixups(lspec, binary_path):
     # place all shared libraries together, as far back in the spec as possible
     sl_fixups[-1].replacement = sl_cdi_paths
     sl_cdi_paths.remove('/lib64/ld-linux-x86-64.so.2')
-    print sl_cdi_paths
     return sl_fixups
 
 def has_symbol_table(elf_path):
@@ -192,12 +192,15 @@ def sl_get_fptr_addrs(binary_path, symbol_ref, lib_load_addr):
             fptr_analysis = cached_analysis.readlines()
     else:
         try:
+            print 'generating and caching fptr analysis for {}'.format(binary_path)
+            sys.stdout.flush()
+
             fptr_analysis = subprocess.check_output([find_fptrs_script, binary_path,
                 symbol_ref]).strip()
         except subprocess.CalledProcessError as err:
             fatal_error("couldn't analyze '{}' for fptrs despite "
                     "having an associated symbol table (.symtab) in file '{}'"
-                    .format(sl_path, symbol_binary_path))
+                    .format(binary_path, symbol_ref))
         try:
             with open(cached_analysis_path, 'w') as cached_analysis:
                 cached_analysis.write(fptr_analysis)

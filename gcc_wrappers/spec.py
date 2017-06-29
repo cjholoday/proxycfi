@@ -1,6 +1,7 @@
 import subprocess
 import lib_utils
 import os
+import sys
 
 import lscript_parsing
 from error import fatal_error
@@ -20,8 +21,19 @@ class LinkerSpec():
 
     def __init__(self, raw_spec, fatal_error_fptr):
         self.raw_spec = raw_spec
-        self.target_is_shared = False
         self.fatal_error = fatal_error_fptr
+
+        # Within each list, the objects are populated 
+        # in the order in which they are found
+        self.obj_paths = []
+        self.ar_paths = []
+        self.sl_paths = []
+        self.miscs = []
+        self.cdi_options = []
+        self.entry_types = []
+        self.target = 'a.out' # default target
+        self.target_is_shared = False # unshared unless '-shared' is found
+
         self.decompose_raw_spec(raw_spec)
 
     def fixup(self, fixups):
@@ -84,22 +96,19 @@ class LinkerSpec():
 
 
     def decompose_raw_spec(self, raw_spec):
-        """Initializes member lists associated with the spec
+        """Fills member lists associated with the spec
         
-        Initializes obj_paths, ar_paths, sl_paths, misc options, cdi_options, entry_types
+        Fills self.obj_paths, self.ar_paths, self.sl_paths, self.miscs 
+              self.options, self.cdi_options, self.entry_types
         Objects in each list are ordered by what came first in the spec 
+
+        self.target and self.target_is_shared are also set if found
 
         Shared libraries specified as -llibname are replaced with a path to the
         shared library that will be used
         """
-
-        self.obj_paths = []
-        self.ar_paths = []
-        self.sl_paths = []
-        self.miscs = []
-        self.cdi_options = []
-        self.entry_types = []
-        self.target = ''
+        # true when --as-needed is enabled
+        link_as_needed = False
 
         prev_entry = ''
         for entry in raw_spec:
@@ -115,7 +124,17 @@ class LinkerSpec():
                 except NoMatchingLibrary as err:
                     self.fatal_error('no matching library for -l{}'.format(err.libstem))
                 if entry.endswith('.so') and not is_elf(entry):
-                    script_libs = lscript_parsing.extract_lscript_spec_entries(entry)
+                    script_spec = lscript_parsing.extract_spec_entries(entry)
+                    # retain the enable/disable state of --as-needed
+                    if link_as_needed:
+                        script_spec.append('--as-needed')
+                    else:
+                        script_spec.append('--no-as-needed')
+                    self.decompose_raw_spec(script_spec)
+
+                    # Leave off the linker script because its implicit
+                    # spec entries have been decomposed
+                    continue
                 elif entry.endswith('.so'):
                     entry_type = 'ar'
                 else:
@@ -134,13 +153,15 @@ class LinkerSpec():
                     self.target = entry
                 elif entry == '-shared':
                     self.target_is_shared = True
+                elif entry == '--as-needed':
+                    self.link_as_needed = True
+                elif entry == '--no-as-needed':
+                    self.link_as_needed = False
             elif entry.startswith('--cdi-options='):
                 self.cdi_options = entry[len('--cdi-options='):].split(' ')
             else:
                 self.fatal_error("Unknown spec entry type '{}'".format(entry_type))
             prev_entry = entry
-        if self.target == '':
-            self.target = 'a.out'
 
     def get_entry_type(self, entry, prev_entry):
         if prev_entry == '-l' or (entry[:2] == '-l' and len(entry) > 2): 
@@ -152,8 +173,13 @@ class LinkerSpec():
             try:
                 mystery_file = open(entry, 'rb')
             except IOError:
-                self.fatal_error("non existent file '{}' passed to linker"
-                        .format(entry))
+                try:
+                    # this might capture an unintended library?
+                    find_lib(entry, self.raw_spec)
+                    return 'libstem' # could check that it is archive/sharedlib
+                except NoMatchingLibrary:
+                    self.fatal_error("non existent file '{}' passed to linker"
+                            .format(entry))
 
             discriminator = mystery_file.read(7)
             if discriminator.startswith('\x7FELF'):
@@ -251,14 +277,35 @@ def find_lib(libstem, linker_spec):
 
     if libstem[:2] == '-l':
         libstem = libstem[2:]
-    for directory in find_lib.search_dirs:
-        candidate_stem = '{}/lib{}'.format(directory, libstem)
+    elif libstem.startswith('lib'):
+        chopped_libname = libname = libstem
+        while get_suffix(chopped_libname)[1:].isdigit():
+            chopped_libname = chop_suffix(chopped_libname)
+        if chopped_libname.endswith('.a') or chopped_libname.endswith('.so'):
+            for path in find_lib.search_dirs:
+                candidate = '{}/{}'.format(path, libname)
+                if os.path.isfile(candidate):
+                    return os.path.realpath(candidate)
+            else:
+                raise NoMatchingLibrary(libstem)
+    for path in find_lib.search_dirs:
+        candidate_stem = '{}/lib{}'.format(path, libstem)
         if os.path.isfile(candidate_stem + '.so'):
             return os.path.realpath(candidate_stem + '.so')
         elif os.path.isfile(candidate_stem + '.a'):
             return os.path.realpath(candidate_stem + '.a')
     else:
         raise NoMatchingLibrary(libstem)
+
+def chop_suffix(string, cutoff = ''):
+    if cutoff == '':
+        return string[:string.rfind('.')]
+    return string[:string.rfind(cutoff)]
+
+def get_suffix(string, cutoff = ''):
+    if cutoff == '':
+        return string[string.rfind('.'):]
+    return string[string.rfind(cutoff):]
 
 def gen_lib_search_dirs(linker_spec):
     # first find directories in which libraries are searched for

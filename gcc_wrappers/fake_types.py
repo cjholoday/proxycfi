@@ -35,6 +35,7 @@ class FakeObjectFile:
             elf_signature = '\x7FELF' # TODO verify #<deff> instead
             if fake_obj.read(4) == elf_signature:
                 fake_obj.seek(0)
+                print path
                 raise NonDeferredObjectFile()
             fake_obj.seek(0)
 
