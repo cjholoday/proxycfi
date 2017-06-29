@@ -4,6 +4,7 @@ import os
 import subprocess
 import re
 import copy
+import time
 
 import spec
 import normify
@@ -25,7 +26,6 @@ def chop_suffix(string, cutoff = ''):
 #
 ########################################################################
 
-sys.stdout.flush()
 error.raw_ld_spec = raw_ld_spec = sys.argv[1:]
 
 lspec = spec.LinkerSpec(raw_ld_spec, fatal_error)
@@ -59,7 +59,7 @@ def restore_original_objects():
         subprocess.check_call(['mv', fake_obj.path, lspec.obj_paths[i]])
 
 # used by fatal_error()
-restore_original_objects_fptr = restore_original_objects
+error.restore_original_objects_fptr = restore_original_objects
 
 # All fake objects must be constructed after the filenames are moved
 # Otherwise fatal_error cannot restore them on error in this brief window
@@ -262,4 +262,3 @@ except subprocess.CalledProcessError:
             .format(' '.join(cdi_spec)))
 
 restore_original_objects()
-

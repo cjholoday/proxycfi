@@ -254,8 +254,17 @@ def sl_aslr_is_enabled(binary_path):
             env=dict(os.environ, **{'LD_TRACE_LOADED_OBJECTS':'1'}))
     return  traced_output1 != traced_output2
 
+def sl_chop_versioning(sl_path):
+    while get_suffix(sl_path)[1:].isdigit():
+        sl_path = chop_suffix(sl_path)
+    return sl_path
+
 def chop_suffix(string, cutoff = ''):
     if cutoff == '':
         return string[:string.rfind('.')]
     return string[:string.rfind(cutoff)]
 
+def get_suffix(string, cutoff = ''):
+    if cutoff == '':
+        return string[string.rfind('.'):]
+    return string[string.rfind(cutoff):]

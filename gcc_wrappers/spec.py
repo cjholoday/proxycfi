@@ -135,7 +135,7 @@ class LinkerSpec():
                     # Leave off the linker script because its implicit
                     # spec entries have been decomposed
                     continue
-                elif entry.endswith('.so'):
+                elif entry.endswith('.a'):
                     entry_type = 'ar'
                 else:
                     entry_type = 'sl'
@@ -277,17 +277,14 @@ def find_lib(libstem, linker_spec):
 
     if libstem[:2] == '-l':
         libstem = libstem[2:]
-    elif libstem.startswith('lib'):
-        chopped_libname = libname = libstem
-        while get_suffix(chopped_libname)[1:].isdigit():
-            chopped_libname = chop_suffix(chopped_libname)
-        if chopped_libname.endswith('.a') or chopped_libname.endswith('.so'):
-            for path in find_lib.search_dirs:
-                candidate = '{}/{}'.format(path, libname)
-                if os.path.isfile(candidate):
-                    return os.path.realpath(candidate)
-            else:
-                raise NoMatchingLibrary(libstem)
+    elif libstem.startswith('lib') and (libstem.endswith('.a')
+            or lib_utils.sl_chop_versioning(libstem).endswith('.so')):
+        for path in find_lib.search_dirs:
+            candidate = '{}/{}'.format(path, libstem)
+            if os.path.isfile(candidate):
+                return os.path.realpath(candidate)
+        else:
+            raise NoMatchingLibrary(libstem)
     for path in find_lib.search_dirs:
         candidate_stem = '{}/lib{}'.format(path, libstem)
         if os.path.isfile(candidate_stem + '.so'):
@@ -302,10 +299,6 @@ def chop_suffix(string, cutoff = ''):
         return string[:string.rfind('.')]
     return string[:string.rfind(cutoff)]
 
-def get_suffix(string, cutoff = ''):
-    if cutoff == '':
-        return string[string.rfind('.'):]
-    return string[string.rfind(cutoff):]
 
 def gen_lib_search_dirs(linker_spec):
     # first find directories in which libraries are searched for
