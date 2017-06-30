@@ -93,15 +93,18 @@ class LinkerSpec():
                 fatal_error("Invalid entry type found in LinkerSpec: '{}'"
                         .format(self.entry_types[i]))
 
-            if replacement == '':
-                continue # '' means this entry should be deleted from the spec
+            if replacement == None:
+                fixed_spec.append(entry)
+            elif replacement == '' or replacement == []:
+                continue # do not include this entry in the spec
             elif replacement:
                 if isinstance(replacement, basestring):
                     fixed_spec.append(replacement)
                 else:
                     fixed_spec += replacement
             else:
-                fixed_spec.append(entry)
+                fatal_error("Unknown replacement type: '{}' (type={})"
+                        .format(replacement, type(replacement)))
         return fixed_spec
 
 

@@ -79,7 +79,6 @@ for i, obj_path in enumerate(lspec.obj_paths):
 # create unsafe, non-cdi shared libraries. CDI shared libraries are for a 
 # future version
 if lspec.target_is_shared:
-
     print 'Building non-CDI shared library (CDI shared libraries not implemented yet)'
     sys.stdout.flush()
 
@@ -247,6 +246,9 @@ cdi_obj_fixups[-1].replacement = [
         cdi_obj_fixups[-1].replacement, '.cdi/cdi_abort.cdi.o']
 
 cdi_fixups = ar_fixups + cdi_obj_fixups + sl_fixups
+for fixup in ar_fixups:
+    print fixup.idx, lspec.ar_paths[fixup.idx], '"{}"'.format(fixup.replacement), type(fixup.replacement)
+    print ' '
 
 try:
     cdi_spec = lspec.fixup(cdi_fixups)
