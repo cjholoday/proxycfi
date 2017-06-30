@@ -95,29 +95,32 @@ def ar_extract_req_objs(verbose_output, archives):
         ar_fixups.append(ar_fixup)
     return fake_objs, ar_fixups
 
-def sl_get_cdi_fixups(lspec, binary_path):
+def sl_cdi_fixups(lspec, binary_path):
     """Returns a list of fixups for creating CDI shared libraries"""
 
-    sl_cdi_paths = []
+    sl_cdi_paths = dict()
     for sl_path, garbage in sl_trace_bin(binary_path):
         sl_realpath = os.path.realpath(sl_path)
 
+        # Pending on CDI shared libraries being implemented:
+        #
         # Full CDI shared libraries are stored in cdi/lib
-        candidate = '/usr/local/cdi/lib/' + sl_realpath
-        if os.path.isfile(candidate):
-            sl_cdi_paths.append(candidate)
-            continue
+        # candidate = '/usr/local/cdi/lib/' + os.path.basename(sl_realpath)
+        # if os.path.isfile(candidate):
+        #     sl_cdi_paths.append(candidate)
+        #     continue
 
         # Unsafe, unstripped non-CDI shared libraries are stored in cdi/ulib
-        candidate = '/usr/local/cdi/ulib/' + sl_realpath
+        candidate = '/usr/local/cdi/ulib/' + os.path.basename(sl_realpath)
         if os.path.isfile(candidate):
             eprint("cdi-ld: warning: compiling against non-CDI shared library"
                     " '{}'".format(candidate))
-            sl_cdi_paths.append(candidate)
+            sl_cdi_paths[sl_realpath] = candidate
             continue
 
-        symbol_ref = sl_find_symbol_ref(sl_path)
-        sl_cdi_paths.append(sl_path)
+        if 'libcrypto' in sl_realpath:
+            sys.exit(1)
+        symbol_ref = sl_find_symbol_ref(sl_realpath)
         if symbol_ref == sl_path:
             eprint("cdi-ld: warning: compiling against non-CDI shared library"
                     " '{}'".format(sl_path))
@@ -125,17 +128,18 @@ def sl_get_cdi_fixups(lspec, binary_path):
             eprint("cdi-ld: warning: compiling against non-CDI shared library"
                     " '{}' with symbol reference '{}'".format(sl_path, symbol_ref))
 
-
-    # void all the shared libraries in the spec
     sl_fixups = []
-    for i, sl_path in enumerate(lspec.sl_paths):
-        if os.path.basename(sl_path).startswith('ld-linux-x86-64.so'):
-            continue # ld-linux-x86-64.so cannot be moved away from -dynamic-linker
-        sl_fixups.append(spec.LinkerSpec.Fixup('sl', i, ''))
+    for idx, sl_path in enumerate(lspec.sl_paths):
+        sl_realpath = os.path.realpath(sl_path)
+        if sl_realpath in sl_cdi_paths:
+            sl_fixups.append(spec.LinkerSpec.Fixup('sl', idx, sl_cdi_paths[sl_realpath]))
 
-    # place all shared libraries together, as far back in the spec as possible
-    sl_fixups[-1].replacement = sl_cdi_paths
-    sl_cdi_paths.remove('/lib64/ld-linux-x86-64.so.2')
+    # ensure the libraries can be found at runtime by adding cdi/lib and 
+    # cdi/ulib to the runtime path list at the start of the spec
+    replacement = [lspec.entry_lists[lspec.entry_types[0]][0], 
+            '-rpath=/usr/local/cdi/lib', '-rpath=/usr/local/cdi/ulib']
+    sl_fixups.append(spec.LinkerSpec.Fixup(lspec.entry_types[0], 0, replacement))
+    
     return sl_fixups
 
 def has_symbol_table(elf_path):
@@ -161,12 +165,16 @@ def sl_find_symbol_ref(sl_path):
     if has_symbol_table(sl_path):
         return sl_path
 
-    candidate_path = '/usr/local/cdi/ulib/debug/' + sl_realpath
+    candidate_path = '/usr/local/cdi/ulib/' + os.path.basename(sl_realpath)
     if os.path.isfile(candidate_path) and has_symbol_table(candidate_path):
         return candidate_path
 
+    candidate_path = '/usr/local/cdi/ulib/debug/' + os.path.basename(sl_realpath)
+    if os.path.isfile(candidate_path) and has_symbol_table(candidate_path):
+        return candidate_path
+
+    sl_trimmed_realpath = os.path.basename(sl_realpath)
     for root, dirs, files in os.walk('/usr/lib/debug', topdown=True):
-        sl_trimmed_realpath = os.path.basename(sl_realpath)
         if sl_trimmed_realpath in files:
             return os.path.join(root, sl_trimmed_realpath)
     else:

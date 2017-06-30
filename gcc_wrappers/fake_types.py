@@ -1,4 +1,5 @@
 import subprocess
+import os
 
 """
 These object files and archives passed to cdi-ld.py are considered "fake"
@@ -35,7 +36,6 @@ class FakeObjectFile:
             elf_signature = '\x7FELF' # TODO verify #<deff> instead
             if fake_obj.read(4) == elf_signature:
                 fake_obj.seek(0)
-                print path
                 raise NonDeferredObjectFile()
             fake_obj.seek(0)
 
@@ -73,7 +73,7 @@ class FakeObjectFile:
 
 class Archive:
     def __init__(self, path):
-        self.path = path
+        self.path = os.path.realpath(path)
         self.fake_objs = []
         self.thin = False
 

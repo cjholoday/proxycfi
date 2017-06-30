@@ -34,27 +34,37 @@ class LinkerSpec():
         self.target = 'a.out' # default target
         self.target_is_shared = False # unshared unless '-shared' is found
 
+        self.entry_lists = { 
+                'obj'  : self.obj_paths,
+                'ar'   : self.ar_paths,
+                'sl'   : self.sl_paths,
+                'misc' : self.miscs,
+                'cdi_options' : self.cdi_options}
+
         self.decompose_raw_spec(raw_spec)
 
     def fixup(self, fixups):
         """Returns a fixed up spec for given a list of LinkerSpec.Fixup instances"""
+
+        # each dict maps { idx -> replacement }
         obj_fixups = dict()
         sl_fixups = dict()
         ar_fixups = dict()
         misc_fixups = dict()
+        fixup_dicts = {
+                'obj'  : obj_fixups,
+                'sl'   : sl_fixups,
+                'ar'   : ar_fixups,
+                'misc' : misc_fixups}
 
         for fixup in fixups:
-            if fixup.entry_type == 'obj':
-                obj_fixups[fixup.idx] = fixup.replacement
-            elif fixup.entry_type == 'ar':
-                ar_fixups[fixup.idx] = fixup.replacement
-            elif fixup.entry_type == 'sl':
-                sl_fixups[fixup.idx] = fixup.replacement
-            elif fixup.entry_type == 'misc':
-                misc_fixups[fixup.idx] = fixup.replacement
+            if fixup_dicts[fixup.entry_type].has_key(fixup.idx):
+                fatal_error("Conflicting fixups of type '{}' at idx '{}' with "
+                        "replacements '{}' and '{}'".format(fixup.entry_type,
+                            fixup.idx, fixup_dicts[fixup.entry_type][fixup.idx],
+                            fixup.replacement))
             else:
-                fatal_error("Invalid entry type for fixup: '{}'"
-                        .format(fixup.entry_type))
+                fixup_dicts[fixup.entry_type][fixup.idx] = fixup.replacement
 
         obj_paths_idx = 0
         sl_paths_idx = 0
@@ -132,8 +142,8 @@ class LinkerSpec():
                         script_spec.append('--no-as-needed')
                     self.decompose_raw_spec(script_spec)
 
-                    # Leave off the linker script because its implicit
-                    # spec entries have been decomposed
+                    # Leave off the linker script because its implicit spec 
+                    # entries have already been decomposed
                     continue
                 elif entry.endswith('.a'):
                     entry_type = 'ar'
@@ -141,26 +151,22 @@ class LinkerSpec():
                     entry_type = 'sl'
 
             self.entry_types.append(entry_type)
-            if entry_type == 'obj':
-                self.obj_paths.append(entry)
-            elif entry_type == 'ar':
-                self.ar_paths.append(os.path.realpath(entry))
-            elif entry_type == 'sl':
-                self.sl_paths.append(entry)
+            try:
+                self.entry_lists[entry_type].append(entry)
+            except KeyError:
+                self.fatal_error("Unknown spec entry type '{}'".format(entry_type))
+
+            if entry_type == 'cdi_options':
+                self.cdi_options = entry[len('--cdi-options='):].split(' ')
             elif entry_type == 'misc':
-                self.miscs.append(entry)
                 if prev_entry == '-o':
                     self.target = entry
                 elif entry == '-shared':
                     self.target_is_shared = True
                 elif entry == '--as-needed':
-                    self.link_as_needed = True
+                    link_as_needed = True
                 elif entry == '--no-as-needed':
-                    self.link_as_needed = False
-            elif entry.startswith('--cdi-options='):
-                self.cdi_options = entry[len('--cdi-options='):].split(' ')
-            else:
-                self.fatal_error("Unknown spec entry type '{}'".format(entry_type))
+                    link_as_needed = False
             prev_entry = entry
 
     def get_entry_type(self, entry, prev_entry):

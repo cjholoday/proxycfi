@@ -1,7 +1,9 @@
 import spec
 import subprocess
 import os
+import sys
 
+import lib_utils
 from error import fatal_error
 
 def ar_normify(archives):
@@ -56,6 +58,40 @@ def fake_objs_normify(fake_objs):
         subprocess.call(['as', fake_obj.path, '-o', target] + fake_obj.as_spec_no_io)
         fixups.append(spec.LinkerSpec.Fixup('obj', fake_obj.fixup_idx, target))
     return fixups
+
+
+def sl_normify(sl_paths):
+    """Returns fixups for shared libraries
+
+    We need the load addresses of shared libraries in order to generate callback
+    sleds that handle function pointer calls back into the executable code from
+    a shared library. The fixups that are returned ensure that we use the same
+    shared library that a CDI compilation will use. FIXME: Once CDI shared libraries
+    are supported this won't be sufficient because CDI shared libraries cannot 
+    be built with non-CDI code. Hence, we cannot obtain the load addresses
+    while doing a normified compilation. As it currently stands an executable
+    is generated two times: first, a non-CDI executable is generated; then, a CDI
+    executable is generated. One might think we could generate a third CDI executable
+    and use the second executable's shared library load addresses to create the 
+    callback sleds. Unfortunately, I suspect this will fail. Modifying the executable
+    code might change the library load addresses (unconfirmed). Once CDI
+    shared libraries are being built, we'll have control of loading libraries, 
+    and therefore putting the solution in the loader makes more sense
+    """
+    sl_fixups = []
+    for idx, sl_path in enumerate(sl_paths):
+        if lib_utils.has_symbol_table(sl_path):
+            continue # fptr analysis only needs a symbol table
+
+        # Unsafe, unstripped non-CDI shared libraries are stored in cdi/ulib
+        candidate = '/usr/local/cdi/ulib/' + os.path.basename(os.path.realpath(sl_path))
+        if os.path.isfile(candidate):
+            sl_fixups.append(spec.LinkerSpec.Fixup('sl', idx, candidate))
+        else:
+            # this will throw an error if a symbol reference cannot be found
+            lib_utils.sl_find_symbol_ref(sl_path)
+    return sl_fixups
+
 
 def chop_suffix(string, cutoff = ''):
     if cutoff == '':

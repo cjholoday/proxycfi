@@ -90,6 +90,7 @@ if lspec.target_is_shared:
     normification_fixups = []
     normification_fixups += normify.fake_objs_normify(explicit_fake_objs)
     normification_fixups += normify.ar_normify(archives)
+    normification_fixups += normify.sl_normify(lspec.sl_paths)
     print "Linking shared library '{}'\n".format(lspec.target)
 
     ld_command = ['ld'] + lspec.fixup(normification_fixups)
@@ -124,6 +125,7 @@ sys.stdout.flush()
 normification_fixups = []
 normification_fixups += normify.ar_normify(archives)
 normification_fixups += normify.fake_objs_normify(explicit_fake_objs)
+normification_fixups += normify.sl_normify(lspec.sl_paths)
 
 try:
     normified_spec = lspec.fixup(normification_fixups)
@@ -145,19 +147,18 @@ if lib_utils.sl_aslr_is_enabled(lspec.target):
             " (this can be done with "
             "'echo 0 | sudo tee /proc/sys/kernel/randomize_va_space')")
 
-# Recompile with cdi shared libraries / unstripped unsafe shared libraries
-# in order to handle shared library callbacks when non-CDI shared libraries
-# are compiled
-sl_fixups = lib_utils.sl_get_cdi_fixups(lspec, lspec.target)
-# normification_fixups += sl_fixups
-try:
-    normified_spec = lspec.fixup(normification_fixups)
-    ld_command = ['ld'] + normified_spec
-    subprocess.check_call(ld_command)
-except subprocess.CalledProcessError:
-    fatal_error("Unable to compile without CDI using linker command '{}'"
-            .format(' '.join(ld_command)))
-
+## Recompile with cdi shared libraries / unstripped unsafe shared libraries
+## in order to handle shared library callbacks when non-CDI shared libraries
+## are compiled
+#sl_fixups = lib_utils.sl_get_cdi_fixups(lspec, lspec.target)
+## normification_fixups += sl_fixups
+#try:
+#    normified_spec = lspec.fixup(normification_fixups)
+#    ld_command = ['ld'] + normified_spec
+#    subprocess.check_call(ld_command)
+#except subprocess.CalledProcessError:
+#    fatal_error("Unable to compile without CDI using linker command '{}'"
+#            .format(' '.join(ld_command)))
 
 # Find all function pointer calls from shared libraries back into the 
 # executable code. We need jumps back to the shared libraries, even if those
@@ -166,14 +167,6 @@ except subprocess.CalledProcessError:
 # fptr calls in shared libraries. TODO: get ftypes/fptypes info for CDI
 # shared libraries and use that information to narrow the list of return
 # sleds that need an entry for shared library fptr calls
-
-# the shared library paths from sl_load_addrs() are more precise 
-# than the shared libs passed to the linker as options. The ones passed as
-# options are occasionally linker scripts, which complicates analysis since
-# we would have to parse through the scripts. Even then, we wouldn't be sure
-# what is used in the end. sl_load_addrs() instead asks the non-CDI
-# executable what shared libraries are used, which makes the GNU linker do
-# the work for us
 fptr_addrs = []
 for sl_path, lib_load_addr in lib_utils.sl_trace_bin(lspec.target):
     if sl_path.startswith('/usr/local/cdi/lib/'):
@@ -188,6 +181,7 @@ for sl_path, lib_load_addr in lib_utils.sl_trace_bin(lspec.target):
         sl_path = symbol_reference
     fptr_addrs += lib_utils.sl_get_fptr_addrs(sl_path, symbol_reference, lib_load_addr)
 
+sl_fixups = lib_utils.sl_cdi_fixups(lspec, lspec.target)
 # remove executable since it isn't CDI compiled
 subprocess.check_call(['rm', lspec.target])
 
