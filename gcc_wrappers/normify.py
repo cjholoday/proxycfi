@@ -60,7 +60,7 @@ def fake_objs_normify(fake_objs):
     return fixups
 
 
-def sl_normify(sl_paths):
+def sl_normify(lspec, sl_paths):
     """Returns fixups for shared libraries
 
     We need the load addresses of shared libraries in order to generate callback
@@ -90,6 +90,8 @@ def sl_normify(sl_paths):
         else:
             # this will throw an error if a symbol reference cannot be found
             lib_utils.sl_find_symbol_ref(sl_path)
+
+    sl_fixups.append(lib_utils.get_cdi_runtime_search_path_fixup(lspec))
     return sl_fixups
 
 

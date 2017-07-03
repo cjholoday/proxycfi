@@ -134,12 +134,7 @@ def sl_cdi_fixups(lspec, binary_path):
         if sl_realpath in sl_cdi_paths:
             sl_fixups.append(spec.LinkerSpec.Fixup('sl', idx, sl_cdi_paths[sl_realpath]))
 
-    # ensure the libraries can be found at runtime by adding cdi/lib and 
-    # cdi/ulib to the runtime path list at the start of the spec
-    replacement = [lspec.entry_lists[lspec.entry_types[0]][0], 
-            '-rpath=/usr/local/cdi/lib', '-rpath=/usr/local/cdi/ulib']
-    sl_fixups.append(spec.LinkerSpec.Fixup(lspec.entry_types[0], 0, replacement))
-    
+    sl_fixups.append(get_cdi_runtime_search_path_fixup(lspec))
     return sl_fixups
 
 def has_symbol_table(elf_path):
@@ -276,3 +271,15 @@ def get_suffix(string, cutoff = ''):
     if cutoff == '':
         return string[string.rfind('.'):]
     return string[string.rfind(cutoff):]
+
+def get_cdi_runtime_search_path_fixup(lspec):
+    """ ensure the cdi libraries can be found at runtime
+    
+    This is accomplished by adding /usr/local/cdi/lib and /usr/local/cdi/ulib
+    to the runtime path list at the start of the spec
+    """
+
+    replacement = [lspec.entry_lists[lspec.entry_types[0]][0], 
+            '-rpath=/usr/local/cdi/lib', '-rpath=/usr/local/cdi/ulib']
+    return spec.LinkerSpec.Fixup(lspec.entry_types[0], 0, replacement)
+

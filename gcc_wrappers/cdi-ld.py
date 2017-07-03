@@ -89,7 +89,7 @@ if lspec.target_is_shared:
     normification_fixups = []
     normification_fixups += normify.fake_objs_normify(explicit_fake_objs)
     normification_fixups += normify.ar_normify(archives)
-    normification_fixups += normify.sl_normify(lspec.sl_paths)
+    normification_fixups += normify.sl_normify(lspec, lspec.sl_paths)
     print "Linking shared library '{}'\n".format(lspec.target)
 
     ld_command = ['ld'] + lspec.fixup(normification_fixups)
@@ -124,7 +124,7 @@ sys.stdout.flush()
 normification_fixups = []
 normification_fixups += normify.ar_normify(archives)
 normification_fixups += normify.fake_objs_normify(explicit_fake_objs)
-normification_fixups += normify.sl_normify(lspec.sl_paths)
+normification_fixups += normify.sl_normify(lspec, lspec.sl_paths)
 
 try:
     normified_spec = lspec.fixup(normification_fixups)
@@ -156,6 +156,7 @@ if lib_utils.sl_aslr_is_enabled(lspec.target):
 sl_load_addrs = dict() # maps shared lib realpath -> lib load address (in hex)
 sl_callback_table =  open('.cdi/sl_callback_table', 'w')
 for sl_path, lib_load_addr in lib_utils.sl_trace_bin(lspec.target):
+    print sl_path, os.path.realpath(sl_path)
     if sl_path.startswith('/usr/local/cdi/lib/'):
         continue # this shared library is CDI so fptr analysis is unneeded
 
