@@ -38,11 +38,11 @@ if __name__ == "__main__":
             help='tells the converter to set the return address of funct1 to funct2+offset\n'
             'format: /path/to/file1.c:funct1 /path/to/file2.c:funct2+offset',
             dest='--test')
-    parser.add_argument('-s', '--shared-lib-fptr-addrs', action='store', 
-            metavar='0xDEADBEEF1,0xDEADBEEF2,...',
+    parser.add_argument('-s', '--sl-fptr-addrs', action='store', 
+            metavar='sl_callback_table',
             default='',
-            help='fptr addresses that may jump from shared libs to executable code',
-            dest='--shared-lib-fptr-addrs')
+            help='a file containing fptr addresses that may jump from shared libs to executable code',
+            dest='--sl-fptr-addrs')
 
     options = vars(parser.parse_args(sys.argv[1:]))
     if options.get('--help'):

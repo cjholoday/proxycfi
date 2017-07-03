@@ -2,6 +2,7 @@ import funct_cfg
 import operator
 import asm_parsing
 import subprocess
+import sys
 from eprint import eprint
 import re
 
@@ -51,34 +52,10 @@ def gen_cdi_asm(cfg, asm_file_descrs, plt_sites, options):
         debug_section_matcher = re.compile(r'^\t\.section\t\.debug_info.+')
         debug_section_found = False
 
-        if options['--shared-lib-fptr-addrs'] and not callback_sled_written:
+
+        if options['--sl-fptr-addrs'] and not callback_sled_written:
             callback_sled_written = True
-
-            callback_sled = '.globl _CDI_callback_sled\n'
-            callback_sled += '_CDI_callback_sled:\n'
-
-            upper_to_lower_addrs = dict()
-            for addr in options['--shared-lib-fptr-addrs'].split(','):
-                lower_addr = '0x' + addr[-8:]
-                upper_addr = addr[:-8]
-                try:
-                    upper_to_lower_addrs[upper_addr].append(lower_addr)
-                except KeyError:
-                    upper_to_lower_addrs[upper_addr] = [lower_addr]
-
-            for upper_addr, lower_addrs in upper_to_lower_addrs.iteritems():
-                callback_sled += '\tcmpl\t$'+upper_addr+', -4(%rsp)\n'
-                callback_sled += '\tjne\t1f\n'
-                for addr in lower_addrs:
-                    callback_sled += '\tcmpl\t$'+addr+', -8(%rsp)\n'
-                    callback_sled += '\tjne\t2f\n'
-                    callback_sled += '\tmov\t$'+upper_addr+addr[2:]+', %r11\n'
-                    callback_sled += '\tjmp\t*%r11\n'
-                    callback_sled += '2:\n'
-                callback_sled += '1:\n'
-            callback_sled += '\tmovq\t%r11, %rsi\n'
-            callback_sled += '\tcall _CDI_abort\n'
-            asm_dest.write(callback_sled)
+            write_callback_sled(asm_dest, options)
 
         # write the rest of the normal asm lines over
         src_line = asm_src.readline()
@@ -278,7 +255,7 @@ def cdi_abort(sled_id, asm_filename, dwarf_loc, options):
         cdi_abort_data += '\t.set\t.CDI_sled_id_' + str(sled_id) + '_len, '
         cdi_abort_data += '.-.CDI_sled_id_' + str(sled_id) + '\n'
     else:
-        if options['--shared-lib-fptr-addrs']:
+        if options['--sl-fptr-addrs']:
             cdi_abort_code += '\tmovq\t $.CDI_sled_id_' + str(sled_id) + ', %r11\n'
             cdi_abort_code += '\tjmp\t_CDI_callback_sled\n'
         else:
@@ -377,6 +354,57 @@ def write_rlts(cfg, plt_sites, asm_dest, sled_id_faucet, options):
         rlt_entry += code + data
         rlt_entry += '\t.size {}, .-{}\n'.format(entry_label, entry_label)
         asm_dest.write(rlt_entry)
+
+def write_callback_sled(asm_dest, options):
+    callback_sled = '.globl _CDI_callback_sled\n'
+    callback_sled += '_CDI_callback_sled:\n'
+
+    # the callback table is in the following format:
+    #
+    # "/path/to/library.so" load-addr: 0xADDRESS
+    # fptr address 1
+    # fptr address 2
+    # ...
+    #
+    # "/path/to/library2.so" load-addr: 0xADDRESS
+    # ...
+
+    # populated with pairs of (library metadata, list of fptrs)
+    fptr_table = []
+    with open(options['--sl-fptr-addrs'], 'r') as callback_table:
+        lines = iter(callback_table)
+        for lib_metadata in lines:
+            lib_fptrs = []
+            line = lines.next()
+            while line != '\n':
+                lib_fptrs.append(line.rstrip())
+                line = lines.next()
+            fptr_table.append((lib_metadata.rstrip(), lib_fptrs))
+
+    for lib_metadata, fptrs in fptr_table:
+        upper_to_lower_addrs = dict()
+        for addr in fptrs:
+            lower_addr = '0x' + addr[-8:]
+            upper_addr = addr[:-8]
+            try:
+                upper_to_lower_addrs[upper_addr].append(lower_addr)
+            except KeyError:
+                upper_to_lower_addrs[upper_addr] = [lower_addr]
+
+        callback_sled += '/* {} */'.format(lib_metadata)
+        for upper_addr, lower_addrs in upper_to_lower_addrs.iteritems():
+            callback_sled += '\tcmpl\t$'+upper_addr+', -4(%rsp)\n'
+            callback_sled += '\tjne\t1f\n'
+            for addr in lower_addrs:
+                callback_sled += '\tcmpl\t$'+addr+', -8(%rsp)\n'
+                callback_sled += '\tjne\t2f\n'
+                callback_sled += '\tmov\t$'+upper_addr+addr[2:]+', %r11\n'
+                callback_sled += '\tjmp\t*%r11\n'
+                callback_sled += '2:\n'
+            callback_sled += '1:\n'
+    callback_sled += '\tmovq\t%r11, %rsi\n'
+    callback_sled += '\tcall _CDI_abort\n'
+    asm_dest.write(callback_sled)
 
 def fix_label(label):
     return label.replace('@', '_AT_').replace('/', '__').replace('.fake.o', '.cdi.s')

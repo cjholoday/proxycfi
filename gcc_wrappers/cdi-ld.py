@@ -146,19 +146,6 @@ if lib_utils.sl_aslr_is_enabled(lspec.target):
             " (this can be done with "
             "'echo 0 | sudo tee /proc/sys/kernel/randomize_va_space')")
 
-## Recompile with cdi shared libraries / unstripped unsafe shared libraries
-## in order to handle shared library callbacks when non-CDI shared libraries
-## are compiled
-#sl_fixups = lib_utils.sl_get_cdi_fixups(lspec, lspec.target)
-## normification_fixups += sl_fixups
-#try:
-#    normified_spec = lspec.fixup(normification_fixups)
-#    ld_command = ['ld'] + normified_spec
-#    subprocess.check_call(ld_command)
-#except subprocess.CalledProcessError:
-#    fatal_error("Unable to compile without CDI using linker command '{}'"
-#            .format(' '.join(ld_command)))
-
 # Find all function pointer calls from shared libraries back into the 
 # executable code. We need jumps back to the shared libraries, even if those
 # shared libraries are not CDI. Since non-CDI shared libraries have unknown
@@ -166,7 +153,8 @@ if lib_utils.sl_aslr_is_enabled(lspec.target):
 # fptr calls in shared libraries. TODO: get ftypes/fptypes info for CDI
 # shared libraries and use that information to narrow the list of return
 # sleds that need an entry for shared library fptr calls
-fptr_addrs = []
+sl_load_addrs = dict() # maps shared lib realpath -> lib load address (in hex)
+sl_callback_table =  open('.cdi/sl_callback_table', 'w')
 for sl_path, lib_load_addr in lib_utils.sl_trace_bin(lspec.target):
     if sl_path.startswith('/usr/local/cdi/lib/'):
         continue # this shared library is CDI so fptr analysis is unneeded
@@ -178,7 +166,16 @@ for sl_path, lib_load_addr in lib_utils.sl_trace_bin(lspec.target):
     symbol_reference = lib_utils.sl_find_symbol_ref(sl_path)
     if symbol_reference.startswith('/usr/local/lib/'):
         sl_path = symbol_reference
-    fptr_addrs += lib_utils.sl_get_fptr_addrs(sl_path, symbol_reference, lib_load_addr)
+    fptr_addrs = lib_utils.sl_get_fptr_addrs(sl_path, symbol_reference, lib_load_addr)
+
+    assert '"' not in sl_path
+    sl_callback_table.write('"{}" load-addr: {}\n'.format(sl_path, hex(lib_load_addr)))
+    sl_callback_table.write('\n'.join(fptr_addrs) + '\n')
+    if fptr_addrs:
+        sl_callback_table.write('\n')
+
+    sl_load_addrs[os.path.realpath(sl_path)] = lib_load_addr
+sl_callback_table.close()
 
 sl_fixups = lib_utils.sl_cdi_fixups(lspec, lspec.target)
 # remove executable since it isn't CDI compiled
@@ -201,9 +198,9 @@ if lspec.target_is_shared:
 print 'Converting fake objects to cdi-asm files: ' + ' '.join(fake_obj_paths)
 
 
-if fptr_addrs:
-    converter_options.append('--shared-lib-fptr-addrs')
-    converter_options.append(','.join(fptr_addrs))
+if sl_load_addrs:
+    converter_options.append('--sl-fptr-addrs')
+    converter_options.append('.cdi/sl_callback_table')
 
 converter_command = [converter_path] + converter_options + fake_obj_paths
 try:
@@ -246,9 +243,6 @@ cdi_obj_fixups[-1].replacement = [
         cdi_obj_fixups[-1].replacement, '.cdi/cdi_abort.cdi.o']
 
 cdi_fixups = ar_fixups + cdi_obj_fixups + sl_fixups
-for fixup in ar_fixups:
-    print fixup.idx, lspec.ar_paths[fixup.idx], '"{}"'.format(fixup.replacement), type(fixup.replacement)
-    print ' '
 
 try:
     cdi_spec = lspec.fixup(cdi_fixups)
@@ -256,5 +250,12 @@ try:
 except subprocess.CalledProcessError:
     fatal_error("calling 'ld' with the following spec failed:\n\n{}"
             .format(' '.join(cdi_spec)))
+
+# check that the predicted shared library load addresses are accurate
+for sl_path, lib_load_addr in lib_utils.sl_trace_bin(lspec.target):
+    if sl_load_addrs[os.path.realpath(sl_path)] != lib_load_addr:
+        fatal_error("load address shifted upon recompilation for shared "
+                "library '{}'. Original: {}. New: {}." .format(os.path.realpath(sl_path), 
+                    sl_load_addrs[os.path.realpath(sl_path)], lib_load_addr))
 
 restore_original_objects()
