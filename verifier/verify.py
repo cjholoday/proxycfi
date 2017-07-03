@@ -99,26 +99,15 @@ class Verifier:
         Wrapper for Verifier.verify 
         """
 
-        main = None
-        for f in self.function_list:
-            if f.name == 'main':
-                main = f
-                break
-        else:
-            eprint("WARNING: no main function")
-
-        if main:
-            self.verify(main)
-        else:
-            for funct in self.function_list:
-                # sections must have size > 0 to be considered
-                # NOTE: _fini and company have size 0 so they are not verified
+        whitelist = ['__libc_csu_init', '__libc_csu_fini']
+        for funct in self.function_list:
+            # sections must have size > 0 to be considered
+            # NOTE: _fini and company have size 0 so they are not verified
+            if funct.name not in whitelist:
                 self.verify(funct)
 
         # check that incoming "return" jumps are valid
         for funct in self.function_list:
-            if not funct.verified and funct.incoming_returns:
-                self.verify(funct)
             try:
                 self.check_return_jumps_are_valid(funct)
             except InsecureJump as insecurity:
