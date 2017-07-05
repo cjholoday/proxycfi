@@ -6,6 +6,10 @@ void crypto_stuff() {
     printf("crypto stuff\n");
 }
 
+void success() {
+    printf("Success!\n");
+}
+
 /* taken from https://wiki.openssl.org/index.php/Libcrypto_API */
 int main(int arc, char *argv[])
 { 
@@ -31,6 +35,8 @@ int main(int arc, char *argv[])
 
     /* Remove error strings */
     ERR_free_strings();
+
+    success();
 
     return 0;
 }
