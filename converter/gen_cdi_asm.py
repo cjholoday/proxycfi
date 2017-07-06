@@ -368,6 +368,9 @@ def write_callback_sled(asm_dest, options):
     #
     # "/path/to/library2.so" load-addr: 0xADDRESS
     # ...
+    #
+    #
+    # The end of a library is indicated by two consecutive newlines
 
     # populated with pairs of (library metadata, list of fptrs)
     fptr_table = []
@@ -391,7 +394,7 @@ def write_callback_sled(asm_dest, options):
             except KeyError:
                 upper_to_lower_addrs[upper_addr] = [lower_addr]
 
-        callback_sled += '/* {} */'.format(lib_metadata)
+        callback_sled += '/* {} */\n'.format(lib_metadata)
         for upper_addr, lower_addrs in upper_to_lower_addrs.iteritems():
             callback_sled += '\tcmpl\t$'+upper_addr+', -4(%rsp)\n'
             callback_sled += '\tjne\t1f\n'
