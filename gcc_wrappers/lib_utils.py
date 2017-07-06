@@ -283,3 +283,13 @@ def get_cdi_runtime_search_path_fixup(lspec):
             '-rpath=/usr/local/cdi/lib', '-rpath=/usr/local/cdi/ulib']
     return spec.LinkerSpec.Fixup(lspec.entry_types[0], 0, replacement)
 
+def get_vaddr(symbol, execname):
+    """Get virtual address of symbol"""
+    gdb_process = subprocess.Popen(['gdb', execname], stderr=subprocess.PIPE, 
+            stdout=subprocess.PIPE, stdin=subprocess.PIPE)
+    gdb_process.stdin.write('b main\nrun\ninfo addr {}\nq'.format(symbol))
+    vaddr = gdb_process.communicate()[0].splitlines()[-2].split()[5]
+
+    gdb_process.stdin.close()
+    return vaddr
+

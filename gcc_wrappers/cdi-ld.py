@@ -156,7 +156,6 @@ if lib_utils.sl_aslr_is_enabled(lspec.target):
 sl_load_addrs = dict() # maps shared lib realpath -> lib load address (in hex)
 sl_callback_table =  open('.cdi/sl_callback_table', 'w')
 for sl_path, lib_load_addr in lib_utils.sl_trace_bin(lspec.target):
-    print sl_path, os.path.realpath(sl_path)
     if sl_path.startswith('/usr/local/cdi/lib/'):
         continue # this shared library is CDI so fptr analysis is unneeded
 
@@ -176,6 +175,8 @@ for sl_path, lib_load_addr in lib_utils.sl_trace_bin(lspec.target):
         sl_callback_table.write('\n')
 
     sl_load_addrs[os.path.realpath(sl_path)] = lib_load_addr
+sl_callback_table.write('__restore_rt (for returns from signal handlers)\n')
+sl_callback_table.write(lib_utils.get_vaddr('__restore_rt', lspec.target) + '\n\n')
 sl_callback_table.close()
 
 sl_fixups = lib_utils.sl_cdi_fixups(lspec, lspec.target)
@@ -244,6 +245,7 @@ cdi_obj_fixups[-1].replacement = [
         cdi_obj_fixups[-1].replacement, '.cdi/cdi_abort.cdi.o']
 
 cdi_fixups = ar_fixups + cdi_obj_fixups + sl_fixups
+
 
 try:
     cdi_spec = lspec.fixup(cdi_fixups)
