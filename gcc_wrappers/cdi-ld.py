@@ -175,8 +175,10 @@ for sl_path, lib_load_addr in lib_utils.sl_trace_bin(lspec.target):
         sl_callback_table.write('\n')
 
     sl_load_addrs[os.path.realpath(sl_path)] = lib_load_addr
+
 sl_callback_table.write('__restore_rt (for returns from signal handlers)\n')
-sl_callback_table.write(lib_utils.get_vaddr('__restore_rt', lspec.target) + '\n\n')
+restore_rt_vaddr = lib_utils.get_vaddr('__restore_rt', lspec.target)
+sl_callback_table.write(restore_rt_vaddr + '\n\n')
 sl_callback_table.close()
 
 sl_fixups = lib_utils.sl_cdi_fixups(lspec, lspec.target)
@@ -260,5 +262,10 @@ for sl_path, lib_load_addr in lib_utils.sl_trace_bin(lspec.target):
         fatal_error("load address shifted upon recompilation for shared "
                 "library '{}'. Original: {}. New: {}." .format(os.path.realpath(sl_path), 
                     sl_load_addrs[os.path.realpath(sl_path)], lib_load_addr))
+
+# check that the predicted address for __restore_rt is correct
+if lib_utils.get_vaddr('__restore_rt', lspec.target) != restore_rt_vaddr:
+    fatal_error("predicted __restore_rt address '{}' is different than the actual '{}'"
+            .format(lib_utils.get_vaddr('__restore_rt'), restore_rt_vaddr))
 
 restore_original_objects()
