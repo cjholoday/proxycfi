@@ -3,7 +3,8 @@
 
 
 void hello() {
-    raise(SIGSEGV);
+    int ret_value = raise(SIGSEGV);
+    printf("success\n");
 }
 
 void catch() {
