@@ -89,7 +89,7 @@ def sl_normify(lspec, sl_paths):
             sl_fixups.append(spec.LinkerSpec.Fixup('sl', idx, candidate))
         else:
             # this will throw an error if a symbol reference cannot be found
-            lib_utils.sl_find_symbol_ref(sl_path)
+            lib_utils.sl_symbol_ref(sl_path)
 
     sl_fixups.append(lib_utils.get_cdi_runtime_search_path_fixup(lspec))
     return sl_fixups

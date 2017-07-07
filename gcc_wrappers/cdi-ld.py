@@ -134,6 +134,10 @@ except subprocess.CalledProcessError:
     fatal_error("Unable to compile without CDI using linker command '{}'"
             .format(' '.join(ld_command)))
 
+# list of addresses to which signal handlers return
+restore_rt_vaddrs = lib_utils.get_restore_rt_vaddrs(lspec)
+print restore_rt_vaddrs
+
 if '--abandon-cdi' in lspec.cdi_options:
     print 'WARNING: CREATING NON CDI EXECUTABLE AS REQUESTED'
     sys.exit(0)
@@ -145,6 +149,7 @@ if lib_utils.sl_aslr_is_enabled(lspec.target):
     fatal_error("load addresses aren't deterministic. Disable ASLR"
             " (this can be done with "
             "'echo 0 | sudo tee /proc/sys/kernel/randomize_va_space')")
+
 
 # Find all function pointer calls from shared libraries back into the 
 # executable code. We need jumps back to the shared libraries, even if those
@@ -163,7 +168,7 @@ for sl_path, lib_load_addr in lib_utils.sl_trace_bin(lspec.target):
     # to the symbol table. Therefore, it's unassociated with the shared
     # library in the spec. Use this new binary instead
     # FIXME: replace spec args
-    symbol_reference = lib_utils.sl_find_symbol_ref(sl_path)
+    symbol_reference = lib_utils.sl_symbol_ref(sl_path)
     if symbol_reference.startswith('/usr/local/lib/'):
         sl_path = symbol_reference
     fptr_addrs = lib_utils.sl_get_fptr_addrs(sl_path, symbol_reference, lib_load_addr)
@@ -178,7 +183,7 @@ for sl_path, lib_load_addr in lib_utils.sl_trace_bin(lspec.target):
 
 sl_callback_table.write('__restore_rt (for returns from signal handlers)\n')
 restore_rt_vaddr = lib_utils.get_vaddr('__restore_rt', lspec.target)
-sl_callback_table.write(restore_rt_vaddr + '\n\n')
+sl_callback_table.write('\n'.join(restore_rt_vaddrs) + '\n\n')
 sl_callback_table.close()
 
 sl_fixups = lib_utils.sl_cdi_fixups(lspec, lspec.target)
@@ -263,9 +268,9 @@ for sl_path, lib_load_addr in lib_utils.sl_trace_bin(lspec.target):
                 "library '{}'. Original: {}. New: {}." .format(os.path.realpath(sl_path), 
                     sl_load_addrs[os.path.realpath(sl_path)], lib_load_addr))
 
-# check that the predicted address for __restore_rt is correct
-if lib_utils.get_vaddr('__restore_rt', lspec.target) != restore_rt_vaddr:
-    fatal_error("predicted __restore_rt address '{}' is different than the actual '{}'"
-            .format(lib_utils.get_vaddr('__restore_rt'), restore_rt_vaddr))
+# check that at least one predicted address for __restore_rt is correct
+if lib_utils.get_vaddr('__restore_rt', lspec.target) not in restore_rt_vaddrs:
+    fatal_error("__restore_rt address '{}' is different than all predicted addrs: {}"
+            .format(lib_utils.get_vaddr('__restore_rt'), ', '.join(restore_rt_vaddrs)))
 
 restore_original_objects()

@@ -120,7 +120,7 @@ def sl_cdi_fixups(lspec, binary_path):
 
         if 'libcrypto' in sl_realpath:
             sys.exit(1)
-        symbol_ref = sl_find_symbol_ref(sl_realpath)
+        symbol_ref = sl_symbol_ref(sl_realpath)
         if symbol_ref == sl_path:
             eprint("cdi-ld: warning: compiling against non-CDI shared library"
                     " '{}'".format(sl_path))
@@ -155,7 +155,7 @@ def sl_linker_name(shared_lib_path):
         trimmed_name = trimmed_name[:-1]
     return trimmed_name
     
-def sl_find_symbol_ref(sl_path):
+def sl_symbol_ref(sl_path):
     sl_realpath = os.path.realpath(sl_path)
     if has_symbol_table(sl_path):
         return sl_path
@@ -273,7 +273,7 @@ def get_suffix(string, cutoff = ''):
     return string[string.rfind(cutoff):]
 
 def get_cdi_runtime_search_path_fixup(lspec):
-    """ ensure the cdi libraries can be found at runtime
+    """Ensure the cdi libraries can be found at runtime
     
     This is accomplished by adding /usr/local/cdi/lib and /usr/local/cdi/ulib
     to the runtime path list at the start of the spec
@@ -283,8 +283,41 @@ def get_cdi_runtime_search_path_fixup(lspec):
             '-rpath=/usr/local/cdi/lib', '-rpath=/usr/local/cdi/ulib']
     return spec.LinkerSpec.Fixup(lspec.entry_types[0], 0, replacement)
 
+def st_vaddr(symbol, elf):
+    """Use symbol table to get the virtual address of 'symbol'"""
+
+    # Shared libraries don't need to have a symbol table
+    # Find the associated file that has it
+    elf = sl_symbol_ref(elf)
+
+    p_readelf = subprocess.Popen(['readelf', '-s', elf], stdout=subprocess.PIPE)
+    p_grep = subprocess.Popen(['grep', ' {}$'.format(symbol)], stdin=p_readelf.stdout,
+            stdout=subprocess.PIPE)
+    p_readelf.stdout.close()
+    symbol_entry = p_grep.communicate()[0]
+    if symbol_entry == '':
+        raise KeyError("symbol '{}' not found in symbol table of '{}'".format(symbol, elf))
+    return symbol_entry.split()[1]
+
+
+def get_restore_rt_vaddrs(lspec):
+    """Get the virtual addresses of __restore_rt, to which signal handlers return
+    
+    Requires that lspec.target exists and accurately reflects the load addresses
+    for the associated shared libraries
+    """
+
+    vaddrs = []
+    for sl_path, lib_load_addr in sl_trace_bin(lspec.target):
+        try:
+            vaddrs.append(hex(int(st_vaddr('__restore_rt', sl_path), 16) + lib_load_addr))
+        except KeyError:
+            pass # not all libraries will have '__restore_rt'
+
+    return vaddrs
+
 def get_vaddr(symbol, execname):
-    """Get virtual address of symbol"""
+    """Get virtual address of symbol from gdb"""
     gdb_process = subprocess.Popen(['gdb', execname], stderr=subprocess.PIPE, 
             stdout=subprocess.PIPE, stdin=subprocess.PIPE)
     gdb_process.stdin.write('b main\nrun\ninfo addr {}\nq'.format(symbol))
