@@ -5,6 +5,7 @@ import subprocess
 import sys
 from eprint import eprint
 import re
+import os
 
 def gen_cdi_asm(cfg, asm_file_descrs, plt_sites, options):
     """Writes cdi compliant assembly from cfg and assembly file descriptions"""
@@ -239,9 +240,8 @@ def cdi_abort(sled_id, asm_filename, dwarf_loc, options):
 
     loc_str = asm_filename.replace('.fake.o', '.cdi.s')
     if dwarf_loc.valid():
-        loc_str = str(dwarf_loc) + ':' + loc_str
+        loc_str = '{}:{}/{}'.format(str(dwarf_loc), os.path.basename(os.getcwd()), loc_str)
 
-    
     cdi_abort_code = cdi_abort_data = ''
     if options['--shared-library']:
         eprint('cdi-ld: error: --shared-library unsupported in this version')
