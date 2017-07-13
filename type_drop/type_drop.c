@@ -58,7 +58,50 @@ void print_list(FILE *stream, const Node *head) {
     print_node_helper(stream, head);
 }
 
-static bool cdi_function_ahead = false;
+
+/*
+ * Indexing into this array gives the string for a TREE_CODE
+ */
+const char *tree_code_str[MAX_TREE_CODES] = { "error_mark", "identifier_node", "tree_list", "tree_vec", "block", "offset_type", "enumeral_type", "boolean_type", "integer_type", "real_type", "pointer_type", "reference_type", "nullptr_type", "fixed_point_type", "complex_type", "vector_type", "array_type", "record_type", "union_type", "qual_union_type", "void_type", "pointer_bounds_type", "function_type", "method_type", "lang_type", "void_cst", "integer_cst", "real_cst", "fixed_cst", "complex_cst", "vector_cst", "string_cst", "function_decl", "label_decl", "field_decl", "var_decl", "const_decl", "parm_decl", "type_decl", "result_decl", "debug_expr_decl", "namespace_decl", "imported_decl", "namelist_decl", "translation_unit_decl", "component_ref", "bit_field_ref", "array_ref", "array_range_ref", "realpart_expr", "imagpart_expr", "view_convert_expr", "indirect_ref", "obj_type_ref", "constructor", "compound_expr", "modify_expr", "init_expr", "target_expr", "cond_expr", "vec_cond_expr", "vec_perm_expr", "bind_expr", "call_expr", "with_cleanup_expr", "cleanup_point_expr", "placeholder_expr", "plus_expr", "minus_expr", "mult_expr", "pointer_plus_expr", "mult_highpart_expr", "trunc_div_expr", "ceil_div_expr", "floor_div_expr", "round_div_expr", "trunc_mod_expr", "ceil_mod_expr", "floor_mod_expr", "round_mod_expr", "rdiv_expr", "exact_div_expr", "fix_trunc_expr", "float_expr", "negate_expr", "min_expr", "max_expr", "abs_expr", "lshift_expr", "rshift_expr", "lrotate_expr", "rrotate_expr", "bit_ior_expr", "bit_xor_expr", "bit_and_expr", "bit_not_expr", "truth_andif_expr", "truth_orif_expr", "truth_and_expr", "truth_or_expr", "truth_xor_expr", "truth_not_expr", "lt_expr", "le_expr", "gt_expr", "ge_expr", "eq_expr", "ne_expr", "unordered_expr", "ordered_expr", "unlt_expr", "unle_expr", "ungt_expr", "unge_expr", "uneq_expr", "ltgt_expr", "range_expr", "paren_expr", "convert_expr", "addr_space_convert_expr", "fixed_convert_expr", "nop_expr", "non_lvalue_expr", "compound_literal_expr", "save_expr", "addr_expr", "fdesc_expr", "bit_insert_expr", "complex_expr", "conj_expr", "predecrement_expr", "preincrement_expr", "postdecrement_expr", "postincrement_expr", "va_arg_expr", "try_catch_expr", "try_finally", "decl_expr", "label_expr", "goto_expr", "return_expr", "exit_expr", "loop_expr", "switch_expr", "case_label_expr", "asm_expr", "ssa_name", "catch_expr", "eh_filter_expr", "scev_known", "scev_not_known", "polynomial_chrec", "statement_list", "assert_expr", "tree_binfo", "with_size_expr", "realign_load", "target_mem_ref", "mem_ref", "oacc_parallel", "oacc_kernels", "oacc_data", "oacc_host_data", "omp_parallel", "omp_task", "omp_for", "omp_simd", "cilk_simd", "cilk_for", "omp_distribute", "omp_taskloop", "oacc_loop", "omp_teams", "omp_target_data", "omp_target", "omp_sections", "omp_ordered", "omp_critical", "omp_single", "omp_section", "omp_master", "omp_taskgroup", "oacc_cache", "oacc_declare", "oacc_enter_data", "oacc_exit_data", "oacc_update", "omp_target_update", "omp_target_enter_data", "omp_target_exit_data", "omp_atomic", "omp_atomic_read", "omp_atomic_capture_old", "omp_atomic_capture_new", "omp_clause", "transaction_expr", "reduc_max_expr", "reduc_min_expr", "reduc_plus_expr", "dot_prod_expr", "widen_sum_expr", "sad_expr", "widen_mult_expr", "widen_mult_plus_expr", "widen_mult_minus_expr", "widen_lshift_expr", "fma_expr", "widen_mult_hi_expr", "widen_mult_lo_expr", "widen_mult_even_expr", "widen_mult_odd_expr", "vec_unpack_hi_expr", "vec_unpack_lo_expr", "vec_unpack_float_hi_expr", "vec_unpack_float_lo_expr", "vec_pack_trunc_expr", "vec_pack_sat_expr", "vec_pack_fix_trunc_expr", "widen_lshift_hi_expr", "widen_lshift_lo_expr", "predict_expr", "optimization_node", "target_option_node", "annotate_expr", "cilk_spawn_stmt", "cilk_sync_stmt"};
+
+/*
+ * Print debugging information on tree. header is printed before the info
+ */
+void print_tree_debug_info(tree t, char *header) {
+    fprintf(stderr, "%s\n", header);
+    if (!t) {
+        fprintf(stderr, "\ttree is null\n");
+        return;
+    }
+
+    fprintf(stderr, "\ttree code:\t%s\n", tree_code_str[TREE_CODE(t)]);
+    //fprintf(stderr, "\ttype code:\t%s\n", tree_code_str[TREE_CODE(TREE_TYPE((t)))]);
+    fprintf(stderr, "\ttype tree?\t%s\n", TYPE_P(t) ? "yes" : "no");
+    fprintf(stderr, "\tdecl tree?\t%s\n", DECL_P(t) ? "yes" : "no");
+    if (DECL_P(t)) {
+        if (DECL_NAME(t)) {
+            fprintf(stderr, "\ttree name:\t%s\n", IDENTIFIER_POINTER(DECL_NAME(t)));
+        }
+        else {
+            fprintf(stderr, "\ttree name:\tNULL\n", IDENTIFIER_POINTER(DECL_NAME(t)));
+        }
+    }
+    else if (TYPE_P(t)) {
+        if (!TYPE_IDENTIFIER(t)) {
+            fprintf(stderr, "\ttype ident:\tNULL\n");
+        }
+        else {
+            fprintf(stderr, "\ttree name:\t%s\n", IDENTIFIER_POINTER(TYPE_IDENTIFIER(t)));
+        }
+    }
+    else if (TREE_CODE(t) == 1) {
+        fprintf(stderr, "\ttree name:\t%s\n", IDENTIFIER_POINTER(t));
+    }
+    else {
+        fprintf(stderr, "\ttree name:\tNULL\n");
+    }
+}
+
 
 void cdi_warning_at(location_t loc, const char *msg) {
     if (loc) {
@@ -70,7 +113,20 @@ void cdi_warning_at(location_t loc, const char *msg) {
 
     fprintf(stderr, ": cdi warning: %s\n", msg);
 }
+
+void cdi_error_at(location_t loc, const char *msg) {
+    if (loc) {
+        cdi_print_loc(stderr, loc);
+    }
+    else {
+        fprintf(stderr, "-:-:-");
+    }
+
+    fprintf(stderr, ": cdi error: %s\n", msg);
+    exit(1);
+}
     
+static bool cdi_function_ahead = false;
 void cdi_set_function_ahead(bool is_ahead) {
     cdi_function_ahead = is_ahead;
 }
@@ -198,6 +254,50 @@ void cdi_print_mangled_funct(FILE *typefile, tree funct_tree, location_t loc) {
     cdi_print_arg_types(typefile, funct_tree, loc);
 }
 
+/*
+ * Takes a TYPE_DECL or a TYPE and prints the canonical source name. For typedefs
+ * this is the original type. For structs this is either the tag or the struct's
+ * typedef the tag is undefined
+ *
+ * The strlen is printed before the identifier as in "3foo"
+ *
+ * recursive invariant: the tree t has an identifier node available to it
+ */
+void cdi_print_canonical_identifier(FILE* stream, tree t, location_t loc) {
+    if (DECL_P(t)) {
+        printf("decl\n");
+        tree type_decl = t;
+        tree original_type = DECL_ORIGINAL_TYPE(type_decl);
+        if (original_type && TYPE_IDENTIFIER(original_type)
+                && IDENTIFIER_POINTER(TYPE_IDENTIFIER(original_type))) {
+            printf("decl recurse\n");
+            cdi_print_canonical_identifier(stream, original_type, loc);
+        }
+        else {
+            const char *type_literal = IDENTIFIER_POINTER(DECL_NAME(type_decl));
+            fprintf(stream, "%lu%s", strlen(type_literal), type_literal);
+        }
+    }
+    else if (TYPE_P(t)) {
+        printf("type");
+        tree type_decl = TYPE_NAME(t);
+        if (type_decl && DECL_P(type_decl) 
+                && DECL_NAME(type_decl) 
+                && IDENTIFIER_POINTER(DECL_NAME(type_decl))) {
+            printf("type recurse\n");
+            cdi_print_canonical_identifier(stream, type_decl, loc);
+        }
+        else {
+            const char *type_literal = IDENTIFIER_POINTER(TYPE_IDENTIFIER(t));
+            fprintf(stream, "%lu%s", strlen(type_literal), type_literal);
+        }
+    }
+    else {
+        cdi_error_at(loc, "cannot print identifier");
+        fprintf(stream, "?");
+    }
+}
+
 void cdi_print_type(FILE* stream, tree type, location_t loc) {
     if (TREE_CODE(type) == FUNCTION_TYPE) {
         fputc('F', stream);
@@ -240,15 +340,33 @@ void cdi_print_type(FILE* stream, tree type, location_t loc) {
         return;
     }
     else if (RECORD_OR_UNION_TYPE_P(type) || TREE_CODE(type) == ENUMERAL_TYPE) {
+        //printf("typedef'd?: %s\n", TYPE_IDENTIFIER(type));
+        
+        /*
+        if (TYPE_NAME(type) && DECL_ORIGINAL_TYPE(TYPE_NAME(type))) {
+            print_tree_debug_info(type, "tree");
+            print_tree_debug_info(TYPE_NAME(type), "TYPE_NAME");
+            print_tree_debug_info(DECL_ORIGINAL_TYPE(TYPE_NAME(type)), "DECL_ORIGINAL_TYPE");
+            print_tree_debug_info(TYPE_NAME(DECL_ORIGINAL_TYPE(TYPE_NAME(type))), "TYPE_NAME of DECL_ORIG");
+            if (DECL_P(TYPE_NAME(DECL_ORIGINAL_TYPE(TYPE_NAME(type))))) {
+                print_tree_debug_info(DECL_ORIGINAL_TYPE(TYPE_NAME(DECL_ORIGINAL_TYPE(TYPE_NAME(type)))), "DECL_ORIGINAL_TYPEx2");
+            }
+        }
+        */
+
+        cdi_print_canonical_identifier(stream, type, loc);
+        /*
         tree ident_node = TYPE_IDENTIFIER(type);
         if (ident_node) {
             const char *type_literal = IDENTIFIER_POINTER(ident_node);
             fprintf(stream, "%lu%s", strlen(type_literal), type_literal);
+            fprintf(stderr, "%lu%s\n\n", strlen(type_literal), type_literal);
         }
         else {
             cdi_warning_at(loc, "unknown struct, union, or enumeral type");
             fprintf(stream, "?");
         }
+        */
     }
     else { 
         cdi_print_builtin_type(stream, type, loc);
@@ -404,9 +522,9 @@ static FILE *cdi_get_typefile(Node **fnames_head, Node **open_node,
     else {
         *open_node = typefile_node;
     }
-    
+
     free(typefile_name);
-   
+
     return new_typefile;
 }
 
@@ -449,7 +567,7 @@ integer_type_codes[itk_none] =
 };
 
 /* Taken from the C++ implementation */
-void
+    void
 cdi_print_builtin_type(FILE *stream, tree type, location_t loc)
 {
     if (TYPE_CANONICAL (type))
@@ -572,7 +690,7 @@ iagain:
                 cdi_warning_at(loc, msg);
                 fputc('R', stream);
             }
-                
+
             break;
         case FIXED_POINT_TYPE:
             fprintf(stream, "DF");
