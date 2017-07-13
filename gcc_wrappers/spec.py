@@ -184,7 +184,7 @@ class LinkerSpec():
             except IOError:
                 try:
                     # this might capture an unintended library?
-                    find_lib(entry, self.raw_spec)
+                    find_lib(entry, self)
                     return 'libstem' # could check that it is archive/sharedlib
                 except NoMatchingLibrary:
                     self.fatal_error("non existent file '{}' passed to linker"
@@ -280,9 +280,9 @@ class NoMatchingLibrary(Exception):
     def __init__(self, libstem):
         self.libstem = libstem
 
-def find_lib(libstem, linker_spec):
+def find_lib(libstem, lspec):
     if not hasattr(find_lib, 'search_dirs'):
-        find_lib.search_dirs = gen_lib_search_dirs(linker_spec)
+        find_lib.search_dirs = gen_lib_search_dirs(lspec)
 
     if libstem[:2] == '-l':
         libstem = libstem[2:]

@@ -136,7 +136,6 @@ except subprocess.CalledProcessError:
 
 # list of addresses to which signal handlers return
 restore_rt_vaddrs = lib_utils.get_restore_rt_vaddrs(lspec)
-print restore_rt_vaddrs
 
 if '--abandon-cdi' in lspec.cdi_options:
     print 'WARNING: CREATING NON CDI EXECUTABLE AS REQUESTED'
@@ -203,6 +202,8 @@ fake_obj_paths = [fake_obj.path for fake_obj in fake_objs]
 converter_options = []
 if lspec.target_is_shared: 
     converter_options.append('--shared-library')
+if '--no-mystery-types' in lspec.cdi_options:
+    converter_options.append('--no-mystery-types')
 
 print 'Converting fake objects to cdi-asm files: ' + ' '.join(fake_obj_paths)
 

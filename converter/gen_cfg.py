@@ -183,7 +183,7 @@ def build_indir_targets(cfg, asm_file_descrs, options):
         try:
             parse_cdi_metadata(descr, funct_types, fptr_types, options)
         except:
-            eprint("error: parsing CDI metadata from file '{}' failed. Aborting..."
+            eprint("gen_cdi: error: parsing CDI metadata from file '{}' failed. Aborting..."
                     .format(descr.filename))
             raise
     
@@ -273,13 +273,19 @@ def assign_targets(fptr_sites, funct, cfg, options):
     while (i < len(funct.fptr_types) and j < len(fptr_sites)):
         if funct.fptr_types[i].src_line_num < fptr_sites[j].src_line_num:
             print_fptr_type_unmatched_msg()
+            eprint('(src) {} < {}'.format(funct.fptr_types[i].src_line_num, fptr_sites[j].src_line_num))
+            eprint('(asm site) {}'.format(fptr_sites[j].asm_line_num))
             i += 1
         elif funct.fptr_types[i].src_line_num > fptr_sites[j].src_line_num:
             print_fptr_site_unmatched_msg()
+            eprint('{} > {}'.format(funct.fptr_types[i].src_line_num, fptr_sites[j].src_line_num))
+            eprint('(asm site) {}'.format(fptr_sites[j].asm_line_num))
             fptr_sites[j].fptr_type = arbitrary_ftype
             j += 1
         else:
             fptr_sites[j].fptr_type = funct.fptr_types[i]
+            eprint('{} = {}'.format(funct.fptr_types[i].src_line_num, fptr_sites[j].src_line_num))
+            eprint('(asm site) {}'.format(fptr_sites[j].asm_line_num))
             i += 1
             j += 1
     while i < len(funct.fptr_types):
@@ -390,6 +396,14 @@ def parse_cdi_metadata(asm_descr, funct_types, fptr_types, options):
                     print line[2:-1] # don't print newline or '#'
                 loc, mangled_str = line.split()[1], line.split()[2]
                 loc_list = loc.split(':')
+
+                if '?' in mangled_str:
+                    eprint("gen_cdi: warning: mangling '{}' from '{}' contains unknown type"
+                            .format(mangled_str, asm_descr.filename))
+                    if options['--no-mystery-types']:
+                        eprint("gen_cdi: error: '--no-mystery-types' means unknown type in mangling is fatal")
+                        sys.exit(1)
+
 
                 funct_type = funct_cfg.FunctionType(mangled_str)
                 funct_type.src_line_num = int(loc_list[1])

@@ -43,6 +43,9 @@ if __name__ == "__main__":
             default='',
             help='a file containing fptr addresses that may jump from shared libs to executable code',
             dest='--sl-fptr-addrs')
+    parser.add_argument('-nm', '--no-mystery-types', action='store_true',
+            help='if set, manglings must not contain unknown types',
+            dest='--no-mystery-types')
 
     options = vars(parser.parse_args(sys.argv[1:]))
     if options.get('--help'):

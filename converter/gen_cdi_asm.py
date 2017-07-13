@@ -154,6 +154,10 @@ def convert_call_site(site, funct, asm_line, asm_dest,
     call_sled = ''
     assert len(arg_str.split()) == 1
 
+    if site.targets == []:
+        eprint('gen_cdi: warning: indirect call sled is empty on line {} of {} in function {}'
+                .format(site.asm_line_num, funct.asm_filename, site.enclosing_funct_uniq_label))
+
     for target in site.targets:
         target_name = fix_label(target.uniq_label)
         return_target = fix_label(funct.uniq_label)
