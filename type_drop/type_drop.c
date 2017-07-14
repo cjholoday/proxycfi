@@ -75,7 +75,6 @@ void print_tree_debug_info(tree t, char *header) {
     }
 
     fprintf(stderr, "\ttree code:\t%s\n", tree_code_str[TREE_CODE(t)]);
-    //fprintf(stderr, "\ttype code:\t%s\n", tree_code_str[TREE_CODE(TREE_TYPE((t)))]);
     fprintf(stderr, "\ttype tree?\t%s\n", TYPE_P(t) ? "yes" : "no");
     fprintf(stderr, "\tdecl tree?\t%s\n", DECL_P(t) ? "yes" : "no");
     if (DECL_P(t)) {
@@ -89,6 +88,13 @@ void print_tree_debug_info(tree t, char *header) {
     else if (TYPE_P(t)) {
         if (!TYPE_IDENTIFIER(t)) {
             fprintf(stderr, "\ttype ident:\tNULL\n");
+            if (TYPE_NAME(t)) {
+                fprintf(stderr, "\ttype name: valid\n");
+                print_tree_debug_info(TYPE_NAME(t), "TYPE_NAME(t)");
+                if (DECL_NAME(TYPE_NAME(t))) {
+                    fprintf(stderr, "\tdecl name: valid\n");
+                }
+            }
         }
         else {
             fprintf(stderr, "\ttree name:\t%s\n", IDENTIFIER_POINTER(TYPE_IDENTIFIER(t)));
@@ -250,6 +256,7 @@ void cdi_print_mangled_funct(FILE *typefile, tree funct_tree, location_t loc) {
         }
         const char *funct_name = IDENTIFIER_POINTER(DECL_NAME(funct_decl));
         fprintf(typefile, "%lu%s", strlen(funct_name), funct_name);
+        fprintf(stderr, "%lu%s", strlen(funct_name), funct_name);
     }
     cdi_print_arg_types(typefile, funct_tree, loc);
 }
@@ -529,6 +536,7 @@ static FILE *cdi_get_typefile(Node **fnames_head, Node **open_node,
 }
 
 void cdi_print_arg_types(FILE *typefile, tree funct_tree, location_t loc) {
+    /*
     function_args_iterator iter;
     function_args_iter_init (&iter, funct_tree);
     tree arg_type = function_args_iter_cond (&iter);
@@ -543,8 +551,34 @@ void cdi_print_arg_types(FILE *typefile, tree funct_tree, location_t loc) {
 
         function_args_iter_next (&iter);
         arg_type = function_args_iter_cond (&iter);
+        fprintf(stderr, "segfault?");
+        if (TREE_VALUE(arg_type) == void_type_node) {
+            printf("void_type_node\n");
+        }
     } while (arg_type && arg_type != void_list_node
             && TREE_CODE(arg_type) != VOID_TYPE);
+    */
+
+    // empty parameter lists are marked with a 'v'
+    tree parm_types = TYPE_ARG_TYPES(funct_tree);
+    if (!parm_types || TREE_VALUE(parm_types) == void_type_node) {
+        fputc('v', typefile);
+        return;
+    }
+
+    for (; parm_types; parm_types = TREE_CHAIN(parm_types)) {
+        tree arg_type = TREE_VALUE(parm_types);
+        if (arg_type == void_type_node) {
+            // the void type argument better be at the end
+            gcc_assert(TREE_CHAIN(parm_types) == NULL);
+            return;
+        }
+        cdi_print_type(typefile, arg_type, loc);
+    }
+
+    // We only reach here if the parameter type list is not terminated by
+    // a void_type_node, indicating this function has a variable argument list
+    fputc('z', typefile);
 }
 
 /* Taken from the C++ implementation */
@@ -567,7 +601,7 @@ integer_type_codes[itk_none] =
 };
 
 /* Taken from the C++ implementation */
-    void
+void
 cdi_print_builtin_type(FILE *stream, tree type, location_t loc)
 {
     if (TYPE_CANONICAL (type))
