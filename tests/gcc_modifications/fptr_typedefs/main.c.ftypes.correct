@@ -1,0 +1,5 @@
+main.c:9:6:print_num _CDIv_Z9print_numi
+main.c:13:6:int_printer_printer _CDIv_Z19int_printer_printerPFviEi
+main.c:17:6:int_printer_printer_printer1 _CDIv_Z28int_printer_printer_printer1PFvPFviEiEPFviEi
+main.c:21:6:int_printer_printer_printer2 _CDIv_Z28int_printer_printer_printer2PFvPFviEiEPFviEi
+main.c:26:5:main _CDIi_Z4mainv
