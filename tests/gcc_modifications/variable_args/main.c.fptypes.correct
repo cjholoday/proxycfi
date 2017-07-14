@@ -1,0 +1,4 @@
+main.c:21:12:foo _CDIi_Ziz
+main.c:24:12:bar _CDIi_Ziz
+main.c:31:32:main _CDIi_ZPFiizEiii
+main.c:32:32:main _CDIi_ZPFiizEiii
