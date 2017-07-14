@@ -1,6 +1,6 @@
 #include <stdio.h>
 
-/* test function pointer type dropping thoroughly. The syntax sure is confusing */
+/* Test function pointer type dropping thoroughly. The syntax sure is confusing */
 
 typedef void (*int_printer_p)(int);
 typedef void (*int_printer_printer_p)(int_printer_p, int);
