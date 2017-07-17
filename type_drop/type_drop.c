@@ -256,7 +256,6 @@ void cdi_print_mangled_funct(FILE *typefile, tree funct_tree, location_t loc) {
         }
         const char *funct_name = IDENTIFIER_POINTER(DECL_NAME(funct_decl));
         fprintf(typefile, "%lu%s", strlen(funct_name), funct_name);
-        fprintf(stderr, "%lu%s", strlen(funct_name), funct_name);
     }
     cdi_print_arg_types(typefile, funct_tree, loc);
 }
@@ -273,12 +272,10 @@ void cdi_print_mangled_funct(FILE *typefile, tree funct_tree, location_t loc) {
 void cdi_print_canonical_identifier(FILE* stream, tree t, location_t loc) {
     print_tree_debug_info(t, "canonicalize this");
     if (DECL_P(t)) {
-        fprintf(stderr, "decl\n");
         tree type_decl = t;
         tree original_type = DECL_ORIGINAL_TYPE(type_decl);
         if (original_type && TYPE_IDENTIFIER(original_type)
                 && IDENTIFIER_POINTER(TYPE_IDENTIFIER(original_type))) {
-            printf("decl recurse\n");
             cdi_print_canonical_identifier(stream, original_type, loc);
         }
         else {
@@ -287,12 +284,10 @@ void cdi_print_canonical_identifier(FILE* stream, tree t, location_t loc) {
         }
     }
     else if (TYPE_P(t)) {
-        fprintf(stderr, "type\n");
         tree type_decl = TYPE_NAME(t);
         if (type_decl && DECL_P(type_decl) 
                 && DECL_NAME(type_decl) 
                 && IDENTIFIER_POINTER(DECL_NAME(type_decl))) {
-            printf("type recurse\n");
             cdi_print_canonical_identifier(stream, type_decl, loc);
         }
         else {
@@ -334,20 +329,7 @@ void cdi_print_type(FILE* stream, tree type, location_t loc) {
         return;
     }
 
-    /* using TYPE_MAIN_VARIANT is harmful for tagless struct types. This is also
-     * hiding work that must be done eventually anyway
-
-    //In this version, ignore cvr qualifiers. Note that we mustn't apply 
-    //TYPE_MAIN_VARIANT() to an already unqualified type. 
-    fprintf(stderr, "TYPE_QUALS\n");
-    if (TYPE_QUALS_NO_ADDR_SPACE_NO_ATOMIC(type)) {
-        fprintf(stderr, "in TYPE_QUALS conditional\n");
-        type = TYPE_MAIN_VARIANT(type);
-    }
-    */
-
     /* remove indirections */
-    fprintf(stderr, "remove indirections\n");
     if (POINTER_TYPE_P(type)) {
         do {
             cdi_print_cvr(stream, type, loc);
@@ -377,34 +359,7 @@ void cdi_print_type(FILE* stream, tree type, location_t loc) {
         return;
     }
     else if (RECORD_OR_UNION_TYPE_P(type) || TREE_CODE(type) == ENUMERAL_TYPE) {
-        //printf("typedef'd?: %s\n", TYPE_IDENTIFIER(type));
-        
-        /*
-        if (TYPE_NAME(type) && DECL_ORIGINAL_TYPE(TYPE_NAME(type))) {
-            print_tree_debug_info(type, "tree");
-            print_tree_debug_info(TYPE_NAME(type), "TYPE_NAME");
-            print_tree_debug_info(DECL_ORIGINAL_TYPE(TYPE_NAME(type)), "DECL_ORIGINAL_TYPE");
-            print_tree_debug_info(TYPE_NAME(DECL_ORIGINAL_TYPE(TYPE_NAME(type))), "TYPE_NAME of DECL_ORIG");
-            if (DECL_P(TYPE_NAME(DECL_ORIGINAL_TYPE(TYPE_NAME(type))))) {
-                print_tree_debug_info(DECL_ORIGINAL_TYPE(TYPE_NAME(DECL_ORIGINAL_TYPE(TYPE_NAME(type)))), "DECL_ORIGINAL_TYPEx2");
-            }
-        }
-        */
-
-        fprintf(stderr, "calling print_canonical_identifier\n");
         cdi_print_canonical_identifier(stream, type, loc);
-        /*
-        tree ident_node = TYPE_IDENTIFIER(type);
-        if (ident_node) {
-            const char *type_literal = IDENTIFIER_POINTER(ident_node);
-            fprintf(stream, "%lu%s", strlen(type_literal), type_literal);
-            fprintf(stderr, "%lu%s\n\n", strlen(type_literal), type_literal);
-        }
-        else {
-            cdi_warning_at(loc, "unknown struct, union, or enumeral type");
-            fprintf(stream, "?");
-        }
-        */
     }
     else { 
         cdi_print_builtin_type(stream, type, loc);
@@ -568,24 +523,19 @@ static FILE *cdi_get_typefile(Node **fnames_head, Node **open_node,
 
 void cdi_print_arg_types(FILE *typefile, tree funct_tree, location_t loc) {
     // empty parameter lists are marked with a 'v'
-    fprintf(stderr, "arg_types start\n");
     tree parm_types = TYPE_ARG_TYPES(funct_tree);
-    fprintf(stderr, "TYPE_ARG_TYPES succeeded\n");
     if (!parm_types || TREE_VALUE(parm_types) == void_type_node) {
         fputc('v', typefile);
         return;
     }
 
-    fprintf(stderr, "at the loop\n");
     for (; parm_types; parm_types = TREE_CHAIN(parm_types)) {
-        fprintf(stderr, "loop iteration\n");
         tree arg_type = TREE_VALUE(parm_types);
         if (arg_type == void_type_node) {
             // the void type argument better be at the end
             gcc_assert(TREE_CHAIN(parm_types) == NULL);
             return;
         }
-        fprintf(stderr, "calling cdi_print_type\n");
         cdi_print_type(typefile, arg_type, loc);
     }
 
