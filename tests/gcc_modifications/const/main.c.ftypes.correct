@@ -1,0 +1,11 @@
+main.c:8:6:f1 _CDIv_Z2f1PKa
+main.c:9:6:f2 _CDIv_Z2f2KPc
+main.c:10:6:f3 _CDIv_Z2f3KPKa
+main.c:12:6:b1 _CDIv_Z2b1PPc
+main.c:13:6:b2 _CDIv_Z2b2PPKa
+main.c:14:6:b3 _CDIv_Z2b3PKPc
+main.c:15:6:b4 _CDIv_Z2b4KPPc
+main.c:16:6:b5 _CDIv_Z2b5KPKPKa
+main.c:19:6:b5_typedef _CDIv_Z10b5_typedefKPKPKa
+main.c:21:6:foo _CDIv_Z3fooK11custom_type
+main.c:26:5:main _CDIi_Z4mainv

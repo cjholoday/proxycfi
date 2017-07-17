@@ -29,3 +29,14 @@ if [ "$?" != 0 ]; then
     exit 1
 fi
 
+diff main.c.ftypes main.c.ftypes.correct
+if [ "$?" != 0 ]; then
+    echo ERROR: Incorrect ftypes file
+    exit 1
+fi
+
+diff main.c.fptypes main.c.fptypes.correct
+if [ "$?" != 0 ]; then
+    echo ERROR: Incorrect fptypes file
+    exit 1
+fi
