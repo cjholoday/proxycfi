@@ -306,6 +306,25 @@ void cdi_print_canonical_identifier(FILE* stream, tree t, location_t loc) {
     }
 }
 
+/*
+ * print the const, volatile, restricted qualifiers if present for tree 'type'
+ */
+void cdi_print_cvr(FILE* stream, tree type, location_t loc) {
+    if (!type) {
+        return;
+    }
+
+    if (POINTER_TYPE_P(type) && TYPE_RESTRICT(type)) {
+        fputc('r', stream);
+    }
+    if (TYPE_VOLATILE(type)) {
+        fputc('V', stream);
+    }
+    if (TYPE_READONLY(type)) {
+        fputc('K', stream);
+    }
+}
+
 void cdi_print_type(FILE* stream, tree type, location_t loc) {
     if (TREE_CODE(type) == FUNCTION_TYPE) {
         fputc('F', stream);
@@ -331,10 +350,7 @@ void cdi_print_type(FILE* stream, tree type, location_t loc) {
     fprintf(stderr, "remove indirections\n");
     if (POINTER_TYPE_P(type)) {
         do {
-            if (TYPE_READONLY(type)) {
-                fputc('K', stream);
-            }
-
+            cdi_print_cvr(stream, type, loc);
             type = TREE_TYPE(type);
             fputc('P', stream);
         } while (type && POINTER_TYPE_P(type));
@@ -345,10 +361,7 @@ void cdi_print_type(FILE* stream, tree type, location_t loc) {
             return;
         }
     }
-
-    if (TYPE_READONLY(type)) {
-        fputc('K', stream);
-    }
+    cdi_print_cvr(stream, type, loc);
 
 
     /* for a function pointer argument type we need to recursively print the
