@@ -271,8 +271,9 @@ void cdi_print_mangled_funct(FILE *typefile, tree funct_tree, location_t loc) {
  * recursive invariant: the tree t has an identifier node available to it
  */
 void cdi_print_canonical_identifier(FILE* stream, tree t, location_t loc) {
+    print_tree_debug_info(t, "canonicalize this");
     if (DECL_P(t)) {
-        printf("decl\n");
+        fprintf(stderr, "decl\n");
         tree type_decl = t;
         tree original_type = DECL_ORIGINAL_TYPE(type_decl);
         if (original_type && TYPE_IDENTIFIER(original_type)
@@ -286,7 +287,7 @@ void cdi_print_canonical_identifier(FILE* stream, tree t, location_t loc) {
         }
     }
     else if (TYPE_P(t)) {
-        printf("type");
+        fprintf(stderr, "type\n");
         tree type_decl = TYPE_NAME(t);
         if (type_decl && DECL_P(type_decl) 
                 && DECL_NAME(type_decl) 
@@ -314,15 +315,26 @@ void cdi_print_type(FILE* stream, tree type, location_t loc) {
         return;
     }
 
-    /* In this version, ignore cvr qualifiers. Note that we mustn't apply 
-     * TYPE_MAIN_VARIANT() to an already unqualified type. */
+    /* using TYPE_MAIN_VARIANT is harmful for tagless struct types. This is also
+     * hiding work that must be done eventually anyway
+
+    //In this version, ignore cvr qualifiers. Note that we mustn't apply 
+    //TYPE_MAIN_VARIANT() to an already unqualified type. 
+    fprintf(stderr, "TYPE_QUALS\n");
     if (TYPE_QUALS_NO_ADDR_SPACE_NO_ATOMIC(type)) {
+        fprintf(stderr, "in TYPE_QUALS conditional\n");
         type = TYPE_MAIN_VARIANT(type);
     }
+    */
 
     /* remove indirections */
+    fprintf(stderr, "remove indirections\n");
     if (POINTER_TYPE_P(type)) {
         do {
+            if (TYPE_READONLY(type)) {
+                fputc('K', stream);
+            }
+
             type = TREE_TYPE(type);
             fputc('P', stream);
         } while (type && POINTER_TYPE_P(type));
@@ -333,6 +345,11 @@ void cdi_print_type(FILE* stream, tree type, location_t loc) {
             return;
         }
     }
+
+    if (TYPE_READONLY(type)) {
+        fputc('K', stream);
+    }
+
 
     /* for a function pointer argument type we need to recursively print the
      * function type info. This can't infinitely recurse because types can't
@@ -361,6 +378,7 @@ void cdi_print_type(FILE* stream, tree type, location_t loc) {
         }
         */
 
+        fprintf(stderr, "calling print_canonical_identifier\n");
         cdi_print_canonical_identifier(stream, type, loc);
         /*
         tree ident_node = TYPE_IDENTIFIER(type);
@@ -536,43 +554,25 @@ static FILE *cdi_get_typefile(Node **fnames_head, Node **open_node,
 }
 
 void cdi_print_arg_types(FILE *typefile, tree funct_tree, location_t loc) {
-    /*
-    function_args_iterator iter;
-    function_args_iter_init (&iter, funct_tree);
-    tree arg_type = function_args_iter_cond (&iter);
-
-    if (arg_type == NULL_TREE || arg_type == void_list_node) { 
-        fputc('v', typefile);
-        return;
-    }
-
-    do {
-        cdi_print_type(typefile, arg_type, loc);
-
-        function_args_iter_next (&iter);
-        arg_type = function_args_iter_cond (&iter);
-        fprintf(stderr, "segfault?");
-        if (TREE_VALUE(arg_type) == void_type_node) {
-            printf("void_type_node\n");
-        }
-    } while (arg_type && arg_type != void_list_node
-            && TREE_CODE(arg_type) != VOID_TYPE);
-    */
-
     // empty parameter lists are marked with a 'v'
+    fprintf(stderr, "arg_types start\n");
     tree parm_types = TYPE_ARG_TYPES(funct_tree);
+    fprintf(stderr, "TYPE_ARG_TYPES succeeded\n");
     if (!parm_types || TREE_VALUE(parm_types) == void_type_node) {
         fputc('v', typefile);
         return;
     }
 
+    fprintf(stderr, "at the loop\n");
     for (; parm_types; parm_types = TREE_CHAIN(parm_types)) {
+        fprintf(stderr, "loop iteration\n");
         tree arg_type = TREE_VALUE(parm_types);
         if (arg_type == void_type_node) {
             // the void type argument better be at the end
             gcc_assert(TREE_CHAIN(parm_types) == NULL);
             return;
         }
+        fprintf(stderr, "calling cdi_print_type\n");
         cdi_print_type(typefile, arg_type, loc);
     }
 
