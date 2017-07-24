@@ -1,0 +1,93 @@
+===========================================================
+Single threaded, non-optimized Compilation
+===========================================================
+Test category         | Status
+----------------------+--------------------
+net                   | pass
+sockaddr              | pass
+tasks                 | pass
+resolver              | pass
+mem                   | pass
+rbt                   | pass
+dst                   | pass
+master                | pass
+db                    | pass
+names                 | pass
+atomic                | pass
+system                | pass - expanded timeout windows required
+                      |      - dlzexternal fails but dynamically loaded zones 
+                      |        require 'dlopen'. We therefore can't support the
+                      |        feature
+                      |      - masterformat: currently passes, but parts of it will
+                      |        fail once dlopen cannot be used
+dnssec-signzone       | FAIL - fails for non-cdi bind as well (file not found error)
+virtual-time          | FAIL - fails with a non-cdi build of Bind9
+timers                | [threaded only]
+bigtest               | cannot build test with non-cdi bind
+win32                 | unpassable
+pkcs11                | tests a cryptographic vulnerability
+hashes                | unpassable - passes a fptr through void * parameter
+                      |              (isc_sha1_init passed through void * in t_hash)
+
+===========================================================
+Multi-threaded, non-optimized compilation
+===========================================================
+Test category         | Status
+----------------------+--------------------
+net                   | 
+sockaddr              | 
+tasks                 | 
+resolver              | 
+mem                   | 
+rbt                   | 
+dst                   | 
+master                | 
+db                    | 
+names                 | 
+atomic                | 
+system                | 
+                      | 
+                      | 
+                      | 
+                      | 
+                      | 
+dnssec-signzone       | FAIL - fails for non-cdi bind as well (file not found error)
+virtual-time          | FAIL - fails with a non-cdi build of Bind9
+timers                | [threaded only]
+bigtest               | cannot build test with non-cdi bind
+win32                 | unpassable
+pkcs11                | tests a cryptographic vulnerability
+hashes                | unpassable - passes a fptr through void * parameter
+                      |              (isc_sha1_init passed through void * in t_hash)
+
+
+===========================================================
+Multi-threaded, optimized compilation
+===========================================================
+Test category         | Status
+----------------------+--------------------
+net                   | 
+sockaddr              | 
+tasks                 | 
+resolver              | 
+mem                   | 
+rbt                   | 
+dst                   | 
+master                | 
+db                    | 
+names                 | 
+atomic                | 
+system                | 
+                      | 
+                      | 
+                      | 
+                      | 
+                      | 
+dnssec-signzone       | FAIL - fails for non-cdi bind as well (file not found error)
+virtual-time          | FAIL - fails with a non-cdi build of Bind9
+timers                | [threaded only]
+bigtest               | cannot build test with non-cdi bind
+win32                 | unpassable
+pkcs11                | tests a cryptographic vulnerability
+hashes                | unpassable - passes a fptr through void * parameter
+                      |              (isc_sha1_init passed through void * in t_hash)
