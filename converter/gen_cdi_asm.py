@@ -135,6 +135,7 @@ def convert_call_site(site, funct, asm_line, asm_dest,
 
     arg_str = asm_parsing.decode_line(asm_line, False)[2]
 
+    # add in return label for return sleds if we're not at an indirect call site
     indirect_call = '%' in arg_str
     if not indirect_call:
         assert len(site.targets) == 1
@@ -158,10 +159,10 @@ def convert_call_site(site, funct, asm_line, asm_dest,
         eprint('gen_cdi: warning: indirect call sled is empty on line {} of {} in function {}'
                 .format(site.asm_line_num, funct.asm_filename, site.enclosing_funct_uniq_label))
 
+    call_operand = arg_str.replace('*', '')
     for target in site.targets:
         target_name = fix_label(target.uniq_label)
         return_target = fix_label(funct.uniq_label)
-        call_operand = arg_str.replace('*', '')
         times_fixed = increment_dict(funct.label_fixed_count, target_name)
 
         return_label = '_CDI_' + target_name + '_TO_' + return_target
@@ -183,8 +184,11 @@ def convert_call_site(site, funct, asm_line, asm_dest,
         call_sled += '\tjmp\t2f\n'
 
     call_sled += '1:\n'
+    # put the unsafe target address in %rax so that cdi_abort prints it out
+    if call_operand != '%rax':
+        call_sled += '\tmovq\t{}, %rax\n'.format(call_operand)
     code, data =cdi_abort(sled_id_faucet(), funct.asm_filename, 
-            dwarf_loc, options)
+            dwarf_loc, False, options)
     call_sled += code
     abort_data.append(data)
     call_sled += '2:\n'
@@ -226,7 +230,7 @@ def convert_return_site(site, funct, asm_line, asm_dest, cfg,
         ret_sled += '\tjmp\t"_CDI_SLT_{}"\n'.format(fix_label(funct.uniq_label))
     else:
         code, data = cdi_abort(sled_id_faucet(), funct.asm_filename,
-                dwarf_loc, options)
+                dwarf_loc, True, options)
         ret_sled += code
         abort_data.append(data)
 
@@ -235,7 +239,7 @@ def convert_return_site(site, funct, asm_line, asm_dest, cfg,
 def convert_indir_jmp_site(site, funct, asm_line, asm_dest):
     pass
 
-def cdi_abort(sled_id, asm_filename, dwarf_loc, options):
+def cdi_abort(sled_id, asm_filename, dwarf_loc, try_callback_sled, options):
     """Return (code, data) that allows for aborting with sled-specific info.
     
     Code should be placed at the end of a return/call sled. data should be 
@@ -259,7 +263,7 @@ def cdi_abort(sled_id, asm_filename, dwarf_loc, options):
         cdi_abort_data += '\t.set\t.CDI_sled_id_' + str(sled_id) + '_len, '
         cdi_abort_data += '.-.CDI_sled_id_' + str(sled_id) + '\n'
     else:
-        if options['--sl-fptr-addrs']:
+        if options['--sl-fptr-addrs'] and try_callback_sled:
             cdi_abort_code += '\tmovq\t $.CDI_sled_id_' + str(sled_id) + ', %r11\n'
             cdi_abort_code += '\tjmp\t_CDI_callback_sled\n'
         else:
@@ -354,7 +358,7 @@ def write_rlts(cfg, plt_sites, asm_dest, sled_id_faucet, options):
                 i += 1
 
         code, data = cdi_abort(sled_id_faucet(), '',
-            asm_parsing.DwarfSourceLoc(), options)
+            asm_parsing.DwarfSourceLoc(), False, options)
         rlt_entry += code + data
         rlt_entry += '\t.size {}, .-{}\n'.format(entry_label, entry_label)
         asm_dest.write(rlt_entry)
@@ -409,6 +413,7 @@ def write_callback_sled(asm_dest, options):
                 callback_sled += '\tjmp\t*%r11\n'
                 callback_sled += '2:\n'
             callback_sled += '1:\n'
+    callback_sled += '\tmovq\t-8(%rsp), %rax\n'
     callback_sled += '\tmovq\t%r11, %rsi\n'
     callback_sled += '\tcall _CDI_abort\n'
     asm_dest.write(callback_sled)

@@ -270,7 +270,6 @@ void cdi_print_mangled_funct(FILE *typefile, tree funct_tree, location_t loc) {
  * recursive invariant: the tree t has an identifier node available to it
  */
 void cdi_print_canonical_identifier(FILE* stream, tree t, location_t loc) {
-    print_tree_debug_info(t, "canonicalize this");
     if (DECL_P(t)) {
         tree type_decl = t;
         tree original_type = DECL_ORIGINAL_TYPE(type_decl);

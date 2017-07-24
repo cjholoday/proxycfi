@@ -248,6 +248,8 @@ def assign_targets(fptr_sites, funct, cfg, options):
     fptr_sites is a list of sites in funct that have indirect calls
     """
 
+    eprint('>>> ' + funct.src_filename + ':' + funct.asm_name)
+
     if options['--profile-use']:
         assign_targets_profiled(fptr_sites, funct, cfg, options)
         return
@@ -273,19 +275,14 @@ def assign_targets(fptr_sites, funct, cfg, options):
     while (i < len(funct.fptr_types) and j < len(fptr_sites)):
         if funct.fptr_types[i].src_line_num < fptr_sites[j].src_line_num:
             print_fptr_type_unmatched_msg()
-            eprint('(src) {} < {}'.format(funct.fptr_types[i].src_line_num, fptr_sites[j].src_line_num))
-            eprint('(asm site) {}'.format(fptr_sites[j].asm_line_num))
             i += 1
         elif funct.fptr_types[i].src_line_num > fptr_sites[j].src_line_num:
             print_fptr_site_unmatched_msg()
-            eprint('{} > {}'.format(funct.fptr_types[i].src_line_num, fptr_sites[j].src_line_num))
-            eprint('(asm site) {}'.format(fptr_sites[j].asm_line_num))
             fptr_sites[j].fptr_type = arbitrary_ftype
             j += 1
         else:
             fptr_sites[j].fptr_type = funct.fptr_types[i]
-            eprint('{} = {}'.format(funct.fptr_types[i].src_line_num, fptr_sites[j].src_line_num))
-            eprint('(asm site) {}'.format(fptr_sites[j].asm_line_num))
+            eprint(funct.fptr_types[i].mangled_str)
             i += 1
             j += 1
     while i < len(funct.fptr_types):
