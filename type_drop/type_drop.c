@@ -301,6 +301,33 @@ void cdi_print_canonical_identifier(FILE* stream, tree t, location_t loc) {
 }
 
 /*
+ * Returns true if the tree has an identifier
+ */
+int has_accessible_identifier(tree t) {
+    if (DECL_P(t)) {
+        tree decl_name = DECL_NAME(t);
+        if (decl_name) {
+            return IDENTIFIER_POINTER(decl_name) ? 1 : 0;
+        }
+        else {
+            return 0;
+        }
+    }
+    else if (TYPE_P(t)) {
+        tree ident = TYPE_IDENTIFIER(t);
+        if (ident) {
+            return IDENTIFIER_POINTER(ident) ? 1 : 0;
+        }
+        else {
+            return 0;
+        }
+    }
+    else {
+        return 0;
+    }
+}
+
+/*
  * print the const, volatile, restricted qualifiers if present for tree 'type'
  */
 void cdi_print_cvr(FILE* stream, tree type, location_t loc) {
@@ -358,7 +385,14 @@ void cdi_print_type(FILE* stream, tree type, location_t loc) {
         return;
     }
     else if (RECORD_OR_UNION_TYPE_P(type) || TREE_CODE(type) == ENUMERAL_TYPE) {
-        cdi_print_canonical_identifier(stream, type, loc);
+        if (has_accessible_identifier(type)) {
+            cdi_print_canonical_identifier(stream, type, loc);
+        }
+        else {
+            cdi_warning_at(loc, "cannot access identifier from record, union, or enumeral type");
+            fputc('?', stream);
+        }
+
     }
     else { 
         cdi_print_builtin_type(stream, type, loc);
