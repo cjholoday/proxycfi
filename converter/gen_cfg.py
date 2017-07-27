@@ -223,9 +223,14 @@ def build_indir_targets(cfg, asm_file_descrs, options):
                         "'{}' in file '{}'".format(optimization_name, 
                             funct.asm_name, funct.asm_filename))
 
+            # we use funct_types and not cfg.funct(...) below since it's possible 
+            # to have only the optimized version available. In that case, the 
+            # original function wouldn't be in the cfg
+
             # deepcopy just in case (future additions could make it necessary)
-            funct.ftype = copy.deepcopy(cfg.funct(funct.asm_filename + '.' 
-                + parent_funct_asm_name).ftype)
+            funct.ftype = copy.deepcopy(funct_types[funct.asm_filename + '.' 
+                + parent_funct_asm_name])
+            
         except KeyError:
             eprint("error: '{}' from file '{}' appears to be optimized from"
                     " a function named '{}', but no such function can be found"
