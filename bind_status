@@ -14,7 +14,7 @@ master                | pass
 db                    | pass
 names                 | pass
 atomic                | pass
-system                | pass - expanded timeout windows required
+system                | pass - dlvauto: expanded time window for server startup/shutdown (max 2x slowdown)
                       |      - dlzexternal fails but dynamically loaded zones 
                       |        require 'dlopen'. We therefore can't support the
                       |        feature
@@ -237,4 +237,34 @@ real    2m6.716s
 user    1m40.728s
 sys 0m3.900s
 
+
+Bind server startup
+--------------------------------
+(cdi)
+/research/bind9/bin/tests/system: time perl start.pl dlvauto
+real    0m5.519s (5x slowdown)
+user    0m0.100s
+sys     0m0.008s
+
+~/research/bind9/bin/tests/system: time perl stop.pl dlvauto
+real    0m1.017s
+user    0m0.008s
+sys     0m0.000s
+
+(normal)
+~/research/bindN/bin/tests/system: time perl start.pl dlvauto
+real    0m0.429s
+user    0m0.040s
+sys     0m0.004s
+
+~/research/bindN/bin/tests/system: time perl stop.pl dlvauto
+real    0m1.025s
+user    0m0.008s
+sys     0m0.000s
+
+(cdi)
+2.15user 0.47system 0:05.26elapsed 49%CPU (0avgtext+0avgdata 82072maxresident)k
+
+(normal)
+2.44user 0.50system 0:05.86elapsed 50%CPU (0avgtext+0avgdata 85080maxresident)k
 
