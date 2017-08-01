@@ -274,7 +274,7 @@ def write_rlts(cfg, plt_sites, asm_dest, sled_id_faucet, options):
             multiplicity[call_return_pair] = 1
 
     # create the RLT jump table
-    rlt_jump_table = '\t.section\t.CDI_RLT, "ax"\n'
+    rlt_jump_table = '\t.section\t.CDI_RLT, "x"\n'
     rlt_jump_table += '\t.type\t_CDI_RLT_JUMP_TABLE, @function\n'
     rlt_jump_table += '_CDI_RLT_JUMP_TABLE:\n'
     for sl_funct_uniq_label in rlt_return_targets.keys():
@@ -305,7 +305,7 @@ def write_rlts(cfg, plt_sites, asm_dest, sled_id_faucet, options):
                     rlt_entry += '\tlea\t' + sled_label + '(%rip), %rbp\n'
                     rlt_entry += '\tcmpq\t%rbp, -8(%rsp)\n'
                 else:
-                    rlt_entry += '\tcmpq\t$' + sled_label + ', (%rsp)\n'
+                    rlt_entry += '\tcmpq\t$' + sled_label + ', -8(%rsp)\n'
                 rlt_entry += '\tje\t' + sled_label + '\n'
                 i += 1
 

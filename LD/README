@@ -1,7 +1,0 @@
-Directories:
-binutils-2.26.1 -- source directory for binutils
-
-Files:
-	CDI-custom-ld build -- details the build process for CDI-custom-ld
-	cdi-custom-ld-script.lds -- customized linker script for CDI-custom-ld, used in the cdi-ld wrapper
-				    with the --script=<filename> option of CDI-custom-ld
