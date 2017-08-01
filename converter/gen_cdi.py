@@ -32,11 +32,25 @@ if __name__ == "__main__":
     parser.add_argument('-sl', '--shared-library', action='store_true',
             help='if set, generate code for use as a CDI shared library',
             dest='--shared-library')
+    # TODO implement this functionality
+    parser.add_argument('-t', '--test', action='store', 
+            metavar='/path/to/file1.c:funct1 /path/to/file2.c:funct2',
+            help='tells the converter to set the return address of funct1 to funct2+offset\n'
+            'format: /path/to/file1.c:funct1 /path/to/file2.c:funct2+offset',
+            dest='--test')
+    parser.add_argument('-s', '--sl-fptr-addrs', action='store', 
+            metavar='sl_callback_table',
+            default='',
+            help='a file containing fptr addresses that may jump from shared libs to executable code',
+            dest='--sl-fptr-addrs')
+    parser.add_argument('-nm', '--no-mystery-types', action='store_true',
+            help='if set, manglings must not contain unknown types',
+            dest='--no-mystery-types')
 
     options = vars(parser.parse_args(sys.argv[1:]))
     if options.get('--help'):
         sys.exit(0)
-
+    
     asm_filenames = options['asm_filenames']
     asm_file_descrs = []
     for filename in asm_filenames:
@@ -45,6 +59,6 @@ if __name__ == "__main__":
 
     plt_sites = []
     cfg = gen_cfg(asm_file_descrs, plt_sites, options)
-    cfg.print_json_to('cdi_cfg.json')
+    # cfg.print_json_to('cdi_cfg.json')
 
     gen_cdi_asm(cfg, asm_file_descrs, plt_sites, options)

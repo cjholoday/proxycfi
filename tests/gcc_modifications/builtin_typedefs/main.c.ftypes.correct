@@ -1,0 +1,5 @@
+main.c:9:6:print_num1 _CDIv_Z10print_num1i
+main.c:12:6:print_num2 _CDIv_Z10print_num2Pi
+main.c:15:6:print_num3 _CDIv_Z10print_num3Pi
+main.c:18:6:print_num4 _CDIv_Z10print_num4PFviEi
+main.c:23:5:main _CDIi_Z4mainv

@@ -99,26 +99,15 @@ class Verifier:
         Wrapper for Verifier.verify 
         """
 
-        main = None
-        for f in self.function_list:
-            if f.name == 'main':
-                main = f
-                break
-        else:
-            eprint("WARNING: no main function")
-
-        if main:
-            self.verify(main)
-        else:
-            for funct in self.function_list:
-                # sections must have size > 0 to be considered
-                # NOTE: _fini and company have size 0 so they are not verified
+        whitelist = ['__libc_csu_init', '__libc_csu_fini']
+        for funct in self.function_list:
+            # sections must have size > 0 to be considered
+            # NOTE: _fini and company have size 0 so they are not verified
+            if funct.name not in whitelist:
                 self.verify(funct)
 
         # check that incoming "return" jumps are valid
         for funct in self.function_list:
-            if not funct.verified and funct.incoming_returns:
-                self.verify(funct)
             try:
                 self.check_return_jumps_are_valid(funct)
             except InsecureJump as insecurity:
@@ -276,14 +265,13 @@ class Verifier:
         md = Cs(CS_ARCH_X86, CS_MODE_64)
         if self.print_instr_as_decoded:
             print '--------------:  ' + function.name
+        prev_instruction = None
         for i in md.disasm(buff, function.virtual_address):
             addresses.append(int(i.address))
             if self.print_instr_as_decoded:
                 print("0x%x:\t%s\t%s" %(i.address, i.mnemonic, i.op_str))
-            addresses
             if i.mnemonic in jmp_list:
                 try:
-
                     # Indirect calls and jumps have a * after the instruction and before the location
                     # which raises a value error exception in the casting
                     addr = int(i.op_str,16)
@@ -295,6 +283,13 @@ class Verifier:
                     else:
                         jmps.append(addr)
                 except ValueError:
+                    if prev_instruction and prev_instruction.mnemonic == 'movabs':
+                        register = prev_instruction.op_str.split(', ')[0]
+                        mov_addr = prev_instruction.op_str.split(', ')[1]
+                        if i.op_str == register:
+                            jmps.append(addr)
+                            prev_instruction = i
+                            continue
                     if self.exit_on_insecurity:
                         raise IndirectJump(self.target_section(function.virtual_address),
                                 function, hex(int(i.address)), i.op_str, 'Indirect Jmp/Jcc')
@@ -334,8 +329,7 @@ class Verifier:
 
             elif i.mnemonic in loop_list:
                 loops.append(int(i.op_str, 16))
-        
-
+            prev_instruction = i
         if self.print_instr_as_decoded:
             print '--------------:  ' + function.name + '\n'
 
@@ -487,9 +481,9 @@ if __name__ == "__main__":
         sys.exit(1)
 
     binary = open(args[0], 'rb')
-    exec_sections = elfparse.gather_exec_sections(binary)
+    exec_sections = elfparse.gather_exec_sections(binary.name)
 
-    functions = elfparse.gather_functions(binary, exec_sections)
+    functions = elfparse.gather_functions(binary.name, exec_sections)
     plt_start_addr, plt_size, plt_entry_size = elfparse.gather_plts(binary)
     
     verifier = Verifier(binary, exec_sections, functions, plt_start_addr, 

@@ -51,7 +51,7 @@ class Function:
         self.sites = sites
         self.asm_line_num = asm_line_num
         self.uniq_label = asm_filename + '.' + asm_name
-        self.src_filename = src_filename
+        self.src_filename = src_filename 
 
         # unitialized / improperly set until gen_cfg finishes
         self.ftype = None # function type
@@ -66,7 +66,7 @@ class FunctionType:
         self.src_name = '' # used when function type
 
         # location
-        self.src_filename = ''
+        # self.src_filename = '' TODO delete
         self.src_line_num = -1
         self.enclosing_funct_name = '' # optional (used for fp location)
 
@@ -126,3 +126,4 @@ class Site:
             self.src_line_num = dwarf_loc.line_num
         else:
             self.src_line_num = ''
+

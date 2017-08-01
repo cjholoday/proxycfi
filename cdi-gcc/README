@@ -48,12 +48,15 @@ NOTE: If you're attemping to compile again, then make sure you run 'make distcle
     mkdir -p dest && mkdir -p build && cd $_
     mv ../gcc-6.1.0/gcc/c/norm-c-parser.c ../gcc-6.1.0/gcc/c/c-parser.c
     mv ../gcc-6.1.0/gcc/c/norm-c-typeck.c ../gcc-6.1.0/gcc/c/c-typeck.c
-    ../gcc-6.1.0/configure --prefix="$(pwd)/../dest/" \
-            --with-as=/usr/local/cdi/cdi-as --with-ld=/usr/local/cdi/cdi-ld \
-            --disable-lto --enable-languages=c --disable-bootstrap \
-            2> config_errlog.txt | tee configlog.txt 
+    ../gcc-6.1.0/configure --prefix="$(pwd)/../dest/" --with-as=/usr/local/cdi/cdi-as --with-ld=/usr/local/cdi/cdi-ld --disable-lto --enable-languages=c --disable-bootstrap 2> config_errlog.txt | tee configlog.txt 
     make 2> errlog.txt | tee makelog.txt
 
+Use the following configure instead if you want to have gcc do extra checking:
+
+    ../gcc-6.1.0/configure --prefix="$(pwd)/../dest/" \
+            --with-as=/usr/local/cdi/cdi-as --with-ld=/usr/local/cdi/cdi-ld \
+            --disable-lto --enable-languages=c --disable-bootstrap  \
+            --enable-checking=all 2> config_errlog.txt | tee configlog.txt
 
 +===========================================================================
 | Recompile with modifications to GCC
@@ -66,8 +69,10 @@ Now we add the modifications to GCC. All of these files go into the cdi/cdi-gcc/
     mv ../gcc-6.1.0/gcc/c/c-parser.c ../gcc-6.1.0/gcc/c/norm-c-parser.c
     ln -s "$(pwd)/../../type_drop/cdi-c-typeck.c" ../gcc-6.1.0/gcc/c/c-typeck.c
     ln -s "$(pwd)/../../type_drop/cdi-c-parser.c" ../gcc-6.1.0/gcc/c/c-parser.c
-    ln -s "$(pwd)/../../type_drop/type_drop.c" ../gcc-6.1.0/gcc/c/cdi.c
-    ln -s "$(pwd)/../../type_drop/type_drop.h" ../gcc-6.1.0/gcc/c/cdi.h
+    touch ../gcc-6.1.0/gcc/c/c-typeck.c
+    touch ../gcc-6.1.0/gcc/c/c-parser.c
+    ln -sf "$(pwd)/../../type_drop/type_drop.c" ../gcc-6.1.0/gcc/c/cdi.c
+    ln -sf "$(pwd)/../../type_drop/type_drop.h" ../gcc-6.1.0/gcc/c/cdi.h
 
 DO NOT RUN make distclean unless you want to start at part 2 again. Compile again with the changes to gcc:
     
@@ -86,8 +91,7 @@ As promised, we now replace the assembler and linker symlinks with the custom CD
     sudo ln -sf "$(pwd)/../../gcc_wrappers/cdi-ld.py" /usr/local/cdi/cdi-ld
     sudo ln -sf "$(pwd)/../../converter/gen_cdi.py" /usr/local/cdi/gen_cdi
     sudo ln -sf "$(pwd)/../dest/bin/gcc" /usr/local/bin/cdi-gcc
-    sudo ln -sf "$(pwd)/../../converter/cdi_abort.cdi.s" \
-        /usr/local/cdi/cdi_abort.cdi.s
+    sudo ln -sf "$(pwd)/../../converter/cdi_abort.cdi.s" /usr/local/cdi/cdi_abort.cdi.s
     cd /usr/local/cdi/ && sudo gcc -c cdi_abort.cdi.s
 
 +===========================================================================
@@ -100,3 +104,6 @@ You should now be able to use cdi-gcc to compile as you would with gcc. I sugges
     cdi-gcc -g --save-temps -fno-jump-tables printf.c benchmark.c && ./a.out
 
 REMEMBER:  You must use -g,  --save-temps, and -fno-jump-tables whenever compiling with cdi-gcc.
+
+If you want to recompile gcc after making changes to c-parser.c, c-typeck.c, or type_drop.c then simply run cdi/tools/recompile_gcc.bash
+

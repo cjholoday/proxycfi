@@ -1,0 +1,48 @@
+Timeline:
+    1. calls into "basic" shared libraries work. "basic" shared libraries
+       do not have function pointer calls. 
+    2. The verifier is run after the loader is finished
+    3. Function pointer call support added for shared libraries
+    4. PLT entries are fixed up at load time so that the calls are direct
+
+Responsibilities
+----------------
+converter
+    (1) Generate a dummy SLT trampoline. Entries contain a relative jump back 
+        to the function they are serving. This allows us to associate symbols
+        with trampoline entries. The trampolines will be changed to point to 
+        SLT entries at load time
+    (1) Generate an empty trampoline info table that is an array corresponding 
+        to the SLT trampoline table. Each array element will eventually be filled
+        with the symbol table index of the trampoline's associated symbol. For now,
+        the array elements are left empty until cdi-ld fills them in
+    (1) write null 4 byte addresses before RLT entries. These will be filled 
+        to contain the addresses of each RLT entry's associated PLT return 
+        address
+    (3) expand the SLT trampoline to hold entries for fptr sleds. 
+    (3) Create a .typestrtab section, which has its types lexicographically sorted
+
+cdi-ld
+    (1) Fill the SLT trampoline info table with symbol table indices
+    (1) Add function multiplicity information to the executable
+    (1) Overwrite the PLT entries to have an indirect CALL
+    (1) Associate PLT entry return addresses with RLT entries. Use PLT relocs
+        to identify the symbol name. Then use symbol name to get the RLT entry
+        by looking through the symbol table
+    (4) Overwrite shared lib PLT entries to jump down to an unshared PLT
+
+rtld
+    (1) identify the cdi metadata added onto each shared lib
+    (1) for each shared lib, calculate the extra space needed for the SLT
+    (1) mmap extra space for the SLT
+    (1) build the SLTs by iterating through the SLT trampoline. Each SLT 
+        has an associated symbol name, which can be used with the symtab hash
+        table to get RLT entries. Check each code object if it has an RLT entry
+        until the multiplicity is satisfied. Each RLT entry will have an associated
+        PLT return address which should be used to validate jumps in SLTs
+    (2) Modify verifier to work with segments, SLTs, RLTs, and modified PLTs
+    (4) Fixup unshared PLT entries to be direct using the global offset table
+
+
+ELF CDI section
+

@@ -1,0 +1,5 @@
+*.ftypes
+*.fptypes
+*.s
+*.o
+*.i

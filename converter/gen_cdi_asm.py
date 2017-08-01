@@ -2,7 +2,10 @@ import funct_cfg
 import operator
 import asm_parsing
 import subprocess
+import sys
 from eprint import eprint
+import re
+import os
 
 def gen_cdi_asm(cfg, asm_file_descrs, plt_sites, options):
     """Writes cdi compliant assembly from cfg and assembly file descriptions"""
@@ -11,6 +14,7 @@ def gen_cdi_asm(cfg, asm_file_descrs, plt_sites, options):
 
     rlts_written = False
     slts_written = False
+    callback_sled_written = False
     for descr in asm_file_descrs:
         asm_parsing.DwarfSourceLoc.wipe_filename_mapping()
         dwarf_loc = asm_parsing.DwarfSourceLoc()
@@ -18,6 +22,7 @@ def gen_cdi_asm(cfg, asm_file_descrs, plt_sites, options):
         asm_dest = open(cdi_asm_name(descr.filename), 'w')
         descr_functs = [cfg.funct(descr.filename + '.' + n) for n in descr.funct_names]
         functs = sorted(descr_functs, key=operator.attrgetter('asm_line_num'))
+        abort_data = [] # used for aborting from sleds
 
         asm_line_num = 1
         for funct in functs:
@@ -29,8 +34,8 @@ def gen_cdi_asm(cfg, asm_file_descrs, plt_sites, options):
             # can be reached from anywhere with sleds (Function pointers can
             # point to ANY function with the same signature, even static 
             # functions in a different translation unit)
-            asm_dest.write('.globl\t"{}"\n'.format(funct.uniq_label))
-            asm_dest.write('"{}":\n'.format(funct.uniq_label))
+            asm_dest.write('.globl\t"{}"\n'.format(fix_label(funct.uniq_label)))
+            asm_dest.write('"{}":\n'.format(fix_label(funct.uniq_label)))
 
             funct.label_fixed_count = dict()
             for site in funct.sites:
@@ -41,19 +46,30 @@ def gen_cdi_asm(cfg, asm_file_descrs, plt_sites, options):
                 asm_line_num = site.asm_line_num + 1
                 
                 convert_to_cdi(site, funct, line_to_fix, asm_dest, cfg,
-                        sled_id_faucet, dwarf_loc, options)
+                        sled_id_faucet, abort_data, dwarf_loc, options)
                         
 
+
+        debug_section_matcher = re.compile(r'^\t\.section\t\.debug_info.+')
+        debug_section_found = False
+
+
+        if options['--sl-fptr-addrs'] and not callback_sled_written:
+            callback_sled_written = True
+            write_callback_sled(asm_dest, options)
 
         # write the rest of the normal asm lines over
         src_line = asm_src.readline()
         while src_line:
+            if not debug_section_found and debug_section_matcher.match(src_line):
+                asm_dest.write(''.join(abort_data))
             asm_dest.write(src_line)
             src_line = asm_src.readline()
 
         if not rlts_written:
             rlts_written = True
             write_rlts(cfg, plt_sites, asm_dest, sled_id_faucet, options)
+
 
         # write the SLT for shared lib
         if options['--shared-library'] and not slts_written:
@@ -66,7 +82,7 @@ def gen_cdi_asm(cfg, asm_file_descrs, plt_sites, options):
             asm_dest.write('\t.type _CDI_SLT, @function\n')
             asm_dest.write('_CDI_SLT:\n')
             for funct in cfg:
-                slt_entry_label = '"_CDI_SLT_{}"'.format(funct.uniq_label)
+                slt_entry_label = '"_CDI_SLT_{}"'.format(fix_label(funct.uniq_label))
                 asm_dest.write('\t.globl {}\n'.format(slt_entry_label))
                 asm_dest.write(slt_entry_label + ':\n')
                 asm_dest.write('\tjmp 0\n')
@@ -93,15 +109,15 @@ def write_lines(num_lines, asm_src, asm_dest, dwarf_loc):
         i += 1
 
 def convert_to_cdi(site, funct, asm_line, asm_dest, cfg, 
-        sled_id_faucet, dwarf_loc, options):
+        sled_id_faucet, abort_data, dwarf_loc, options):
     """Converts asm_line to cdi compliant code then writes it to asm_dest"""
 
     if site.group == site.CALL_SITE:
         convert_call_site(site, funct, asm_line, asm_dest, 
-                sled_id_faucet, dwarf_loc, options)
+                sled_id_faucet, abort_data, dwarf_loc, options)
     elif site.group == site.RETURN_SITE:
         convert_return_site(site, funct, asm_line, asm_dest, cfg, 
-                sled_id_faucet, dwarf_loc, options)
+                sled_id_faucet, abort_data, dwarf_loc, options)
     elif site.group == site.INDIR_JMP_SITE:
         convert_indir_jmp_site(site, funct, asm_line, asm_dest)
     elif site.group == site.PLT_SITE:
@@ -115,17 +131,18 @@ def increment_dict(dictionary, key, start = 1):
     return dictionary[key]
 
 def convert_call_site(site, funct, asm_line, asm_dest, 
-        sled_id_faucet, dwarf_loc, options):
+        sled_id_faucet, abort_data, dwarf_loc, options):
 
     arg_str = asm_parsing.decode_line(asm_line, False)[2]
 
+    # add in return label for return sleds if we're not at an indirect call site
     indirect_call = '%' in arg_str
     if not indirect_call:
         assert len(site.targets) == 1
-        target_name = site.targets[0].uniq_label
+        target_name = fix_label(site.targets[0].uniq_label)
         times_fixed = increment_dict(funct.label_fixed_count, target_name)
         label = '"_CDI_{}_TO_{}_{}"'.format(
-                target_name, funct.uniq_label, str(times_fixed))
+                target_name, fix_label(funct.uniq_label), str(times_fixed))
 
         globl_decl = ''
         if funct.asm_filename != site.targets[0].asm_filename:
@@ -138,12 +155,17 @@ def convert_call_site(site, funct, asm_line, asm_dest,
     call_sled = ''
     assert len(arg_str.split()) == 1
 
+    if site.targets == []:
+        eprint('gen_cdi: warning: indirect call sled is empty on line {} of {} in function {}'
+                .format(site.asm_line_num, funct.asm_filename, site.enclosing_funct_uniq_label))
+
+    call_operand = arg_str.replace('*', '')
     for target in site.targets:
-        target_name = target.uniq_label
-        call_operand = arg_str.replace('*', '')
+        target_name = fix_label(target.uniq_label)
+        return_target = fix_label(funct.uniq_label)
         times_fixed = increment_dict(funct.label_fixed_count, target_name)
 
-        return_label = '_CDI_' + target_name + '_TO_' + funct.uniq_label 
+        return_label = '_CDI_' + target_name + '_TO_' + return_target
         return_label += '_' + str(times_fixed)
 
         globl_decl = ''
@@ -162,8 +184,13 @@ def convert_call_site(site, funct, asm_line, asm_dest,
         call_sled += '\tjmp\t2f\n'
 
     call_sled += '1:\n'
-    call_sled += cdi_abort_str(sled_id_faucet(), funct.asm_filename, 
-            dwarf_loc, options)
+    # put the unsafe target address in %rax so that cdi_abort prints it out
+    if call_operand != '%rax':
+        call_sled += '\tmovq\t{}, %rax\n'.format(call_operand)
+    code, data =cdi_abort(sled_id_faucet(), funct.asm_filename, 
+            dwarf_loc, False, options)
+    call_sled += code
+    abort_data.append(data)
     call_sled += '2:\n'
     asm_dest.write(call_sled)
 
@@ -172,7 +199,7 @@ cpp_whitelist = ['_Z41__static_initialization_and_destruction_0ii',
         '_GLOBAL__sub_I__Z3barv']
 
 def convert_return_site(site, funct, asm_line, asm_dest, cfg,
-        sled_id_faucet, dwarf_loc, options):
+        sled_id_faucet, abort_data, dwarf_loc, options):
     # don't fix 'main' in this version
     if (funct.asm_name == 'main' or 
             funct.asm_name == '_Z41__static_initialization_and_destruction_0ii' or
@@ -180,56 +207,75 @@ def convert_return_site(site, funct, asm_line, asm_dest, cfg,
         asm_dest.write(asm_line)
         return
 
-    cdi_ret_prefix = '_CDI_' + funct.uniq_label + '_TO_'
+    # constructors/destructors run before/after main so they do not need to be
+    # fixed up, at least for this version
+    if funct.ftype.mangled_str == '(CON/DE)STRUCTOR':
+        asm_dest.write(asm_line)
+        return
 
-    ret_sled= '\taddq $8, %rsp\n'
+    cdi_ret_prefix = '_CDI_' + fix_label(funct.uniq_label) + '_TO_'
+
+    ret_sled = '\taddq $8, %rsp\n'
 
     for target_label, multiplicity in site.targets.iteritems():
         i = 1
         while i <= multiplicity:
-            sled_label = '"{}{}_{}"'.format(cdi_ret_prefix, target_label, str(i))
+            sled_label = '"{}{}_{}"'.format(cdi_ret_prefix, fix_label(target_label), str(i))
             ret_sled += '\tcmpq\t$' + sled_label + ', -8(%rsp)\n'
             ret_sled += '\tje\t' + sled_label + '\n'
             i += 1
 
     if options['--shared-library']:
-        ret_sled += '\tjmp\t"_CDI_SLT_{}"\n'.format(funct.uniq_label)
+        # TODO: implement callback sled for shared library
+        ret_sled += '\tjmp\t"_CDI_SLT_{}"\n'.format(fix_label(funct.uniq_label))
     else:
-        ret_sled += cdi_abort_str(sled_id_faucet(), funct.asm_filename,
-                dwarf_loc, options)
+        code, data = cdi_abort(sled_id_faucet(), funct.asm_filename,
+                dwarf_loc, True, options)
+        ret_sled += code
+        abort_data.append(data)
 
     asm_dest.write(ret_sled)
 
 def convert_indir_jmp_site(site, funct, asm_line, asm_dest):
     pass
 
-def cdi_abort_str(sled_id, asm_filename, dwarf_loc, options):
-    """Return string that aborts from cdi code with a useful debug message"""
-
-    loc_str = asm_filename
-    if dwarf_loc.valid():
-        loc_str = str(dwarf_loc) + ':' + loc_str
-
+def cdi_abort(sled_id, asm_filename, dwarf_loc, try_callback_sled, options):
+    """Return (code, data) that allows for aborting with sled-specific info.
     
-    call_cdi_abort = ''
-    if options['--shared-library']:
-        call_cdi_abort += '\tmovq\t.CDI_sled_id_' + str(sled_id) + '(%rip), %rsi\n'
-        call_cdi_abort += '\tmovq\t.CDI_sled_id_' + str(sled_id) +'_len(%rip), %rdx\n'
-        #call_cdi_abort += '\tcall\t_CDI_abort\n' TODO: write fpic version of cdi abort
-        call_cdi_abort += '.CDI_sled_id_' + str(sled_id) + ':\n'
-        call_cdi_abort += '\t.string\t"' + loc_str + ' id=' + str(sled_id) + '"\n'
-        call_cdi_abort += '\t.set\t.CDI_sled_id_' + str(sled_id) + '_len, '
-        call_cdi_abort += '.-.CDI_sled_id_' + str(sled_id) + '\n'
-    else:
-        call_cdi_abort += '\tmovq\t $.CDI_sled_id_' + str(sled_id) + ', %rsi\n'
-        call_cdi_abort += '\tmovq\t$.CDI_sled_id_' + str(sled_id) +'_len, %rdx\n'
-        call_cdi_abort += '\tcall\t_CDI_abort\n'
-        call_cdi_abort += '.CDI_sled_id_' + str(sled_id) + ':\n'
-        call_cdi_abort += '\t.string\t"' + loc_str + ' id=' + str(sled_id) + '"\n'
-        call_cdi_abort += '\t.set\t.CDI_sled_id_' + str(sled_id) + '_len, '
-        call_cdi_abort += '.-.CDI_sled_id_' + str(sled_id) + '\n'
+    Code should be placed at the end of a return/call sled. data should be 
+    placed away from code so that the verifier works correctly.
+    """
 
-    return call_cdi_abort
+    loc_str = asm_filename.replace('.fake.o', '.cdi.s')
+    if dwarf_loc.valid():
+        loc_str = '{}:{}/{}'.format(str(dwarf_loc), os.path.basename(os.getcwd()), loc_str)
+
+    cdi_abort_code = cdi_abort_data = ''
+    if options['--shared-library']:
+        eprint('cdi-ld: error: --shared-library unsupported in this version')
+        sys.exit(1)
+        cdi_abort_code += '\tmovq\t.CDI_sled_id_' + str(sled_id) + '(%rip), %rsi\n'
+        cdi_abort_code += '\tmovq\t.CDI_sled_id_' + str(sled_id) +'_len(%rip), %rdx\n'
+        #cdi_abort_code += '\tcall\t_CDI_abort\n' TODO: write fpic version of cdi abort
+
+        cdi_abort_data += '.CDI_sled_id_' + str(sled_id) + ':\n'
+        cdi_abort_data += '\t.string\t"' + loc_str + ' id=' + str(sled_id) + '"\n'
+        cdi_abort_data += '\t.set\t.CDI_sled_id_' + str(sled_id) + '_len, '
+        cdi_abort_data += '.-.CDI_sled_id_' + str(sled_id) + '\n'
+    else:
+        if options['--sl-fptr-addrs'] and try_callback_sled:
+            cdi_abort_code += '\tmovq\t $.CDI_sled_id_' + str(sled_id) + ', %r11\n'
+            cdi_abort_code += '\tjmp\t_CDI_callback_sled\n'
+        else:
+            cdi_abort_code += '\tmovq\t $.CDI_sled_id_' + str(sled_id) + ', %rsi\n'
+            cdi_abort_code += '\tcall\t_CDI_abort\n'
+
+        cdi_abort_msg = loc_str + ' id=' + str(sled_id)
+        cdi_abort_data += '.CDI_sled_id_' + str(sled_id) + ':\n'
+        cdi_abort_data += '\t.quad\t' + str(len(cdi_abort_msg)) + '\n'
+        cdi_abort_data += '\t.string\t"' + cdi_abort_msg + '"\n'
+
+    return (cdi_abort_code, cdi_abort_data)
 
 def convert_plt_site(site, asm_line, funct, asm_dest):
     if not hasattr(funct, 'plt_call_multiplicity'):
@@ -241,15 +287,16 @@ def convert_plt_site(site, asm_line, funct, asm_dest):
         funct.plt_call_multiplicity[(site.targets[0], funct.uniq_label)] = 1
 
     # create label for RLT to return to
-    rlt_return_label = ('_CDI_{}_TO_{}_{}'
-            .format(site.targets[0].replace('@', '_AT_', 1), funct.uniq_label, 
+    rlt_return_label = ('"_CDI_{}_TO_{}_{}"'
+            .format(fix_label(site.targets[0]), fix_label(funct.uniq_label), 
                 str(funct.plt_call_multiplicity[(site.targets[0], funct.uniq_label)])))
 
     #globl_decl = '.globl\t' + rlt_return_label + '\n'
     globl_decl = ''
     restore_rbp = '\tmovq\t-16(%rsp), %rbp\n'
 
-    asm_dest.write(asm_line + globl_decl + rlt_return_label + ':\n' + restore_rbp)
+    # do not restore rbp because shared libraries are not working yet
+    asm_dest.write(asm_line + globl_decl + rlt_return_label + ':\n') # + restore_rbp)
 
 def write_rlts(cfg, plt_sites, asm_dest, sled_id_faucet, options):
     """Write the RLT to asm_dest"""
@@ -274,11 +321,12 @@ def write_rlts(cfg, plt_sites, asm_dest, sled_id_faucet, options):
             multiplicity[call_return_pair] = 1
 
     # create the RLT jump table
-    rlt_jump_table = '\t.section\t.CDI_RLT, "x"\n'
-    rlt_jump_table += '\t.type\t_CDI_RLT_JUMP_TABLE, @function\n'
+    # TEMPORARILY REMOVED UNTIL MISIKER TELLS ME THE FIX:
+    # rlt_jump_table = '\t.section\t.CDI_RLT, "x"\n'
+    rlt_jump_table = '\t.type\t_CDI_RLT_JUMP_TABLE, @function\n'
     rlt_jump_table += '_CDI_RLT_JUMP_TABLE:\n'
     for sl_funct_uniq_label in rlt_return_targets.keys():
-        entry_label = '"_CDI_RLT_{}"'.format(sl_funct_uniq_label.replace('@', '_AT_', 1))
+        entry_label = '"_CDI_RLT_{}"'.format(fix_label(sl_funct_uniq_label))
         rlt_jump_table += '\tjmp {}\n'.format(entry_label)
 
     rlt_jump_table += '\t.size\t_CDI_RLT_JUMP_TABLE, .-_CDI_RLT_JUMP_TABLE\n'
@@ -289,17 +337,17 @@ def write_rlts(cfg, plt_sites, asm_dest, sled_id_faucet, options):
     for sl_funct_uniq_label, rlt_target_set in rlt_return_targets.iteritems():
         rlt_entry = ''
 
-        entry_label = '"_CDI_RLT_{}"'.format(sl_funct_uniq_label.replace('@', '_AT_', 1))
+        entry_label = '"_CDI_RLT_{}"'.format(fix_label(sl_funct_uniq_label))
 
         asm_dest.write('\t.type {}, @function\n'.format(entry_label))
         asm_dest.write(entry_label + ':\n')
 
         # Add sled entries for each RLT target
         for rlt_target in rlt_target_set:
-            cdi_ret_prefix = '_CDI_' + sl_funct_uniq_label.replace('@', '_AT_', 1)
+            cdi_ret_prefix = '_CDI_' + fix_label(sl_funct_uniq_label)
             i = 1
             while i <= multiplicity[(sl_funct_uniq_label, rlt_target)]:
-                sled_label = '{}_TO_{}_{}'.format(cdi_ret_prefix, rlt_target , str(i))
+                sled_label = '"{}_TO_{}_{}"'.format(cdi_ret_prefix, fix_label(rlt_target) , str(i))
                 if options['--shared-library']:
                     # rbp is restored after the jump equal (je)
                     rlt_entry += '\tlea\t' + sled_label + '(%rip), %rbp\n'
@@ -309,10 +357,67 @@ def write_rlts(cfg, plt_sites, asm_dest, sled_id_faucet, options):
                 rlt_entry += '\tje\t' + sled_label + '\n'
                 i += 1
 
-        rlt_entry += cdi_abort_str(sled_id_faucet(), '',
-            asm_parsing.DwarfSourceLoc(), options)
+        code, data = cdi_abort(sled_id_faucet(), '',
+            asm_parsing.DwarfSourceLoc(), False, options)
+        rlt_entry += code + data
         rlt_entry += '\t.size {}, .-{}\n'.format(entry_label, entry_label)
         asm_dest.write(rlt_entry)
 
+def write_callback_sled(asm_dest, options):
+    callback_sled = '.globl _CDI_callback_sled\n'
+    callback_sled += '_CDI_callback_sled:\n'
 
+    # the callback table is in the following format:
+    #
+    # "/path/to/library.so" load-addr: 0xADDRESS
+    # fptr address 1
+    # fptr address 2
+    # ...
+    #
+    # "/path/to/library2.so" load-addr: 0xADDRESS
+    # ...
+    #
+    #
+    # The end of a library is indicated by two consecutive newlines
+
+    # populated with pairs of (library metadata, list of fptrs)
+    fptr_table = []
+    with open(options['--sl-fptr-addrs'], 'r') as callback_table:
+        lines = iter(callback_table)
+        for lib_metadata in lines:
+            lib_fptrs = []
+            line = lines.next()
+            while line != '\n':
+                lib_fptrs.append(line.rstrip())
+                line = lines.next()
+            fptr_table.append((lib_metadata.rstrip(), lib_fptrs))
+
+    for lib_metadata, fptrs in fptr_table:
+        upper_to_lower_addrs = dict()
+        for addr in fptrs:
+            lower_addr = '0x' + addr[-8:]
+            upper_addr = addr[:-8]
+            try:
+                upper_to_lower_addrs[upper_addr].append(lower_addr)
+            except KeyError:
+                upper_to_lower_addrs[upper_addr] = [lower_addr]
+
+        callback_sled += '/* {} */\n'.format(lib_metadata)
+        for upper_addr, lower_addrs in upper_to_lower_addrs.iteritems():
+            callback_sled += '\tcmpl\t$'+upper_addr+', -4(%rsp)\n'
+            callback_sled += '\tjne\t1f\n'
+            for addr in lower_addrs:
+                callback_sled += '\tcmpl\t$'+addr+', -8(%rsp)\n'
+                callback_sled += '\tjne\t2f\n'
+                callback_sled += '\tmov\t$'+upper_addr+addr[2:]+', %r11\n'
+                callback_sled += '\tjmp\t*%r11\n'
+                callback_sled += '2:\n'
+            callback_sled += '1:\n'
+    callback_sled += '\tmovq\t-8(%rsp), %rax\n'
+    callback_sled += '\tmovq\t%r11, %rsi\n'
+    callback_sled += '\tcall _CDI_abort\n'
+    asm_dest.write(callback_sled)
+
+def fix_label(label):
+    return label.replace('@', '_AT_').replace('/', '__').replace('.fake.o', '.cdi.s')
 

@@ -2,18 +2,17 @@
 	.globl	_CDI_abort
 	.type	_CDI_abort, @function
 .generic_msg:
-        .string "cdi: unsafe movement, aborting...\n"
+        .string "cdi: unsafe movement, aborting...\ncdi: sled: "
         .set .generic_msg_len, .-.generic_msg
-.debug_msg:
-        .string "cdi: sled: "
-        .set .debug_msg_len, .-.debug_msg
 .newline_char:
         .string "\n"
+
 # parameters:
-#   %rdx: length of message passed 
-#   %rsi: pointer to string that will be printed
-#
-#   if %rdx contains 0, then only the generic string will be printed
+#   %rsi: pointer to [quad][string of len size]
+#   %rax: unsafe target address
+# 
+#   TODO: make this position independent
+#   TODO: print out the unsafe target
 _CDI_abort:
 .LFB0:
 	.cfi_startproc
@@ -22,26 +21,17 @@ _CDI_abort:
 	.cfi_offset 6, -16
 	movq	%rsp, %rbp
 	.cfi_def_cfa_register 6
-        pushq   %rsi
-        pushq   %rdx
+        pushq   %rsi                        # save specific sled info for later
         movq    $.generic_msg, %rsi
         movq    $.generic_msg_len, %rdx
         movq    $1, %rax                    # write
         movq    $2, %rdi                    # to stderr
-        syscall                             # print generic message
-        popq    %rdx
-        cmpq    $0, %rdx
-        je .abort
-        pushq   %rdx
-        movq    $1, %rax
-        movq    $2, %rdi
-        movq    $.debug_msg_len, %rdx
-        movq    $.debug_msg, %rsi
         syscall                             # print debug msg
         movq    $1, %rax                    
         movq    $2, %rdi                   
-        popq    %rdx
         popq    %rsi
+        movq    (%rsi), %rdx                # get string length
+        lea     8(%rsi), %rsi               # get address of string
         syscall                             # print sled specific info
         movq    $1, %rax                    
         movq    $2, %rdi                   
