@@ -61,6 +61,7 @@ Elf64_Sxword     8      8       Signed long integer
 unsigned char    1      1       Unsigned small integer
 
 =========================================================================
+Subsection .cdi_header
 
 typedef struct {
     Elf64_Word cdi_ident;
