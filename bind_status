@@ -34,23 +34,25 @@ Multi-threaded, non-optimized compilation
 ===========================================================
 Test category         | Status
 ----------------------+--------------------
-net                   | 
-sockaddr              | 
-tasks                 | 
-resolver              | 
-mem                   | 
-rbt                   | 
-dst                   | 
-master                | 
-db                    | 
-names                 | 
-atomic                | 
-system                | 
-                      | 
-                      | 
-                      | 
-                      | 
-                      | 
+net                   | pass
+sockaddr              | pass
+tasks                 | pass
+resolver              | pass
+mem                   | pass
+rbt                   | pass
+dst                   | pass
+master                | pass
+db                    | pass
+names                 | pass
+atomic                | pass
+system                | pass - dlvauto: expanded time window for server startup/shutdown (max 2x slowdown)
+                      |      - dlzexternal fails but dynamically loaded zones 
+                      |        require 'dlopen'. We therefore can't support the
+                      |        feature
+                      |      - masterformat: currently passes, but parts of it will
+                      |        fail once dlopen cannot be used
+dnssec-signzone       | FAIL - fails for non-cdi bind as well (file not found error)
+virtual-time          | FAIL - fails with a non-cdi build of Bind9
 dnssec-signzone       | FAIL - fails for non-cdi bind as well (file not found error)
 virtual-time          | FAIL - fails with a non-cdi build of Bind9
 timers                | [threaded only]
@@ -59,7 +61,7 @@ win32                 | unpassable
 pkcs11                | tests a cryptographic vulnerability
 hashes                | unpassable - passes a fptr through void * parameter
                       |              (isc_sha1_init passed through void * in t_hash)
-
+                      |              (this is undefined behavior!)
 
 ===========================================================
 Multi-threaded, optimized compilation
@@ -73,169 +75,169 @@ arpaname
 
 real    0m0.193s
 user    0m0.172s
-sys 0m0.012s
+sys     0m0.012s
 ------------
 delv
 
 real    2m39.226s
 user    1m49.780s
-sys 0m6.040s
+sys     0m6.040s
 ------------
 dig
 
 real    2m31.481s
 user    1m49.452s
-sys 0m5.444s
+sys     0m5.444s
 ------------
 host
 
 real    2m39.509s
 user    1m50.012s
-sys 0m5.828s
+sys     0m5.828s
 ------------
 named-rrchecker
 
 real    2m4.967s
 user    1m38.140s
-sys 0m3.896s
+sys     0m3.896s
 ------------
 nslookup
 
 real    2m33.162s
 user    1m47.612s
-sys 0m5.260s
+sys     0m5.260s
 ------------
 nsupdate
 
 real    2m54.837s
 user    1m51.856s
-sys 0m6.612s
+sys     0m6.612s
 ------------
 ddns-confgen
 
 real    2m13.075s
 user    1m38.524s
-sys 0m5.332s
+sys     0m5.332s
 ------------
 dnssec-dsfromkey
 
 real    2m9.547s
 user    1m41.604s
-sys 0m4.096s
+sys     0m4.096s
 ------------
 dnssec-importkey
 
 real    2m11.345s
 user    1m38.912s
-sys 0m4.480s
+sys     0m4.480s
 ------------
 dnssec-keyfromlabel
 
 real    2m11.015s
 user    1m38.484s
-sys 0m4.600s
+sys     0m4.600s
 ------------
 dnssec-keygen
 
 real    2m16.366s
 user    1m42.324s
-sys 0m4.356s
+sys     0m4.356s
 ------------
 dnssec-revoke
 
 real    2m8.991s
 user    1m40.916s
-sys 0m4.632s
+sys     0m4.632s
 ------------
 dnssec-settime
 
 real    2m24.364s
 user    1m42.780s
-sys 0m6.320s
+sys     0m6.320s
 ------------
 dnssec-signzone
 
 real    2m10.298s
 user    1m42.724s
-sys 0m3.904s
+sys     0m3.904s
 ------------
 dnssec-verify
 
 real    2m7.223s
 user    1m40.192s
-sys 0m3.932s
+sys     0m3.932s
 ------------
 genrandom
 
 real    0m1.840s
 user    0m1.592s
-sys 0m0.092s
+sys     0m0.092s
 ------------
 isc-hmac-fixup
 
 real    0m1.929s
 user    0m1.784s
-sys 0m0.080s
+sys     0m0.080s
 ------------
 lwresd
 
 real    3m34.278s
 user    2m10.860s
-sys 0m8.276s
+sys     0m8.276s
 ------------
 named
 
 real    3m35.249s
 user    2m8.792s
-sys 0m8.296s
+sys     0m8.296s
 ------------
 named-checkconf
 
 real    2m37.092s
 user    1m45.180s
-sys 0m6.024s
+sys     0m6.024s
 ------------
 named-checkzone
 
 real    2m16.879s
 user    1m41.552s
-sys 0m3.932s
+sys     0m3.932s
 ------------
 named-compilezone
 
 real    2m13.676s
 user    1m41.860s
-sys 0m3.656s
+sys     0m3.656s
 ------------
 named-journalprint
 
 real    2m20.317s
 user    1m40.956s
-sys 0m4.024s
+sys     0m4.024s
 ------------
 nsec3hash
 
 real    0m2.322s
 user    0m1.952s
-sys 0m0.176s
+sys     0m0.176s
 ------------
 rndc
 
 real    0m4.516s
 user    0m3.368s
-sys 0m0.688s
+sys     0m0.688s
 ------------
 rndc-confgen
 
 real    2m10.323s
 user    1m38.732s
-sys 0m4.976s
+sys     0m4.976s
 ------------
 tsig-keygen
 
 real    2m6.716s
 user    1m40.728s
-sys 0m3.900s
+sys     0m3.900s
 
 
 Bind server startup
