@@ -43,12 +43,7 @@ rtld
     (2) Modify verifier to work with segments, SLTs, RLTs, and modified PLTs
     (4) Fixup unshared PLT entries to be direct using the global offset table
 
-
-ELF CDI section
-    function multiplicity
-    ftypes/fptypes information
-
------------------------------------------------------------
+=========================================================================
 Name           | Size | Align | Purpose
 -----------------------------------------------------------
 Elf64_Addr       8      8       Unsigned program address
@@ -61,14 +56,32 @@ Elf64_Sxword     8      8       Signed long integer
 unsigned char    1      1       Unsigned small integer
 
 =========================================================================
+CDI ELF Extension Format:
+    .cdi_header
+    .cdi_sshtab
+    [subsection 1]
+    [subsection 2]
+        ...
+    [subsection N]
+
+Think of the CDI elf extension as a section. Naturally, it is then composed of 
+subsections, which are listed in its subsection header table (.cdi_sshtab). 
+The .cdi_header and .cdi_sshtab subsections must be placed at the beginning 
+of the CDI elf extension (and in that order).
+
+current subsections in use
+    .cdi_header: general info about the CDI metadata
+    .cdi_sshtab: a table containing info on each subsection
+    .cdi_strtab: a string table for CDI use only. Has the same format as strtab
+    .cdi_mult: contains info for calculating SLT size at load time
+
+=========================================================================
 Subsection .cdi_header
 
 typedef struct {
     Elf64_Word cdi_ident;
     Elf64_Word num_sshdrs;
-    Elf64_Word sshtab_addr;
-    Elf64_Word unused;
-}
+} ELF64_CDI_header
 
 cdi_ident: an identifier used to mark the remaining file as CDI metadata
 num_sshdrs: the number of subsection headers in the .cdi_sshtab subsection
@@ -84,7 +97,7 @@ typedef struct {
     Elf64_Half ssh_type;
     unsigned char ssh_align;
     unsigned char unused;
-} CDI_Sshdr
+} Elf64_CDI_Sshdr
 
 ssh_name: an index into the cdi_strtab
 ssh_size: the section's size in bytes
@@ -128,3 +141,8 @@ This subsection is only needed for shared libraries since it's only purpose is
 to facilitate calculating the SLT size at load time. Executables do not have an 
 SLT since shared libraries cannot call into an executable without using a function
 pointer.
+
+Because this subsection incorporates relationships between the 
+shared libraries and the executable, this subsection must only be present
+in an executable. Shared libraries have no way of knowing all the other shared
+libraries with which they can be associated with.
