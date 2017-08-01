@@ -23,7 +23,7 @@ converter
     (3) Create a .typestrtab section, which has its types lexicographically sorted
 
 cdi-ld
-    (1) Fill the SLT trampoline info table with symbol table indices
+    (1) Fill the SLT trampoline info table with symbol table indices. 
     (1) Add function multiplicity information to the executable
     (1) Overwrite the PLT entries to have an indirect CALL
     (1) Associate PLT entry return addresses with RLT entries. Use PLT relocs
@@ -45,4 +45,85 @@ rtld
 
 
 ELF CDI section
+    function multiplicity
+    ftypes/fptypes information
 
+-----------------------------------------------------------
+Name           | Size | Align | Purpose
+-----------------------------------------------------------
+Elf64_Addr       8      8       Unsigned program address
+Elf64_Off        8      8       Unsigned file offset 
+Elf64_Half       2      2       Unsigned medium integer
+Elf64_Word       4      4       Unsigned integer
+Elf64_Sword      4      4       Signed integer
+Elf64_Xword      8      8       Unsigned long integer
+Elf64_Sxword     8      8       Signed long integer 
+unsigned char    1      1       Unsigned small integer
+
+=========================================================================
+
+typedef struct {
+    Elf64_Word cdi_ident;
+    Elf64_Word num_sshdrs;
+    Elf64_Word sshtab_addr;
+    Elf64_Word unused;
+}
+
+cdi_ident: an identifier used to mark the remaining file as CDI metadata
+num_sshdrs: the number of subsection headers in the .cdi_sshtab subsection
+sshtab_addr: gives the address of the first byte of the .cdi_sshtab subsection
+
+=========================================================================
+Subsection .cdi_sshtab
+
+typedef struct {
+    Elf64_Word ssh_name;
+    Elf64_Word ssh_size;
+    Elf64_Word ssh_addr;
+    Elf64_Half ssh_type;
+    unsigned char ssh_align;
+    unsigned char unused;
+} CDI_Sshdr
+
+ssh_name: an index into the cdi_strtab
+ssh_size: the section's size in bytes
+ssh_addr: the address at which the subsection's first byte should reside
+ssh_type: categorizes the type of CDI subsection see below for a table
+ssh_align: indicates that this subsection needs to be aligned by a certain power
+           of two bytes. It is calculated as (1 << ssh_align). ssh_align must be
+           smaller than or equal to six
+
+ssh_type | Meaning
+---------+---------------
+0        | No type 
+1        | cdi strtab subsection
+2        | multiplicity subsection
+< 2^16   | undefined
+
+=========================================================================
+Subsection .cdi_mult
+
+typedef struct {
+    Elf64_Word soname;
+    Elf64_Word total_multiplicity;
+    Elf64_Word num_global_syms;
+    Elf64_Word unused;
+    typedef struct {
+        Elf64_Word sym_name;
+        Elf64_Word multiplicity;
+    } Elf64_CDI_Sym_Mult[num_global_syms];
+} Elf64_CDI_Mult[NUM_SHARED_LIBS]
+
+soname: contains an index into the CDI string table for the shared library's soname
+total_multiplicity: the total multiplicity of all global symbols for this shared library
+num_global_syms: the total number of global symbols in this shared library
+sym_name: an index into the cdi_strtab
+multiplicity: The number of distinct code objects that call sym_name. Code objects
+              include the executable and any shared libraries. A call to sym_name
+              from within its own shared library is counted in the multiplicity.
+              The multiplicity is used to construct the size of the SLT
+
+This subsection is only needed for shared libraries since it's only purpose is 
+to facilitate calculating the SLT size at load time. Executables do not have an 
+SLT since shared libraries cannot call into an executable without using a function
+pointer.
