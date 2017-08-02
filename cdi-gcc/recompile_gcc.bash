@@ -45,9 +45,10 @@ fi
 # intercept assembler and linker calls with the cdi versions
 cd "$BASEDIR/build"
 sudo ln -sf "$(pwd)/../../gcc_wrappers/cdi-as.py" /usr/local/cdi/cdi-as     
-sudo ln -sf "$(pwd)/../../gcc_wrappers/cdi-ld.py" /usr/local/cdi/cdi-ld     
-sudo ln -sf "$(pwd)/../../converter/gen_cdi.py" /usr/local/cdi/gen_cdi      
-sudo ln -sf "$(pwd)/../dest/bin/gcc" /usr/local/bin/cdi-gcc                 
+sudo ln -sf "$(pwd)/../../gcc_wrappers/cdi-ld.py" /usr/local/cdi/cdi-ld
+sudo ln -sf "$(pwd)/../../converter/gen_cdi.py" /usr/local/cdi/gen_cdi
+sudo ln -sf "$(pwd)/../dest/bin/gcc" /usr/local/bin/cdi-gcc-proper
+sudo ln -sf "$(pwd)/../../cdi-gcc.py" /usr/local/bin/cdi-gcc
 sudo ln -sf "$(pwd)/../../converter/cdi_abort.cdi.s" /usr/local/cdi/cdi_abort.cdi.s
 cd /usr/local/cdi/ && sudo gcc -c cdi_abort.cdi.s       
 
