@@ -23,15 +23,43 @@ converter
     (3) Create a .typestrtab section, which has its types lexicographically sorted
 
 cdi-ld
-    (1) Fill the SLT trampoline info table with symbol table indices. 
-    (1) Add function multiplicity information to the executable
-    (1) Overwrite the PLT entries to have an indirect CALL
+    (1) Build a global symbol table which maps (symbol name string -> symbol object)
+        for symbols of all code objects. Symbol objects will be of the form:
+
+    class GlobalSymbol: 
+        def __init__(self):
+            self.name = ''      # symbol name
+            self.sl = None      # shared library. 'None' for executable syms
+            self.mult = 0       # multiplicity: how many code objects call this sym
+
+        All fields should be filled by the time the symbol table is considered 'built'
+        Construction of the global symtab will be done by looking through each
+        code object's symtab. The Multiplicity for a given symbol is incremented 
+        each time it is found as an undefined symbol in a code object. Symbols 
+        will often be found undefined before they are constructed properly. In
+        that case, a dummy symbol object will be created, which will have only the
+        multiplicity filled out
+
+        The number of incomplete syms will be recorded at all times. This can be
+        used to check if the symbol table has been truly completed
+
+        invariant: multiplicity of the executable's symbols should always be 0
+
+    (1) Fill the SLT trampoline table with symbol table indices
+    (1) Add function multiplicity information to the executable. Create a dict
+        that maps every global symbol to a pair of (shared lib, multiplicity)
+    (1) Overwrite the PLT entries to have an indirect CALL. Only do this for 
+        PLT entries that jump to CDI shared libraries. To get the shared library 
+        of a PLT given, use the global symbol dict created for multiplicity counting
+        In order to do this, the symbol of each PLT entry must be known: get the 
+        symbols from PLT relocations, as is done below for associating PLT
+        calls with RLT entries.
     (1) Associate PLT entry return addresses with RLT entries. Use PLT relocs
         to identify the symbol name. Then use symbol name to get the RLT entry
         by looking through the symbol table
     (4) Overwrite shared lib PLT entries to jump down to an unshared PLT
 
-rtld
+RTLD
     (1) identify the cdi metadata added onto each shared lib
     (1) for each shared lib, calculate the extra space needed for the SLT
     (1) mmap extra space for the SLT
@@ -42,6 +70,31 @@ rtld
         PLT return address which should be used to validate jumps in SLTs
     (2) Modify verifier to work with segments, SLTs, RLTs, and modified PLTs
     (4) Fixup unshared PLT entries to be direct using the global offset table
+
+
+=========================================================================
+RTLD Data Structures
+
+typedef struct {
+    void *slt;
+    unsigned slt_size;
+    SltTrampoline *slt_tramptab;
+    char *sl_name;
+    Elf64_CDI_Multtab *multtab;
+} CLB;
+
+typedef struct {
+    Elf64_Word jmp_bin;
+    unsigned char jmp_bin2;
+    unsigned char symtab_idx_byte1;
+    unsigned char symtab_idx_byte2;
+    unsigned char symtab_idx_byte3;
+} SltTrampoline;
+
+jmp_bin and jmp_bin2: binary for a relative jump to an SLT entry
+symtab_idx: a symtab idx for this SLT trampoline's associated symbol. Calculate:
+
+    symtab_idx = (symtab_idx_byte1 << 16 | symtab_idx_byte2 << 8 | symtab_idx_byte3)
 
 =========================================================================
 Name           | Size | Align | Purpose
@@ -126,7 +179,7 @@ typedef struct {
         Elf64_Word sym_name;
         Elf64_Word multiplicity;
     } Elf64_CDI_Sym_Mult[num_global_syms];
-} Elf64_CDI_Mult[NUM_SHARED_LIBS]
+} Elf64_CDI_Multtab[NUM_SHARED_LIBS]
 
 soname: contains an index into the CDI string table for the shared library's soname
 total_multiplicity: the total multiplicity of all global symbols for this shared library
@@ -136,6 +189,10 @@ multiplicity: The number of distinct code objects that call sym_name. Code objec
               include the executable and any shared libraries. A call to sym_name
               from within its own shared library is counted in the multiplicity.
               The multiplicity is used to construct the size of the SLT
+
+The ELF64_CDI_Sym_Mult array must be ordered identically to the SLT trampoline
+in each shared library. This can be accomplished by iterating through the SLT
+trampoline info array and adding each (symbol, multiplicity) pair one after another.
 
 This subsection is only needed for shared libraries since it's only purpose is 
 to facilitate calculating the SLT size at load time. Executables do not have an 
