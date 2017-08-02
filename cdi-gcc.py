@@ -14,10 +14,28 @@ import subprocess
 
 gcc_opts = sys.argv[1:]
 
+
+# debug information is needed to link function pointers to indirect calls
 gcc_opts.append('-g')
+
+# assembly files need to be outputted for the converter
 gcc_opts.append('--save-temps')
+
+# jump tables use indirect jumps
 gcc_opts.append('-fno-jump-tables')
+
+# Enforce function prologues so that a function cannot end by jumping to another function
 gcc_opts.append('-fno-omit-frame-pointer')
+
+# NOTE: we cannot use -Wl,-z,now to force non-lazy binding. Using this option
+# will replace the PLT with a series of 6 byte indirect jumps into shared libraries
+# With padding, this leaves only 8 bytes per access into a shared library, but 
+# we need at least 13 bytes for our fake 64 bit absolute jump:
+#
+#   mov     <addr>, %r11
+#   call    *%r11
+#
+# As a result, it's up to the runtime linker to enforce non-lazy binding
 
 try:
     subprocess.check_call(['cdi-gcc-proper'] + gcc_opts)
