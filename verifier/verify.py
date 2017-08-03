@@ -1,11 +1,13 @@
 #!/usr/bin/env python
 
+import __init__
+
 import bisect
-import elfparse
 import sys
 import binascii
 import types
-from eprint import eprint
+from common import elfparse
+from common.eprint import eprint
 from capstone import *
 from operator import attrgetter
 from getopt import getopt

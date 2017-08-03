@@ -1,5 +1,4 @@
 import sys
-from eprint import eprint
 
 class AsmFileDescription:
     def __init__(self, name):

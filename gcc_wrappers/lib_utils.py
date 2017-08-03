@@ -1,3 +1,5 @@
+import __init__
+
 import subprocess
 import os
 import re
@@ -5,7 +7,7 @@ import sys
 
 import spec
 import fake_types
-from eprint import eprint
+from common.eprint import eprint
 from error import fatal_error
 
 def ar_extract_req_objs(verbose_output, archives):
@@ -180,7 +182,7 @@ def sl_symbol_ref(sl_path):
 def get_script_dir():
     return os.path.dirname(os.path.realpath(__file__))
 
-find_fptrs_script = get_script_dir() + '/../verifier/find_fptrs.py'
+find_fptrs_script = get_script_dir() + '/find_fptrs.py'
 def sl_get_fptr_addrs(binary_path, symbol_ref, lib_load_addr):
     cached_analysis_path = (get_script_dir() 
             + '/../cdi-gcc/cached_fptr_analysis/' 

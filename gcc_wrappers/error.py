@@ -1,4 +1,5 @@
-from eprint import eprint
+import __init__
+from common.eprint import eprint
 import sys
 
 restore_original_objects_fptr = None

@@ -1,8 +1,10 @@
+import __init__
+
 import string
 import sys
 import collections
 
-from eprint import eprint
+from common.eprint import eprint
 from error import fatal_error
 
 class LinkerScriptSyntaxError(Exception):

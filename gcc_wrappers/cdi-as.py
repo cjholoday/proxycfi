@@ -1,9 +1,11 @@
 #!/usr/bin/env python
+
+import __init__
 import sys
 import subprocess
 import os
 import re
-from eprint import eprint
+from common.eprint import eprint
 
 AS_ARG_REQUIRED_OPTIONS = ['--debug-prefix-map', '--defsym', '-I', '-o']
 

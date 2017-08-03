@@ -1,12 +1,15 @@
 #!/usr/bin/env python
 
-import argparse
+import __init__
 import sys
+import argparse
+
 import asm_parsing
 import jsonpickle
+
 from gen_cfg import gen_cfg
 from gen_cdi_asm import gen_cdi_asm
-from eprint import eprint
+from common.eprint import eprint
 
 
 ############################

@@ -1,4 +1,7 @@
 #!/usr/bin/env python
+
+import __init__
+
 import sys
 import os
 import subprocess
@@ -12,7 +15,7 @@ import lib_utils
 import fake_types
 import error
 from error import fatal_error
-from eprint import eprint
+from common.eprint import eprint
 
 def chop_suffix(string, cutoff = ''):
     if cutoff == '':

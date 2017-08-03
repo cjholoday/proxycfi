@@ -3,7 +3,6 @@ import operator
 import asm_parsing
 import subprocess
 import sys
-from eprint import eprint
 import re
 import os
 

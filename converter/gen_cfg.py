@@ -1,11 +1,14 @@
+import __init__
+
 import funct_cfg
 import asm_parsing
 import operator
-from eprint import eprint
 import sys
 import os
 import re
 import copy
+
+from common.eprint import eprint
 
 def gen_cfg(asm_file_descrs, plt_sites, options):
     """Generate cfg from a list of asm files. Produce funct names for each description
@@ -253,8 +256,6 @@ def assign_targets(fptr_sites, funct, cfg, options):
     fptr_sites is a list of sites in funct that have indirect calls
     """
 
-    eprint('>>> ' + funct.src_filename + ':' + funct.asm_name)
-
     if options['--profile-use']:
         assign_targets_profiled(fptr_sites, funct, cfg, options)
         return
@@ -287,7 +288,6 @@ def assign_targets(fptr_sites, funct, cfg, options):
             j += 1
         else:
             fptr_sites[j].fptr_type = funct.fptr_types[i]
-            eprint(funct.fptr_types[i].mangled_str)
             i += 1
             j += 1
     while i < len(funct.fptr_types):

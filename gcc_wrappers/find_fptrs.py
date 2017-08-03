@@ -1,9 +1,12 @@
 #!/usr/bin/env python
 
-from capstone import *
-import elfparse
-from eprint import eprint
+import __init__
+
 import sys
+from capstone import *
+
+from common import elfparse
+from common.eprint import eprint
 
 class Error(Exception):
     pass
@@ -75,25 +78,26 @@ def is_indirect_jmp(instr):
     except ValueError:
         return True
 
-binary_path = sys.argv[1]
+if __name__ == '__main__':
+    binary_path = sys.argv[1]
 
-# sometimes it's useful to have the symbol table (.symtab) section separated from
-# binary since it's so rarely used. This is the case with, for example, libc
-try:
-    symbol_binary_path = sys.argv[2]
-except IndexError:
-    # No separate symbol binary was specified so use the binary itself
-    symbol_binary_path = binary_path
-
-exec_sections = elfparse.gather_exec_sections(binary_path)
-functions = elfparse.gather_functions(symbol_binary_path, exec_sections)
-
-for funct in functions:
+    # sometimes it's useful to have the symbol table (.symtab) section separated from
+    # binary since it's so rarely used. This is the case with, for example, libc
     try:
-        get_fptr_sites(binary_path, funct)
-    except FunctionPrologueError:
-        eprint("find_fptrs.py: function '{}' in shared library '{}' with symbol "
-                "reference binary '{}' lacks a valid function prologue"
-                .format(funct.name, binary_path, symbol_binary_path))
-        sys.exit(1)
+        symbol_binary_path = sys.argv[2]
+    except IndexError:
+        # No separate symbol binary was specified so use the binary itself
+        symbol_binary_path = binary_path
+
+    exec_sections = elfparse.gather_exec_sections(binary_path)
+    functions = elfparse.gather_functions(symbol_binary_path, exec_sections)
+
+    for funct in functions:
+        try:
+            get_fptr_sites(binary_path, funct)
+        except FunctionPrologueError:
+            eprint("find_fptrs.py: function '{}' in shared library '{}' with symbol "
+                    "reference binary '{}' lacks a valid function prologue"
+                    .format(funct.name, binary_path, symbol_binary_path))
+            sys.exit(1)
 
