@@ -19,6 +19,8 @@ converter
     (1) write null 4 byte addresses before RLT entries. These will be filled 
         to contain the addresses of each RLT entry's associated PLT return 
         address
+    (1) preface all removable CDI symbols with a certain prefix e.g. CDIX, so 
+        that they can be removed after compilation
     (3) expand the SLT trampoline to hold entries for fptr sleds. 
     (3) Create a .typestrtab section, which has its types lexicographically sorted
 
@@ -110,62 +112,10 @@ unsigned char    1      1       Unsigned small integer
 
 =========================================================================
 CDI ELF Extension Format:
-    .cdi_header
-    .cdi_sshtab
-    [subsection 1]
-    [subsection 2]
-        ...
-    [subsection N]
 
-Think of the CDI elf extension as a section. Naturally, it is then composed of 
-subsections, which are listed in its subsection header table (.cdi_sshtab). 
-The .cdi_header and .cdi_sshtab subsections must be placed at the beginning 
-of the CDI elf extension (and in that order).
-
-current subsections in use
-    .cdi_header: general info about the CDI metadata
-    .cdi_sshtab: a table containing info on each subsection
+New Sections
     .cdi_strtab: a string table for CDI use only. Has the same format as strtab
     .cdi_mult: contains info for calculating SLT size at load time
-
-=========================================================================
-Subsection .cdi_header
-
-typedef struct {
-    Elf64_Word cdi_ident;
-    Elf64_Word num_sshdrs;
-} ELF64_CDI_header
-
-cdi_ident: an identifier used to mark the remaining file as CDI metadata
-num_sshdrs: the number of subsection headers in the .cdi_sshtab subsection
-sshtab_addr: gives the address of the first byte of the .cdi_sshtab subsection
-
-=========================================================================
-Subsection .cdi_sshtab
-
-typedef struct {
-    Elf64_Word ssh_name;
-    Elf64_Word ssh_size;
-    Elf64_Word ssh_addr;
-    Elf64_Half ssh_type;
-    unsigned char ssh_align;
-    unsigned char unused;
-} Elf64_CDI_Sshdr
-
-ssh_name: an index into the cdi_strtab
-ssh_size: the section's size in bytes
-ssh_addr: the address at which the subsection's first byte should reside
-ssh_type: categorizes the type of CDI subsection see below for a table
-ssh_align: indicates that this subsection needs to be aligned by a certain power
-           of two bytes. It is calculated as (1 << ssh_align). ssh_align must be
-           smaller than or equal to six
-
-ssh_type | Meaning
----------+---------------
-0        | No type 
-1        | cdi strtab subsection
-2        | multiplicity subsection
-< 2^16   | undefined
 
 =========================================================================
 Subsection .cdi_mult
