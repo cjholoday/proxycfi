@@ -22,7 +22,7 @@ _CDI_abort:
 	movq	%rsp, %rbp
 	.cfi_def_cfa_register 6
         pushq   %rsi                        # save specific sled info for later
-        movq    $.generic_msg, %rsi
+        leaq    .generic_msg(%rip), %rsi
         movq    $.generic_msg_len, %rdx
         movq    $1, %rax                    # write
         movq    $2, %rdi                    # to stderr
@@ -36,7 +36,7 @@ _CDI_abort:
         movq    $1, %rax                    
         movq    $2, %rdi                   
         movq    $1, %rdx
-        movq    $.newline_char, %rsi
+        leaq    .newline_char(%rip), %rsi
         syscall                             # print newline
 .abort:
         movq    $39, %rax                  
