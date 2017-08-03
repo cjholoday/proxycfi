@@ -1,3 +1,5 @@
+import __init__
+
 import funct_cfg
 import operator
 import asm_parsing
@@ -5,6 +7,8 @@ import subprocess
 import sys
 import re
 import os
+
+from common.eprint import eprint
 
 def gen_cdi_asm(cfg, asm_file_descrs, plt_sites, options):
     """Writes cdi compliant assembly from cfg and assembly file descriptions"""
@@ -251,7 +255,7 @@ def cdi_abort(sled_id, asm_filename, dwarf_loc, try_callback_sled, options):
 
     cdi_abort_code = cdi_abort_data = ''
     if options['--shared-library']:
-        eprint('cdi-ld: error: --shared-library unsupported in this version')
+        eprint('gen_cdi: error: --shared-library unsupported in this version')
         sys.exit(1)
         cdi_abort_code += '\tmovq\t.CDI_sled_id_' + str(sled_id) + '(%rip), %rsi\n'
         cdi_abort_code += '\tmovq\t.CDI_sled_id_' + str(sled_id) +'_len(%rip), %rdx\n'
