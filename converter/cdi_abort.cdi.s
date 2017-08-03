@@ -11,7 +11,6 @@
 #   %rsi: pointer to [quad][string of len size]
 #   %rax: unsafe target address
 # 
-#   TODO: make this position independent
 #   TODO: print out the unsafe target
 _CDI_abort:
 .LFB0:
