@@ -101,7 +101,7 @@ def sl_cdi_fixups(lspec, binary_path):
     """Returns a list of fixups for creating CDI shared libraries"""
 
     sl_cdi_paths = dict()
-    for sl_path, garbage in sl_trace_bin(binary_path):
+    for sl_path, garbage in sl_trace_bin(binary_path, lspec.target_is_shared):
         sl_realpath = os.path.realpath(sl_path)
 
         # Pending on CDI shared libraries being implemented:
@@ -120,8 +120,6 @@ def sl_cdi_fixups(lspec, binary_path):
             sl_cdi_paths[sl_realpath] = candidate
             continue
 
-        if 'libcrypto' in sl_realpath:
-            sys.exit(1)
         symbol_ref = sl_symbol_ref(sl_realpath)
         if symbol_ref == sl_path:
             eprint("cdi-ld: warning: compiling against non-CDI shared library"
@@ -222,16 +220,27 @@ def sl_get_fptr_addrs(binary_path, symbol_ref, lib_load_addr):
 
     return fptr_addrs
 
-def sl_trace_bin(execname):
+def sl_trace_bin(binary, is_shared):
     """Get pairs of (shared lib path, load address). 
 
     There must be an ELF executable CDI or otherwise already generated. Since
     a non-CDI executable is generated for archive analysis, this is always the
     case
+
+    If binary is a shared library, we must use ldd instead. IMPORTANT: ldd
+    fails to get an accurate load address, so any code that calls sl_trace_bin
+    with a shared library MUST NOT use the output for calculating 
+    library load addresses
     """
+
+    traced_output = None
+    if is_shared:
+        traced_output = subprocess.check_output(['ldd', binary])
+    else:
+        traced_output = subprocess.check_output(['./' + binary], 
+                env=dict(os.environ, **{'LD_TRACE_LOADED_OBJECTS':'1'}))
+
     lib_addr_pairs = []
-    traced_output = subprocess.check_output(['./' + execname], 
-            env=dict(os.environ, **{'LD_TRACE_LOADED_OBJECTS':'1'}))
     for line in traced_output.splitlines():
         # format of trace output: [symlink path] => [actual elf path] ([load addr])
         symlink = line.split()[0]
@@ -310,7 +319,7 @@ def get_restore_rt_vaddrs(lspec):
     """
 
     vaddrs = []
-    for sl_path, lib_load_addr in sl_trace_bin(lspec.target):
+    for sl_path, lib_load_addr in sl_trace_bin(lspec.target, lspec.target_is_shared):
         try:
             vaddrs.append(hex(int(st_vaddr('__restore_rt', sl_path), 16) + lib_load_addr))
         except KeyError:

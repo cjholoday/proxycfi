@@ -81,28 +81,28 @@ for i, obj_path in enumerate(lspec.obj_paths):
 
 # create unsafe, non-cdi shared libraries. CDI shared libraries are for a 
 # future version
-if lspec.target_is_shared:
-    print 'Building non-CDI shared library (CDI shared libraries not implemented yet)'
-    sys.stdout.flush()
-
-    # stale files in .cdi can cause trouble
-    subprocess.check_call(['rm', '-rf', '.cdi'])
-    subprocess.check_call(['mkdir', '.cdi'])
-
-    normification_fixups = []
-    normification_fixups += normify.fake_objs_normify(explicit_fake_objs)
-    normification_fixups += normify.ar_normify(archives)
-    normification_fixups += normify.sl_normify(lspec, lspec.sl_paths)
-    print "Linking shared library '{}'\n".format(lspec.target)
-
-    ld_command = ['ld'] + lspec.fixup(normification_fixups)
-    try:
-        verbose_linker_output = subprocess.check_output(ld_command)
-    except subprocess.CalledProcessError:
-        fatal_error("Unable to compile without CDI using linker command '{}'"
-                .format(' '.join(ld_command)))
-    restore_original_objects()
-    sys.exit(0)
+#if lspec.target_is_shared:
+#    print 'Building non-CDI shared library (CDI shared libraries not implemented yet)'
+#    sys.stdout.flush()
+#
+#    # stale files in .cdi can cause trouble
+#    subprocess.check_call(['rm', '-rf', '.cdi'])
+#    subprocess.check_call(['mkdir', '.cdi'])
+#
+#    normification_fixups = []
+#    normification_fixups += normify.fake_objs_normify(explicit_fake_objs)
+#    normification_fixups += normify.ar_normify(archives)
+#    normification_fixups += normify.sl_normify(lspec, lspec.sl_paths)
+#    print "Linking shared library '{}'\n".format(lspec.target)
+#
+#    ld_command = ['ld'] + lspec.fixup(normification_fixups)
+#    try:
+#        verbose_linker_output = subprocess.check_output(ld_command)
+#    except subprocess.CalledProcessError:
+#        fatal_error("Unable to compile without CDI using linker command '{}'"
+#                .format(' '.join(ld_command)))
+#    restore_original_objects()
+#    sys.exit(0)
 
 ###############################################################################
 # Compile without CDI to learn the needed objects, exact shared libraries used,
@@ -137,8 +137,6 @@ except subprocess.CalledProcessError:
     fatal_error("Unable to compile without CDI using linker command '{}'"
             .format(' '.join(ld_command)))
 
-# list of addresses to which signal handlers return
-restore_rt_vaddrs = lib_utils.get_restore_rt_vaddrs(lspec)
 
 if '--abandon-cdi' in lspec.cdi_options:
     print 'WARNING: CREATING NON CDI EXECUTABLE AS REQUESTED'
@@ -147,10 +145,11 @@ if '--abandon-cdi' in lspec.cdi_options:
 # Extract needed fake objects out of archives
 ar_fake_objs, ar_fixups = lib_utils.ar_extract_req_objs(verbose_linker_output, archives)
 
-if lib_utils.sl_aslr_is_enabled(lspec.target):
+if not lspec.target_is_shared and lib_utils.sl_aslr_is_enabled(lspec.target):
     fatal_error("load addresses aren't deterministic. Disable ASLR"
             " (this can be done with "
             "'echo 0 | sudo tee /proc/sys/kernel/randomize_va_space')")
+
 
 
 # Find all function pointer calls from shared libraries back into the 
@@ -160,38 +159,44 @@ if lib_utils.sl_aslr_is_enabled(lspec.target):
 # fptr calls in shared libraries. TODO: get ftypes/fptypes info for CDI
 # shared libraries and use that information to narrow the list of return
 # sleds that need an entry for shared library fptr calls
-sl_load_addrs = dict() # maps shared lib realpath -> lib load address (in hex)
-sl_callback_table =  open('.cdi/sl_callback_table', 'w')
-for sl_path, lib_load_addr in lib_utils.sl_trace_bin(lspec.target):
-    if sl_path.startswith('/usr/local/cdi/lib/'):
-        continue # this shared library is CDI so fptr analysis is unneeded
+#
+# The callback sled is constructed by executables only
+restore_rt_vaddrs = None
+sl_load_addrs = None
+if not lspec.target_is_shared:
+    # list of addresses to which signal handlers return
+    restore_rt_vaddrs = lib_utils.get_restore_rt_vaddrs(lspec)
 
-    # if it's in /usr/local/lib, then the reference contains code in addition
-    # to the symbol table. Therefore, it's unassociated with the shared
-    # library in the spec. Use this new binary instead
-    # FIXME: replace spec args
-    symbol_reference = lib_utils.sl_symbol_ref(sl_path)
-    if symbol_reference.startswith('/usr/local/lib/'):
-        sl_path = symbol_reference
-    fptr_addrs = lib_utils.sl_get_fptr_addrs(sl_path, symbol_reference, lib_load_addr)
+    sl_load_addrs = dict() # maps shared lib realpath -> lib load address (in hex)
+    sl_callback_table =  open('.cdi/sl_callback_table', 'w')
+    for sl_path, lib_load_addr in lib_utils.sl_trace_bin(lspec.target, lspec.target_is_shared):
+        if sl_path.startswith('/usr/local/cdi/lib/'):
+            continue # this shared library is CDI so fptr analysis is unneeded
 
-    assert '"' not in sl_path
-    sl_callback_table.write('"{}" load-addr: {}\n'.format(sl_path, hex(lib_load_addr)))
-    sl_callback_table.write('\n'.join(fptr_addrs) + '\n')
-    if fptr_addrs:
-        sl_callback_table.write('\n')
+        # if it's in /usr/local/lib, then the reference contains code in addition
+        # to the symbol table. Therefore, it's unassociated with the shared
+        # library in the spec. Use this new binary instead
+        # FIXME: replace spec args
+        symbol_reference = lib_utils.sl_symbol_ref(sl_path)
+        if symbol_reference.startswith('/usr/local/lib/'):
+            sl_path = symbol_reference
+        fptr_addrs = lib_utils.sl_get_fptr_addrs(sl_path, symbol_reference, lib_load_addr)
 
-    sl_load_addrs[os.path.realpath(sl_path)] = lib_load_addr
+        assert '"' not in sl_path
+        sl_callback_table.write('"{}" load-addr: {}\n'.format(sl_path, hex(lib_load_addr)))
+        sl_callback_table.write('\n'.join(fptr_addrs) + '\n')
+        if fptr_addrs:
+            sl_callback_table.write('\n')
 
-sl_callback_table.write('__restore_rt (for returns from signal handlers)\n')
-restore_rt_vaddr = lib_utils.get_vaddr('__restore_rt', lspec.target)
-sl_callback_table.write('\n'.join(restore_rt_vaddrs) + '\n\n')
-sl_callback_table.close()
+        sl_load_addrs[os.path.realpath(sl_path)] = lib_load_addr
+
+    sl_callback_table.write('__restore_rt (for returns from signal handlers)\n')
+    sl_callback_table.write('\n'.join(restore_rt_vaddrs) + '\n\n')
+    sl_callback_table.close()
 
 sl_fixups = lib_utils.sl_cdi_fixups(lspec, lspec.target)
-# remove executable since it isn't CDI compiled
+# remove executable/shared library since it isn't CDI compiled
 subprocess.check_call(['rm', lspec.target])
-
 
 fake_objs = explicit_fake_objs + ar_fake_objs
 
@@ -265,16 +270,17 @@ except subprocess.CalledProcessError:
     fatal_error("calling 'ld' with the following spec failed:\n\n{}"
             .format(' '.join(cdi_spec)))
 
-# check that the predicted shared library load addresses are accurate
-for sl_path, lib_load_addr in lib_utils.sl_trace_bin(lspec.target):
-    if sl_load_addrs[os.path.realpath(sl_path)] != lib_load_addr:
-        fatal_error("load address shifted upon recompilation for shared "
-                "library '{}'. Original: {}. New: {}." .format(os.path.realpath(sl_path), 
-                    sl_load_addrs[os.path.realpath(sl_path)], lib_load_addr))
-
-# check that at least one predicted address for __restore_rt is correct
-if lib_utils.get_vaddr('__restore_rt', lspec.target) not in restore_rt_vaddrs:
-    fatal_error("__restore_rt address '{}' is different than all predicted addrs: {}"
-            .format(lib_utils.get_vaddr('__restore_rt'), ', '.join(restore_rt_vaddrs)))
+# do some sanity checks for executables
+if not lspec.target_is_shared:
+    # check that the predicted shared library load addresses are accurate
+    for sl_path, lib_load_addr in lib_utils.sl_trace_bin(lspec.target, lspec.target_is_shared):
+        if sl_load_addrs[os.path.realpath(sl_path)] != lib_load_addr:
+            fatal_error("load address shifted upon recompilation for shared "
+                    "library '{}'. Original: {}. New: {}." .format(os.path.realpath(sl_path), 
+                        sl_load_addrs[os.path.realpath(sl_path)], lib_load_addr))
+    # check that at least one predicted address for __restore_rt is correct
+    if lib_utils.get_vaddr('__restore_rt', lspec.target) not in restore_rt_vaddrs:
+        fatal_error("__restore_rt address '{}' is different than all predicted addrs: {}"
+                .format(lib_utils.get_vaddr('__restore_rt'), ', '.join(restore_rt_vaddrs)))
 
 restore_original_objects()

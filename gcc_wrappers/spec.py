@@ -1,3 +1,4 @@
+import __init__
 import subprocess
 import lib_utils
 import os
@@ -5,6 +6,7 @@ import sys
 
 import lscript_parsing
 from error import fatal_error
+from common.eprint import eprint
 
 class LinkerSpec():
     class Fixup():
