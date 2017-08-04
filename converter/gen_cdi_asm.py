@@ -329,6 +329,8 @@ def write_rlt(cfg, plt_sites, asm_dest, sled_id_faucet, options):
 
         entry_label = '"_CDI_RLT_{}"'.format(fix_label(sl_funct_uniq_label))
 
+        # reserve space for cdi-ld to store the associated PLT return address
+        asm_dest.write('\t.quad 0xdeadbeefefbeadde\n')
         asm_dest.write('\t.type {}, @function\n'.format(entry_label))
         asm_dest.write(entry_label + ':\n')
 
@@ -364,6 +366,8 @@ def write_slt_tramptab(asm_dest, cfg, options):
         asm_dest.write('\t.globl {}\n'.format(slt_entry_label))
         asm_dest.write(slt_entry_label + ':\n')
         asm_dest.write('\tjmp 0\n')
+        asm_dest.write('\tnop\n' * 3)
+
     asm_dest.write('\t.size _CDI_SLT_tramptab, .-_CDI_SLT_tramptab\n')
     asm_dest.write('\t.align {}\n'.format(page_size))
 
