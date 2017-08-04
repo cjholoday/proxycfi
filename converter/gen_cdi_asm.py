@@ -15,9 +15,10 @@ def gen_cdi_asm(cfg, asm_file_descrs, plt_sites, options):
 
     sled_id_faucet = funct_cfg.SledIdFaucet()
 
-    rlts_written = False
-    slts_written = False
-    callback_sled_written = False
+    write_rlt.done = False
+    write_slt_tramptab.done = False
+    write_callback_sled.done = False
+    
     for descr in asm_file_descrs:
         asm_parsing.DwarfSourceLoc.wipe_filename_mapping()
         dwarf_loc = asm_parsing.DwarfSourceLoc()
@@ -57,40 +58,33 @@ def gen_cdi_asm(cfg, asm_file_descrs, plt_sites, options):
         debug_section_found = False
 
 
-        if options['--sl-fptr-addrs'] and not callback_sled_written:
-            callback_sled_written = True
+        if not write_callback_sled.done and options['--sl-fptr-addrs']:
             write_callback_sled(asm_dest, options)
+            write_callback_sled.done = True
 
         # write the rest of the normal asm lines over
         src_line = asm_src.readline()
+        stack_section_decl = ''
+        stack_section_decl_matcher = re.compile(r'^\s*\.section\s+\.note\.GNU-stack,')
         while src_line:
             if not debug_section_found and debug_section_matcher.match(src_line):
                 asm_dest.write(''.join(abort_data))
-            asm_dest.write(src_line)
+            if stack_section_decl_matcher.match(src_line):
+                stack_section_decl = src_line
+            else:
+                asm_dest.write(src_line)
             src_line = asm_src.readline()
 
-        if not rlts_written:
-            rlts_written = True
-            write_rlts(cfg, plt_sites, asm_dest, sled_id_faucet, options)
-
-
-        # write the SLT for shared lib
-        if options['--shared-library'] and not slts_written:
-            slts_written = True
-
-            page_size = subprocess.check_output(['getconf', 'PAGESIZE'])
+        if not write_rlt.done:
             asm_dest.write('\t.text\n')
-            asm_dest.write('\t.align {}\n'.format(page_size))
-            asm_dest.write('\t.globl _CDI_SLT\n')
-            asm_dest.write('\t.type _CDI_SLT, @function\n')
-            asm_dest.write('_CDI_SLT:\n')
-            for funct in cfg:
-                slt_entry_label = '"_CDI_SLT_{}"'.format(fix_label(funct.uniq_label))
-                asm_dest.write('\t.globl {}\n'.format(slt_entry_label))
-                asm_dest.write(slt_entry_label + ':\n')
-                asm_dest.write('\tjmp 0\n')
-            asm_dest.write('\t.size _CDI_SLT, .-_CDI_SLT\n')
+            write_rlt(cfg, plt_sites, asm_dest, sled_id_faucet, options)
+            write_rlt.done = True
+
+        if not write_slt_tramptab.done and options['--shared-library']:
+            write_slt_tramptab(asm_dest, cfg, options)
+            write_slt_tramptab.done = True
         
+        asm_dest.write(stack_section_decl)
         asm_src.close()
         asm_dest.close()
             
@@ -229,8 +223,7 @@ def convert_return_site(site, funct, asm_line, asm_dest, cfg,
             i += 1
 
     if options['--shared-library']:
-        # TODO: implement callback sled for shared library
-        ret_sled += '\tjmp\t"_CDI_SLT_{}"\n'.format(fix_label(funct.uniq_label))
+        ret_sled += '\tjmp\t"_CDI_SLT_tramptab_{}"\n'.format(fix_label(funct.uniq_label))
     else:
         code, data = cdi_abort(sled_id_faucet(), funct.asm_filename,
                 dwarf_loc, True, options)
@@ -255,28 +248,18 @@ def cdi_abort(sled_id, asm_filename, dwarf_loc, try_callback_sled, options):
 
     cdi_abort_code = cdi_abort_data = ''
     if options['--shared-library']:
-        eprint('gen_cdi: error: --shared-library unsupported in this version')
-        sys.exit(1)
-        cdi_abort_code += '\tmovq\t.CDI_sled_id_' + str(sled_id) + '(%rip), %rsi\n'
-        cdi_abort_code += '\tmovq\t.CDI_sled_id_' + str(sled_id) +'_len(%rip), %rdx\n'
-        #cdi_abort_code += '\tcall\t_CDI_abort\n' TODO: write fpic version of cdi abort
-
-        cdi_abort_data += '.CDI_sled_id_' + str(sled_id) + ':\n'
-        cdi_abort_data += '\t.string\t"' + loc_str + ' id=' + str(sled_id) + '"\n'
-        cdi_abort_data += '\t.set\t.CDI_sled_id_' + str(sled_id) + '_len, '
-        cdi_abort_data += '.-.CDI_sled_id_' + str(sled_id) + '\n'
+        pass # shared library sleds are created at load time; not now
+    elif options['--sl-fptr-addrs'] and try_callback_sled:
+        cdi_abort_code += '\tmovq\t $.CDI_sled_id_' + str(sled_id) + ', %r11\n'
+        cdi_abort_code += '\tjmp\t_CDI_callback_sled\n'
     else:
-        if options['--sl-fptr-addrs'] and try_callback_sled:
-            cdi_abort_code += '\tmovq\t $.CDI_sled_id_' + str(sled_id) + ', %r11\n'
-            cdi_abort_code += '\tjmp\t_CDI_callback_sled\n'
-        else:
-            cdi_abort_code += '\tmovq\t $.CDI_sled_id_' + str(sled_id) + ', %rsi\n'
-            cdi_abort_code += '\tcall\t_CDI_abort\n'
+        cdi_abort_code += '\tmovq\t $.CDI_sled_id_' + str(sled_id) + ', %rsi\n'
+        cdi_abort_code += '\tcall\t_CDI_abort\n'
 
-        cdi_abort_msg = loc_str + ' id=' + str(sled_id)
-        cdi_abort_data += '.CDI_sled_id_' + str(sled_id) + ':\n'
-        cdi_abort_data += '\t.quad\t' + str(len(cdi_abort_msg)) + '\n'
-        cdi_abort_data += '\t.string\t"' + cdi_abort_msg + '"\n'
+    cdi_abort_msg = loc_str + ' id=' + str(sled_id)
+    cdi_abort_data += '.CDI_sled_id_' + str(sled_id) + ':\n'
+    cdi_abort_data += '\t.quad\t' + str(len(cdi_abort_msg)) + '\n'
+    cdi_abort_data += '\t.string\t"' + cdi_abort_msg + '"\n'
 
     return (cdi_abort_code, cdi_abort_data)
 
@@ -294,14 +277,17 @@ def convert_plt_site(site, asm_line, funct, asm_dest):
             .format(fix_label(site.targets[0]), fix_label(funct.uniq_label), 
                 str(funct.plt_call_multiplicity[(site.targets[0], funct.uniq_label)])))
 
-    #globl_decl = '.globl\t' + rlt_return_label + '\n'
-    globl_decl = ''
-    restore_rbp = '\tmovq\t-16(%rsp), %rbp\n'
+    globl_decl = '.globl\t' + rlt_return_label + '\n'
+
+    # at one point, clobbering %rbp was necessary to implement shared libraries
+    # leave this here until we're sure we don't need to restore
+    #
+    # restore_rbp = '\tmovq\t-16(%rsp), %rbp\n'
 
     # do not restore rbp because shared libraries are not working yet
-    asm_dest.write(asm_line + globl_decl + rlt_return_label + ':\n') # + restore_rbp)
+    asm_dest.write(asm_line + globl_decl + rlt_return_label + ':\n') 
 
-def write_rlts(cfg, plt_sites, asm_dest, sled_id_faucet, options):
+def write_rlt(cfg, plt_sites, asm_dest, sled_id_faucet, options):
     """Write the RLT to asm_dest"""
 
     # maps (shared library uniq label, rlt return target) -> multiplicity
@@ -323,18 +309,19 @@ def write_rlts(cfg, plt_sites, asm_dest, sled_id_faucet, options):
         except KeyError:
             multiplicity[call_return_pair] = 1
 
-    # create the RLT jump table
-    # TEMPORARILY REMOVED UNTIL MISIKER TELLS ME THE FIX:
-    # rlt_jump_table = '\t.section\t.CDI_RLT, "x"\n'
-    rlt_jump_table = '\t.type\t_CDI_RLT_JUMP_TABLE, @function\n'
-    rlt_jump_table += '_CDI_RLT_JUMP_TABLE:\n'
-    for sl_funct_uniq_label in rlt_return_targets.keys():
-        entry_label = '"_CDI_RLT_{}"'.format(fix_label(sl_funct_uniq_label))
-        rlt_jump_table += '\tjmp {}\n'.format(entry_label)
 
-    rlt_jump_table += '\t.size\t_CDI_RLT_JUMP_TABLE, .-_CDI_RLT_JUMP_TABLE\n'
-    
-    asm_dest.write(rlt_jump_table)
+    # An RLT trampoline table is unnecessary. Leave it here just in case we 
+    # need it later
+    #
+    # create the RLT trampoline table
+    #rlt_jump_table = '\t.type\t_CDI_RLT_JUMP_TABLE, @function\n'
+    #rlt_jump_table += '_CDI_RLT_JUMP_TABLE:\n'
+    #for sl_funct_uniq_label in rlt_return_targets.keys():
+    #    entry_label = '"_CDI_RLT_{}"'.format(fix_label(sl_funct_uniq_label))
+    #    rlt_jump_table += '\tjmp {}\n'.format(entry_label)
+    #rlt_jump_table += '\t.size\t_CDI_RLT_JUMP_TABLE, .-_CDI_RLT_JUMP_TABLE\n'
+    #
+    #asm_dest.write(rlt_jump_table)
 
     # create an RLT entry for each shared library function
     for sl_funct_uniq_label, rlt_target_set in rlt_return_targets.iteritems():
@@ -365,6 +352,20 @@ def write_rlts(cfg, plt_sites, asm_dest, sled_id_faucet, options):
         rlt_entry += code + data
         rlt_entry += '\t.size {}, .-{}\n'.format(entry_label, entry_label)
         asm_dest.write(rlt_entry)
+
+def write_slt_tramptab(asm_dest, cfg, options):
+    page_size = subprocess.check_output(['getconf', 'PAGESIZE'])
+    asm_dest.write('\t.align {}\n'.format(page_size))
+    asm_dest.write('\t.globl _CDI_SLT_tramptab\n')
+    asm_dest.write('\t.type _CDI_SLT_tramptab, @function\n')
+    asm_dest.write('_CDI_SLT_tramptab:\n')
+    for funct in cfg:
+        slt_entry_label = '"_CDI_SLT_tramptab_{}"'.format(fix_label(funct.uniq_label))
+        asm_dest.write('\t.globl {}\n'.format(slt_entry_label))
+        asm_dest.write(slt_entry_label + ':\n')
+        asm_dest.write('\tjmp 0\n')
+    asm_dest.write('\t.size _CDI_SLT_tramptab, .-_CDI_SLT_tramptab\n')
+    asm_dest.write('\t.align {}\n'.format(page_size))
 
 def write_callback_sled(asm_dest, options):
     callback_sled = '.globl _CDI_callback_sled\n'
