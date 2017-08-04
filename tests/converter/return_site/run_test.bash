@@ -32,19 +32,19 @@ if [ "$?" != 0 ]; then
     exit 1
 fi
 
-# Get CDI trace
-cdi-gcc $cdi_flags -finstrument-functions main.c formulas.c calc.c -o out \
-    ../../../instrumentation/instrumentation.c
-./out > output
-"$addr_translate" out trace_table.out > funct_table1.out
-mv trace.out trace1.out
-
 # Get non-CDI trace
 gcc $cdi_flags -finstrument-functions main.c formulas.c calc.c -o out \
     ../../../instrumentation/instrumentation.c
 ./out > output
 "$addr_translate" out trace_table.out > funct_table2.out
 mv trace.out trace2.out
+
+# Get CDI trace
+cdi-gcc $cdi_flags -finstrument-functions main.c formulas.c calc.c -o out \
+    ../../../instrumentation/instrumentation.c
+./out > output
+"$addr_translate" out trace_table.out > funct_table1.out
+mv trace.out trace1.out
 
 
 # Check that the traces are identical
