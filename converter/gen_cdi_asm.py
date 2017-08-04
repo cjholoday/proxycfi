@@ -341,9 +341,8 @@ def write_rlt(cfg, plt_sites, asm_dest, sled_id_faucet, options):
             while i <= multiplicity[(sl_funct_uniq_label, rlt_target)]:
                 sled_label = '"{}_TO_{}_{}"'.format(cdi_ret_prefix, fix_label(rlt_target) , str(i))
                 if options['--shared-library']:
-                    # rbp is restored after the jump equal (je)
-                    rlt_entry += '\tlea\t' + sled_label + '(%rip), %rbp\n'
-                    rlt_entry += '\tcmpq\t%rbp, -8(%rsp)\n'
+                    rlt_entry += '\tlea\t' + sled_label + '(%rip), %r11\n'
+                    rlt_entry += '\tcmpq\t%r11, -8(%rsp)\n'
                 else:
                     rlt_entry += '\tcmpq\t$' + sled_label + ', -8(%rsp)\n'
                 rlt_entry += '\tje\t' + sled_label + '\n'
