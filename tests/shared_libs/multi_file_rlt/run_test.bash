@@ -6,8 +6,8 @@ rm -f *.o *.s *.json *.i *.ftypes *.out *.fptypes output out *.so
 
 verify="../../../verifier/verify.py"
 
-cdi-gcc --make-sl=libcalc.so calc.c
-cdi-gcc --use-sl=libcalc.so main.c formulas.c -o out
+cdi-gcc --make-sl=libcalc.so calc.c formulas.c
+cdi-gcc --use-sl=libcalc.so main.c -o out
 
 # Verify that the executable is CDI compliant
 "$verify" -i out
