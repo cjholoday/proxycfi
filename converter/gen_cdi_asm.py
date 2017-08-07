@@ -21,33 +21,35 @@ from common.eprint import eprint
 # The second field [deletable] is filled with an 'X' if the symbol is unneeded
 # at load time. [type] specifies what purpose the label is used for.
 #
-#  Type   | Label purpose
-#  -------+------------
-#  RET    | Used to coordinate return sleds and indirect call sleds. A sled label's
-#         | multiplicity is used to differentiate between other call/returns from the 
-#         | same two functions. Calls with higher VMAs have higher multiplicities
-#         | [tdd] := [called funct's uniq_label] || _TO_ || [return funct's uniq_label] || _ || [multiplicity]
-#         |
-#  F      | A global version of a function symbol. Used to call/jump from other asm units
-#         | [tdd] := [function's uniq_label]
-#         |
-#  RLT    | Marks an RLT entry. These labels are needed for the CDI loader
-#         | [tdd] := [the associated shared library symbol]
-#         |
-#  RREL32 | A relocation request to fill the 4 bytes before this symbol with a
-#         | 32 bit signed offset from this symbol to the symbol in [tdd]. This
-#         | is needed to deal with position independent code generation
-#         |
-#  SLED   | Used to store sled specific debug information. 
-#         | [tdd] := [a unique sled id]
-#  -------+------------
+#  Type    | Label purpose
+#  --------+------------
+#  RET     | Used to coordinate return sleds and indirect call sleds. A sled label's
+#          | multiplicity is used to differentiate between other call/returns from the 
+#          | same two functions. Calls with higher VMAs have higher multiplicities
+#          | [tdd] := [called funct's uniq_label] || _TO_ || [return funct's uniq_label] || _ || [multiplicity]
+#          |
+#  PLT     | Like RET but it's used to coordinate RLT sleds and how they return to
+#          | after calls into the PLT.
+#          | [tdd] := [PLT symbol] || _TO_ || [return funct's uniq_label] || _ || [multiplicity]
+#          |
+#  F       | A global version of a function symbol. Used to call/jump from other asm units
+#          | [tdd] := [function's uniq_label]
+#          |
+#  RLT     | Marks an RLT entry. These labels are needed for the CDI loader
+#          | [tdd] := [the associated shared library symbol]
+#          |
+#  RREL32  | A relocation request to fill the 4 bytes before this symbol with a
+#          | 32 bit signed offset from this symbol to the symbol in [tdd]. This
+#          | is needed to deal with position independent code generation
+#          |
+#  SLED    | Used to store sled specific debug information. 
+#          | [tdd] := [a unique sled id]
+#  --------+------------
 #
 # Special labels:
 #   _CDI_SLT_tramptab: specifies the beginning of the SLT trampoline table
 #   _CDI_callback_sled: specifies the beginning of the shared library callback sled
-
-
-
+#   _CDI_abort: points to a function that prints out sled debug info and exits
 
 def gen_cdi_asm(cfg, asm_file_descrs, plt_sites, options):
     """Writes cdi compliant assembly from cfg and assembly file descriptions"""
@@ -77,8 +79,8 @@ def gen_cdi_asm(cfg, asm_file_descrs, plt_sites, options):
             # can be reached from anywhere with sleds (Function pointers can
             # point to ANY function with the same signature, even static 
             # functions in a different translation unit)
-            asm_dest.write('.globl\t"{}"\n'.format(fix_label(funct.uniq_label)))
-            asm_dest.write('"{}":\n'.format(fix_label(funct.uniq_label)))
+            asm_dest.write('.globl\t"_CDIX_F_{}"\n'.format(fix_label(funct.uniq_label)))
+            asm_dest.write('"_CDIX_F_{}":\n'.format(fix_label(funct.uniq_label)))
 
             funct.label_fixed_count = dict()
             for site in funct.sites:
@@ -177,7 +179,7 @@ def convert_call_site(site, funct, asm_line, asm_dest,
         assert len(site.targets) == 1
         target_name = fix_label(site.targets[0].uniq_label)
         times_fixed = increment_dict(funct.label_fixed_count, target_name)
-        label = '"_CDI_{}_TO_{}_{}"'.format(
+        label = '"_CDIX_RET_{}_TO_{}_{}"'.format(
                 target_name, fix_label(funct.uniq_label), str(times_fixed))
 
         globl_decl = ''
@@ -203,8 +205,8 @@ def convert_call_site(site, funct, asm_line, asm_dest,
         return_target = fix_label(funct.uniq_label)
         times_fixed = increment_dict(funct.label_fixed_count, target_name)
 
-        return_label = '_CDI_' + target_name + '_TO_' + return_target
-        return_label += '_' + str(times_fixed)
+        return_label = '_CDIX_RET_{}_TO_{}_{}'.format(target_name, return_target,
+                str(times_fixed))
 
         globl_decl = ''
         if funct.asm_filename != target.asm_filename:
@@ -214,9 +216,9 @@ def convert_call_site(site, funct, asm_line, asm_dest,
         if options['--shared-library']:
             call_sled += '\tcmpq\t$"{}(%rip)", {}\n'.format(target_name, call_operand)
         else:
-            call_sled += '\tcmpq\t$"{}", {}\n'.format(target_name, call_operand)
+            call_sled += '\tcmpq\t$"_CDIX_F_{}", {}\n'.format(target_name, call_operand)
             call_sled += '\tjne\t1f\n'
-            call_sled += '\tcall\t"{}"\n'.format(target_name)
+            call_sled += '\tcall\t"_CDIX_F_{}"\n'.format(target_name)
         call_sled += globl_decl
         call_sled += '"{}":\n'.format(return_label)
         call_sled += '\tjmp\t2f\n'
@@ -260,11 +262,11 @@ def convert_return_site(site, funct, asm_line, asm_dest, cfg,
         asm_dest.write(ret_sled)
         return
 
-    cdi_ret_prefix = '_CDI_' + fix_label(funct.uniq_label) + '_TO_'
     for target_label, multiplicity in site.targets.iteritems():
         i = 1
         while i <= multiplicity:
-            sled_label = '"{}{}_{}"'.format(cdi_ret_prefix, fix_label(target_label), str(i))
+            sled_label = '"_CDIX_RET_{}_TO_{}_{}"'.format(fix_label(funct.uniq_label),
+                    fix_label(target_label), str(i))
             ret_sled += '\tcmpq\t$' + sled_label + ', -8(%rsp)\n'
             ret_sled += '\tje\t' + sled_label + '\n'
             i += 1
@@ -317,7 +319,7 @@ def convert_plt_site(site, asm_line, funct, asm_dest):
         funct.plt_call_multiplicity[(site.targets[0], funct.uniq_label)] = 1
 
     # create label for RLT to return to
-    rlt_return_label = ('"_CDI_{}_TO_{}_{}"'
+    rlt_return_label = ('"_CDIX_PLT_{}_TO_{}_{}"'
             .format(fix_label(site.targets[0]), fix_label(funct.uniq_label), 
                 str(funct.plt_call_multiplicity[(site.targets[0], funct.uniq_label)])))
 
@@ -373,10 +375,10 @@ def write_rlt(cfg, plt_sites, asm_dest, sled_id_faucet, options):
 
         # Add sled entries for each RLT target
         for rlt_target in rlt_target_set:
-            cdi_ret_prefix = '_CDI_' + fix_label(sl_funct_uniq_label)
             i = 1
             while i <= multiplicity[(sl_funct_uniq_label, rlt_target)]:
-                sled_label = '"{}_TO_{}_{}"'.format(cdi_ret_prefix, fix_label(rlt_target) , str(i))
+                sled_label = '"_CDIX_PLT_{}_TO_{}_{}"'.format(
+                        fix_label(sl_funct_uniq_label), fix_label(rlt_target) , str(i))
                 if options['--shared-library']:
                     # the nops will be replaced with a 'lea' into r11. cdi-ld
                     # must do this because putting the 'lea' here will require

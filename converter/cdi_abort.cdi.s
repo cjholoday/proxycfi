@@ -11,7 +11,7 @@
 #   %rsi: pointer to [quad][string of len size]
 #   %rax: unsafe target address
 # 
-#   TODO: print out the unsafe target
+#   TODO: print out the unsafe target in text
 _CDI_abort:
 .LFB0:
 	.cfi_startproc
