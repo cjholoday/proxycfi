@@ -296,14 +296,14 @@ def cdi_abort(sled_id, asm_filename, dwarf_loc, try_callback_sled, options):
     if options['--shared-library']:
         pass # shared library sleds are created at load time; not now
     elif options['--sl-fptr-addrs'] and try_callback_sled:
-        cdi_abort_code += '\tmovq\t $.CDI_sled_id_' + str(sled_id) + ', %r11\n'
+        cdi_abort_code += '\tmovq\t $_CDIX_SLED_' + str(sled_id) + ', %r11\n'
         cdi_abort_code += '\tjmp\t_CDI_callback_sled\n'
     else:
-        cdi_abort_code += '\tmovq\t $.CDI_sled_id_' + str(sled_id) + ', %rsi\n'
+        cdi_abort_code += '\tmovq\t $_CDIX_SLED_' + str(sled_id) + ', %rsi\n'
         cdi_abort_code += '\tcall\t_CDI_abort\n'
 
     cdi_abort_msg = loc_str + ' id=' + str(sled_id)
-    cdi_abort_data += '.CDI_sled_id_' + str(sled_id) + ':\n'
+    cdi_abort_data += '_CDIX_SLED_' + str(sled_id) + ':\n'
     cdi_abort_data += '\t.quad\t' + str(len(cdi_abort_msg)) + '\n'
     cdi_abort_data += '\t.string\t"' + cdi_abort_msg + '"\n'
 
@@ -363,6 +363,7 @@ def write_rlt(cfg, plt_sites, asm_dest, sled_id_faucet, options):
     #asm_dest.write(rlt_jump_table)
 
     # create an RLT entry for each shared library function
+    cdi_abort_data = ''
     for sl_funct_uniq_label, rlt_target_set in rlt_return_targets.iteritems():
         rlt_entry = ''
 
@@ -395,9 +396,11 @@ def write_rlt(cfg, plt_sites, asm_dest, sled_id_faucet, options):
 
         code, data = cdi_abort(sled_id_faucet(), '',
             asm_parsing.DwarfSourceLoc(), False, options)
-        rlt_entry += code + data
+        cdi_abort_data += data
+        rlt_entry += code
         rlt_entry += '\t.size {}, .-{}\n'.format(entry_label, entry_label)
         asm_dest.write(rlt_entry)
+    asm_dest.write(cdi_abort_data)
 
 def write_slt_tramptab(asm_dest, cfg, options):
     page_size = subprocess.check_output(['getconf', 'PAGESIZE'])
