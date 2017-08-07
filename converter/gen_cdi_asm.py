@@ -40,7 +40,10 @@ from common.eprint import eprint
 #          |
 #  RREL32  | A relocation request to fill the 4 bytes before this symbol with a
 #          | 32 bit signed offset from this symbol to the symbol in [tdd]. This
-#          | is needed to deal with position independent code generation
+#          | is needed to deal with position independent code generation. The symbol
+#          | in [tdd] is prefixed with a dummy value to allow multiple relocations
+#          | with reference to the same symbol
+#          | [tdd] := [dummy_value] || _ || [symbol to relocate against]
 #          |
 #  SLED    | Used to store sled specific debug information. 
 #          | [tdd] := [a unique sled id]
@@ -256,9 +259,15 @@ def convert_return_site(site, funct, asm_line, asm_dest, cfg,
 
     ret_sled = '\taddq $8, %rsp\n'
     if options['--shared-library']:
+        # make sure each relocation symbol is unique
+        if not hasattr(funct, 'rel_id_faucet'):
+            funct.rel_id_faucet = 0
+
         # the nops will be replaced by a relative 'jmp' to an SLT trampoline
         ret_sled += '\tnop\n' * 5
-        # ret_sled += '\tjmp\t"_CDI_SLT_tramptab_{}"\n'.format(fix_label(funct.uniq_label))
+        ret_sled += '_CDIX_RREL32_{}__CDI_SLT_tramptab_{}:\n'.format(
+                funct.rel_id_faucet, fix_label(funct.uniq_label))
+        funct.rel_id_faucet += 1
         asm_dest.write(ret_sled)
         return
 
@@ -363,6 +372,8 @@ def write_rlt(cfg, plt_sites, asm_dest, sled_id_faucet, options):
     #asm_dest.write(rlt_jump_table)
 
     # create an RLT entry for each shared library function
+
+    rlt_relocation_id_faucet = 0
     cdi_abort_data = ''
     for sl_funct_uniq_label, rlt_target_set in rlt_return_targets.iteritems():
         rlt_entry = ''
@@ -385,10 +396,16 @@ def write_rlt(cfg, plt_sites, asm_dest, sled_id_faucet, options):
                     # must do this because putting the 'lea' here will require
                     # a relocation if the symbol is outside this assembly file
                     rlt_entry += '\tnop\n' * 7 
+                    rlt_entry += '"_CDI_RREL32_{}_{}:\n'.format(
+                            str(rlt_relocation_id_faucet), sled_label[1:])
                     rlt_entry += '\tcmpq\t%r11, -8(%rsp)\n'
+                    rlt_relocation_id_faucet += 1
 
                     # these nops will be replaced with a 'je' to the label
                     rlt_entry += '\tnop\n' * 6
+                    rlt_entry += '"_CDI_RREL32_{}_{}:\n'.format(
+                            str(rlt_relocation_id_faucet), sled_label[1:])
+                    rlt_relocation_id_faucet += 1
                 else:
                     rlt_entry += '\tcmpq\t$' + sled_label + ', -8(%rsp)\n'
                     rlt_entry += '\tje\t' + sled_label + '\n'
