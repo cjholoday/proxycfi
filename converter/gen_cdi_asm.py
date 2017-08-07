@@ -10,6 +10,45 @@ import os
 
 from common.eprint import eprint
 
+# CDI Label Conventions
+###########################
+# Labels are used to coordinate the jumps needed for returns and indirect calls. Labels 
+# are also used to designate SLT entries, RLT entries, and even relocations. What
+# follows is a general format for CDI labels. '||' is the concatenation symbol
+#
+#   _CDI || [deletable] || _ || [type] || _ || [type dependent data or tdd for short]
+#
+# The second field [deletable] is filled with an 'X' if the symbol is unneeded
+# at load time. [type] specifies what purpose the label is used for.
+#
+#  Type   | Label purpose
+#  -------+------------
+#  RET    | Used to coordinate return sleds and indirect call sleds. A sled label's
+#         | multiplicity is used to differentiate between other call/returns from the 
+#         | same two functions. Calls with higher VMAs have higher multiplicities
+#         | [tdd] := [called funct's uniq_label] || _TO_ || [return funct's uniq_label] || _ || [multiplicity]
+#         |
+#  F      | A global version of a function symbol. Used to call/jump from other asm units
+#         | [tdd] := [function's uniq_label]
+#         |
+#  RLT    | Marks an RLT entry. These labels are needed for the CDI loader
+#         | [tdd] := [the associated shared library symbol]
+#         |
+#  RREL32 | A relocation request to fill the 4 bytes before this symbol with a
+#         | 32 bit signed offset from this symbol to the symbol in [tdd]. This
+#         | is needed to deal with position independent code generation
+#         |
+#  SLED   | Used to store sled specific debug information. 
+#         | [tdd] := [a unique sled id]
+#  -------+------------
+#
+# Special labels:
+#   _CDI_SLT_tramptab: specifies the beginning of the SLT trampoline table
+#   _CDI_callback_sled: specifies the beginning of the shared library callback sled
+
+
+
+
 def gen_cdi_asm(cfg, asm_file_descrs, plt_sites, options):
     """Writes cdi compliant assembly from cfg and assembly file descriptions"""
 
@@ -147,7 +186,9 @@ def convert_call_site(site, funct, asm_line, asm_dest,
 
         asm_dest.write(asm_line + globl_decl + label + ':\n')
         return
-    
+    elif options['--shared-library']:
+        eprint('gen_cdi: error: function pointers are currently forbidden from CDI shared libraries')
+        sys.exit(1)
 
     call_sled = ''
     assert len(arg_str.split()) == 1
@@ -197,6 +238,7 @@ cpp_whitelist = ['_Z41__static_initialization_and_destruction_0ii',
 
 def convert_return_site(site, funct, asm_line, asm_dest, cfg,
         sled_id_faucet, abort_data, dwarf_loc, options):
+    
     # don't fix 'main' in this version
     if (funct.asm_name == 'main' or 
             funct.asm_name == '_Z41__static_initialization_and_destruction_0ii' or
@@ -210,10 +252,15 @@ def convert_return_site(site, funct, asm_line, asm_dest, cfg,
         asm_dest.write(asm_line)
         return
 
-    cdi_ret_prefix = '_CDI_' + fix_label(funct.uniq_label) + '_TO_'
-
     ret_sled = '\taddq $8, %rsp\n'
+    if options['--shared-library']:
+        # the nops will be replaced by a relative 'jmp' to an SLT trampoline
+        ret_sled += '\tnop\n' * 5
+        # ret_sled += '\tjmp\t"_CDI_SLT_tramptab_{}"\n'.format(fix_label(funct.uniq_label))
+        asm_dest.write(ret_sled)
+        return
 
+    cdi_ret_prefix = '_CDI_' + fix_label(funct.uniq_label) + '_TO_'
     for target_label, multiplicity in site.targets.iteritems():
         i = 1
         while i <= multiplicity:
@@ -222,13 +269,10 @@ def convert_return_site(site, funct, asm_line, asm_dest, cfg,
             ret_sled += '\tje\t' + sled_label + '\n'
             i += 1
 
-    if options['--shared-library']:
-        ret_sled += '\tjmp\t"_CDI_SLT_tramptab_{}"\n'.format(fix_label(funct.uniq_label))
-    else:
-        code, data = cdi_abort(sled_id_faucet(), funct.asm_filename,
-                dwarf_loc, True, options)
-        ret_sled += code
-        abort_data.append(data)
+    code, data = cdi_abort(sled_id_faucet(), funct.asm_filename,
+            dwarf_loc, True, options)
+    ret_sled += code
+    abort_data.append(data)
 
     asm_dest.write(ret_sled)
 
@@ -278,13 +322,6 @@ def convert_plt_site(site, asm_line, funct, asm_dest):
                 str(funct.plt_call_multiplicity[(site.targets[0], funct.uniq_label)])))
 
     globl_decl = '.globl\t' + rlt_return_label + '\n'
-
-    # at one point, clobbering %rbp was necessary to implement shared libraries
-    # leave this here until we're sure we don't need to restore
-    #
-    # restore_rbp = '\tmovq\t-16(%rsp), %rbp\n'
-
-    # do not restore rbp because shared libraries are not working yet
     asm_dest.write(asm_line + globl_decl + rlt_return_label + ':\n') 
 
 def write_rlt(cfg, plt_sites, asm_dest, sled_id_faucet, options):
@@ -341,11 +378,17 @@ def write_rlt(cfg, plt_sites, asm_dest, sled_id_faucet, options):
             while i <= multiplicity[(sl_funct_uniq_label, rlt_target)]:
                 sled_label = '"{}_TO_{}_{}"'.format(cdi_ret_prefix, fix_label(rlt_target) , str(i))
                 if options['--shared-library']:
-                    rlt_entry += '\tlea\t' + sled_label + '(%rip), %r11\n'
+                    # the nops will be replaced with a 'lea' into r11. cdi-ld
+                    # must do this because putting the 'lea' here will require
+                    # a relocation if the symbol is outside this assembly file
+                    rlt_entry += '\tnop\n' * 7 
                     rlt_entry += '\tcmpq\t%r11, -8(%rsp)\n'
+
+                    # these nops will be replaced with a 'je' to the label
+                    rlt_entry += '\tnop\n' * 6
                 else:
                     rlt_entry += '\tcmpq\t$' + sled_label + ', -8(%rsp)\n'
-                rlt_entry += '\tje\t' + sled_label + '\n'
+                    rlt_entry += '\tje\t' + sled_label + '\n'
                 i += 1
 
         code, data = cdi_abort(sled_id_faucet(), '',
