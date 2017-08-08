@@ -15,6 +15,8 @@ from common.eprint import eprint
 # supplied to cdi-gcc
 ##############################################################################
 
+SCRIPT_PATH = os.path.dirname(os.path.realpath(__file__))
+
 def make_sl(gcc_opts, libname):
     """Create a shared library named 'libname'
     
@@ -52,6 +54,9 @@ if __name__ == '__main__':
 
     # Enforce function prologues so that a function cannot end by jumping to another function
     gcc_opts.append('-fno-omit-frame-pointer')
+
+    # Use our own linker script to create a CDI segment and CDI sections 
+    gcc_opts.append('-Wl,--script=' + SCRIPT_PATH + '/cdi-gcc/cdi-elf64-x86-64-lscript')
 
     # Add convenience options for constructing and using shared libraries
     #

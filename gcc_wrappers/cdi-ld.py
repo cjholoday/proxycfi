@@ -256,9 +256,13 @@ subprocess.check_call(['as',
     lib_utils.get_script_dir() + '/../converter/cdi_abort.cdi.s', '-o',
     '.cdi/cdi_abort.cdi.o'])
 
-# put cdi_abort.cdi.o with the other obj files
+subprocess.check_call(['as',
+    lib_utils.get_script_dir() + '/cdi_sections.cdi.s', '-o',
+    '.cdi/cdi_sections.cdi.o'])
+
+# put cdi_abort.cdi.o and cdi_sections.cdi.o with the other obj files
 cdi_obj_fixups[-1].replacement = [
-        cdi_obj_fixups[-1].replacement, '.cdi/cdi_abort.cdi.o']
+        cdi_obj_fixups[-1].replacement, '.cdi/cdi_abort.cdi.o', '.cdi/cdi_sections.cdi.o']
 
 cdi_fixups = ar_fixups + cdi_obj_fixups + sl_fixups
 
