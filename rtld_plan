@@ -50,6 +50,7 @@ cdi-ld
     (1) Fill the SLT trampoline table with symbol table indices
     (1) Add function multiplicity information to the executable. Create a dict
         that maps every global symbol to a pair of (shared lib, multiplicity)
+    (1) do CDI relocations
     (1) Overwrite the PLT entries to have an indirect CALL. Only do this for 
         PLT entries that jump to CDI shared libraries. To get the shared library 
         of a PLT given, use the global symbol dict created for multiplicity counting
