@@ -70,6 +70,17 @@ SECTIONS
   PROVIDE (__etext = .);
   PROVIDE (_etext = .);
   PROVIDE (etext = .);
+
+  /* CDI: Create sections for the RLT and SLT, so that we can find them in elf
+   *      binaries that we create
+   */
+  .cdi_rlt : {
+    *(.cdi_rlt)
+  }
+  .cdi_slt_tramptab : {
+    *(.cdi_slt_tramptab)
+  }
+
   .rodata         : { *(.rodata .rodata.* .gnu.linkonce.r.*) }
   .rodata1        : { *(.rodata1) }
   .eh_frame_hdr : { *(.eh_frame_hdr) *(.eh_frame_entry .eh_frame_entry.*) }

@@ -53,6 +53,7 @@ from common.eprint import eprint
 #   _CDI_SLT_tramptab: specifies the beginning of the SLT trampoline table
 #   _CDI_callback_sled: specifies the beginning of the shared library callback sled
 #   _CDI_abort: points to a function that prints out sled debug info and exits
+#   _CDIX_dummy_sym: gives jmps that will be relocated by cdi-ld a dummy target
 
 def gen_cdi_asm(cfg, asm_file_descrs, plt_sites, options):
     """Writes cdi compliant assembly from cfg and assembly file descriptions"""
@@ -123,6 +124,9 @@ def gen_cdi_asm(cfg, asm_file_descrs, plt_sites, options):
             asm_dest.write('\t.text\n')
             write_rlt(cfg, plt_sites, asm_dest, sled_id_faucet, options)
             write_rlt.done = True
+
+        # jmps that will be relocated by cdi-ld need a dummy target
+        asm_dest.write('_CDIX_dummy_sym:\n\t.long 0xdeadbeef\n')
 
         if not write_slt_tramptab.done and options['--shared-library']:
             write_slt_tramptab(asm_dest, cfg, options)
@@ -263,8 +267,8 @@ def convert_return_site(site, funct, asm_line, asm_dest, cfg,
         if not hasattr(funct, 'rel_id_faucet'):
             funct.rel_id_faucet = 0
 
-        # the nops will be replaced by a relative 'jmp' to an SLT trampoline
-        ret_sled += '\tnop\n' * 5
+        # The jmp will be relocated to jmp to an SLT trampoline entry
+        ret_sled += '\tjmp _CDIX_dummy_sym\n'
         ret_sled += '_CDIX_RREL32_{}__CDI_SLT_tramptab_{}:\n'.format(
                 funct.rel_id_faucet, fix_label(funct.uniq_label))
         funct.rel_id_faucet += 1
@@ -373,6 +377,8 @@ def write_rlt(cfg, plt_sites, asm_dest, sled_id_faucet, options):
 
     # create an RLT entry for each shared library function
 
+    asm_dest.write('\t.section .cdi_rlt, "ax", @progbits\n')
+    
     rlt_relocation_id_faucet = 0
     cdi_abort_data = ''
     for sl_funct_uniq_label, rlt_target_set in rlt_return_targets.iteritems():
@@ -392,17 +398,19 @@ def write_rlt(cfg, plt_sites, asm_dest, sled_id_faucet, options):
                 sled_label = '"_CDIX_PLT_{}_TO_{}_{}"'.format(
                         fix_label(sl_funct_uniq_label), fix_label(rlt_target) , str(i))
                 if options['--shared-library']:
-                    # the nops will be replaced with a 'lea' into r11. cdi-ld
-                    # must do this because putting the 'lea' here will require
-                    # a relocation if the symbol is outside this assembly file
-                    rlt_entry += '\tnop\n' * 7 
+                    # we must do this because putting the 'lea' here will require
+                    # a relocation if the symbol is outside this assembly file, 
+                    # which the linker will complain about. Instead, we do the 
+                    # relocation ourselves in cdi-ld. Point the lea at a dummy
+                    # target for now
+                    rlt_entry += '\tlea _CDIX_dummy_sym(%rip), %r11\n'
                     rlt_entry += '"_CDI_RREL32_{}_{}:\n'.format(
                             str(rlt_relocation_id_faucet), sled_label[1:])
                     rlt_entry += '\tcmpq\t%r11, -8(%rsp)\n'
                     rlt_relocation_id_faucet += 1
 
-                    # these nops will be replaced with a 'je' to the label
-                    rlt_entry += '\tnop\n' * 6
+                    # we must do this relocation ourselves too
+                    rlt_entry += '\tje _CDIX_dummy_sym\n'
                     rlt_entry += '"_CDI_RREL32_{}_{}:\n'.format(
                             str(rlt_relocation_id_faucet), sled_label[1:])
                     rlt_relocation_id_faucet += 1
@@ -421,6 +429,7 @@ def write_rlt(cfg, plt_sites, asm_dest, sled_id_faucet, options):
 
 def write_slt_tramptab(asm_dest, cfg, options):
     page_size = subprocess.check_output(['getconf', 'PAGESIZE'])
+    asm_dest.write('\t.section .cdi_slt_tramptab, "ax", @progbits\n')
     asm_dest.write('\t.align {}\n'.format(page_size))
     asm_dest.write('\t.globl _CDI_SLT_tramptab\n')
     asm_dest.write('_CDI_SLT_tramptab:\n')
@@ -428,8 +437,8 @@ def write_slt_tramptab(asm_dest, cfg, options):
         slt_entry_label = '"_CDI_SLT_tramptab_{}"'.format(fix_label(funct.uniq_label))
         asm_dest.write('\t.globl {}\n'.format(slt_entry_label))
         asm_dest.write(slt_entry_label + ':\n')
-        asm_dest.write('\tjmp 0\n')
-        asm_dest.write('\tnop\n' * 3)
+        asm_dest.write('\tjmp _CDIX_dummy_sym\n')
+        asm_dest.write('\tnop\n' * 3) # this will hold a symtab index
 
     asm_dest.write('\t.size _CDI_SLT_tramptab, .-_CDI_SLT_tramptab\n')
     asm_dest.write('\t.align {}\n'.format(page_size))
@@ -490,5 +499,5 @@ def write_callback_sled(asm_dest, options):
     asm_dest.write(callback_sled)
 
 def fix_label(label):
-    return label.replace('@', '_AT_').replace('/', '__').replace('.fake.o', '.cdi.s')
+    return label.replace('@PLT', '').replace('/', '__').replace('.fake.o', '.cdi.s')
 
