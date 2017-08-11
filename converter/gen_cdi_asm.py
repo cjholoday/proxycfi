@@ -423,7 +423,6 @@ def write_slt_tramptab(asm_dest, cfg, options):
     page_size = subprocess.check_output(['getconf', 'PAGESIZE'])
     asm_dest.write('\t.align {}\n'.format(page_size))
     asm_dest.write('\t.globl _CDI_SLT_tramptab\n')
-    asm_dest.write('\t.type _CDI_SLT_tramptab, @function\n')
     asm_dest.write('_CDI_SLT_tramptab:\n')
     for funct in cfg:
         slt_entry_label = '"_CDI_SLT_tramptab_{}"'.format(fix_label(funct.uniq_label))

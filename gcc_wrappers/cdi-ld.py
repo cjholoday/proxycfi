@@ -14,8 +14,11 @@ import normify
 import lib_utils
 import fake_types
 import error
+import elf_fixup
+
 from error import fatal_error
 from common.eprint import eprint
+import common.elf
 
 def chop_suffix(string, cutoff = ''):
     if cutoff == '':
@@ -288,3 +291,10 @@ if not lspec.target_is_shared:
                 .format(lib_utils.get_vaddr('__restore_rt'), ', '.join(restore_rt_vaddrs)))
 
 restore_original_objects()
+
+elf_fixup.cdi_fixup_elf(lspec)
+#binary = common.elf.Elf64(lspec.target, fatal_error)
+#print binary.find_section('.cdi_strtab')
+
+#for sym in binary.get_symbols():
+#    print hex(sym.st_value), common.elf.strtab_cstring(binary.strtab, sym.st_name)

@@ -229,6 +229,7 @@ SECTIONS
   .gnu.attributes 0 : { KEEP (*(.gnu.attributes)) }
   /DISCARD/ : { *(.note.GNU-stack) *(.gnu_debuglink) *(.gnu.lto_*) }
   
+  /* CDI: add load time metadata sections */
   . = SEGMENT_START("cdi", cdi_segment_start);
   . = ALIGN(64 / 8);
   .cdi_strtab : {
