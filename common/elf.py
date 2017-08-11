@@ -52,13 +52,14 @@ class Elf64:
         raises Elf64.MissingSection if the section cannot be found
         """
         print "attempting to find '{}'".format(wanted_sect)
-        if hasattr(self, 'sect_headers'):
+        if hasattr(self, 'sect_headers_dict'):
             try:
-                return self.sect_headers[wanted_sect]
+                return self.sect_headers_dict[wanted_sect]
             except KeyError:
                 raise Elf64.MissingSection
 
-        self.sect_headers = dict()
+        self.sect_headers_dict = dict()
+        self.sect_headers = []
         with open(self.path, 'rb') as elf:
             elf_magic = elf.read(4)
             if elf_magic != '\x7f\x45\x4c\x46':
@@ -98,10 +99,19 @@ class Elf64:
                 read = elf.read(64)
                 sect_header = SectionHeader(read)
                 sect_name = strtab_cstring(shstrtab, sect_header.sh_name)
-                self.sect_headers[sect_name] = sect_header
+                self.sect_headers_dict[sect_name] = sect_header
+                self.sect_headers.append(sect_header)
 
         # self.sect_headers is set up. Call ourselves to finish the job
         return self.find_section(wanted_sect)
+
+    def shtab(self, sect_header_index):
+        if not hasattr(self, 'sect_headers'):
+            try:
+                self.find_section('')
+            except Elf64.MissingSection:
+                pass
+        return self.sect_headers[sect_header_index]
 
     def init_strtab(self, strtab_name):
         """Sets self.[strtab_name] if not already initialized"""
@@ -202,7 +212,11 @@ class Elf64:
         return elfs
 
     def fixup(self, elf_fixups):
-        pass
+        with open(self.path, 'r+b') as elf:
+            for fixup in elf_fixups:
+                print 'writing at offset {}'.format(hex(fixup.offset))
+                elf.seek(fixup.offset)
+                elf.write(fixup.patch)
 
 
 class Rela:

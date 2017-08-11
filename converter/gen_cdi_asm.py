@@ -45,6 +45,12 @@ from common.eprint import eprint
 #          | with reference to the same symbol
 #          | [tdd] := [dummy_value] || _ || [symbol to relocate against]
 #          |
+#  RREL32P | Like RREL32 but an additional prefix is written before the signed
+#          | offset. The prefix is written in hex, and data is overwritten n + 4
+#          | before this symbol where n is the size of the prefix in bytes. This 
+#          | is useful to write opcodes in addition to a signed offset
+#          | [tdd] := [prefix] || _ || [dummy_value] || _ || [symbol to relocate against]
+#          |
 #  SLED    | Used to store sled specific debug information. 
 #          | [tdd] := [a unique sled id]
 #  --------+------------
@@ -268,9 +274,9 @@ def convert_return_site(site, funct, asm_line, asm_dest, cfg,
             funct.rel_id_faucet = 0
 
         # The jmp will be relocated to jmp to an SLT trampoline entry
-        ret_sled += '\tjmp _CDIX_dummy_sym\n'
-        ret_sled += '_CDIX_RREL32_{}__CDI_SLT_tramptab_{}:\n'.format(
-                funct.rel_id_faucet, fix_label(funct.uniq_label))
+        ret_sled += '\tnop\n' * 5
+        ret_sled += '_CDIX_RREL32P_{}_{}__CDI_SLT_tramptab_{}:\n'.format(
+                'e9', funct.rel_id_faucet, fix_label(funct.uniq_label))
         funct.rel_id_faucet += 1
         asm_dest.write(ret_sled)
         return
@@ -307,7 +313,7 @@ def cdi_abort(sled_id, asm_filename, dwarf_loc, try_callback_sled, options):
 
     cdi_abort_code = cdi_abort_data = ''
     if options['--shared-library']:
-        pass # shared library sleds are created at load time; not now
+        pass # Don't build jumps to _CDI_abort for now
     elif options['--sl-fptr-addrs'] and try_callback_sled:
         cdi_abort_code += '\tmovq\t $_CDIX_SLED_' + str(sled_id) + ', %r11\n'
         cdi_abort_code += '\tjmp\t_CDI_callback_sled\n'
@@ -403,16 +409,16 @@ def write_rlt(cfg, plt_sites, asm_dest, sled_id_faucet, options):
                     # which the linker will complain about. Instead, we do the 
                     # relocation ourselves in cdi-ld. Point the lea at a dummy
                     # target for now
-                    rlt_entry += '\tlea _CDIX_dummy_sym(%rip), %r11\n'
-                    rlt_entry += '"_CDI_RREL32_{}_{}:\n'.format(
-                            str(rlt_relocation_id_faucet), sled_label[1:])
+                    rlt_entry += '\tnop\n' * 7
+                    rlt_entry += '"_CDIX_RREL32P_{}_{}_{}:\n'.format(
+                            '4c8d1d', str(rlt_relocation_id_faucet), sled_label[1:])
                     rlt_entry += '\tcmpq\t%r11, -8(%rsp)\n'
                     rlt_relocation_id_faucet += 1
 
                     # we must do this relocation ourselves too
-                    rlt_entry += '\tje _CDIX_dummy_sym\n'
-                    rlt_entry += '"_CDI_RREL32_{}_{}:\n'.format(
-                            str(rlt_relocation_id_faucet), sled_label[1:])
+                    rlt_entry += '\tnop\n' * 6
+                    rlt_entry += '"_CDIX_RREL32P_{}_{}_{}:\n'.format(
+                            '0f84', str(rlt_relocation_id_faucet), sled_label[1:])
                     rlt_relocation_id_faucet += 1
                 else:
                     rlt_entry += '\tcmpq\t$' + sled_label + ', -8(%rsp)\n'
