@@ -5,6 +5,7 @@ import spec
 import os
 import struct
 import itertools
+import subprocess
 
 class GlobalMultiplicity:
     def __init__(self, sym_name, multiplicity, is_claimed):
@@ -40,11 +41,16 @@ def cdi_fixup_elf(lspec):
     rlt_sh = target_elf.find_section('.cdi_rlt')
     rlt_fixups = []
 
+    # save all the removable symbol names for objcopy 
+    removable_syms_file = open('.cdi/removable_cdi_syms', 'w')
+    
     # maps each [tdd] of an RREL32 CDI symbol to a list of fixups
     # See cdi/converter/gen_cdi_asm.py for info on RREL32 symbols
     rrel32_fixup_dict = dict() 
     for sym in target_elf.get_symbols('.symtab'):
         sym_str = common.elf.strtab_cstring(target_elf.strtab, sym.st_name)
+        if sym_str.startswith('_CDIX_'):
+            removable_syms_file.write(sym_str + '\n')
         if sym_str.startswith('_CDI_RLT_'):
             rlt_entry_offset = sym.st_value - rlt_sh.sh_addr + rlt_sh.sh_offset
             plt_ret_addr = plt_ret_addrs[sym_str[len('_CDI_RLT_'):]]
@@ -98,6 +104,10 @@ def cdi_fixup_elf(lspec):
     plt_fixups = cdi_plt_fixups(target_elf, globl_funct_mults, plt_sym_strs)
 
     target_elf.fixup(rlt_fixups + rrel32_fixups + plt_fixups)
+
+    removable_syms_file.close()
+    out = subprocess.check_output(['objcopy', '--strip-symbols={}/.cdi/removable_cdi_syms'.format(
+        os.getcwd()), lspec.target])
             
 
 def extract_plt_sym_strs(elf):
