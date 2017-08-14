@@ -467,6 +467,9 @@ def write_slt_tramptab(asm_dest, cfg, options):
     asm_dest.write('\t.globl _CDI_SLT_tramptab\n')
     asm_dest.write('_CDI_SLT_tramptab:\n')
 
+    # begin by writing the number of entries in the trampoline table
+    asm_dest.write('\t.quad {}\n'.format(cfg.size()))
+
     cdi_strtab = '\x00'
     for funct in cfg:
         slt_entry_label = '"_CDI_SLT_tramptab_{}"'.format(fix_label(funct.uniq_label))
@@ -484,7 +487,7 @@ def write_slt_tramptab(asm_dest, cfg, options):
 
         # write the .cdi_strtab index into the 3 bytes after the trampoline jmp
         for byte in struct.pack('<I', len(cdi_strtab))[:-1]:
-            asm_dest.write('\t.byte 0x{}\n'.format(struct.unpack('B', byte)[0]))
+            asm_dest.write('\t.byte {}\n'.format(hex(struct.unpack('B', byte)[0])))
         cdi_strtab += funct.asm_name + '\x00'
 
 

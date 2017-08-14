@@ -25,12 +25,6 @@ def cdi_fixup_elf(lspec):
     rlt_fixups    = get_rlt_fixups(target_elf, plt_sym_strs)
     target_elf.fixup(rrel32_fixups + rlt_fixups)
 
-    write_removable_syms(target_elf, '.cdi/removable_cdi_syms')
-    try:
-        subprocess.check_call(['objcopy',
-            '--strip-symbols={}/.cdi/removable_cdi_syms'.format(os.getcwd()), lspec.target])
-    except subprocess.CalledProcessError:
-        error.fatal_error("couldn't remove symbols from target '{}'".format(lspec.target))
 
     globl_funct_mults = multtab.get_funct_mults(target_elf, lspec)
 
@@ -39,10 +33,18 @@ def cdi_fixup_elf(lspec):
         del globl_funct_mults['_CDI_abort']
 
     plt_fixups = get_plt_fixups(target_elf, globl_funct_mults, plt_sym_strs)
-    multtab.build_multtab(globl_funct_mults, '.cdi/cdi_multtab')
+
+    if not lspec.target_is_shared:
+        multtab.build_multtab(target_elf, lspec, globl_funct_mults, '.cdi/cdi_multtab')
 
     for sym, gmult in globl_funct_mults.iteritems():
-        print '{}\t\t{}\t{}'.format(gmult.sym, gmult.mult, gmult.is_claimed)
+        print '{}\t\t{}\t{}'.format(gmult.sym, gmult.mult, gmult.is_claimed) 
+    write_removable_syms(target_elf, '.cdi/removable_cdi_syms')
+    try:
+        subprocess.check_call(['objcopy',
+            '--strip-symbols={}/.cdi/removable_cdi_syms'.format(os.getcwd()), lspec.target])
+    except subprocess.CalledProcessError:
+        error.fatal_error("couldn't remove symbols from target '{}'".format(lspec.target))
 
 def get_slt_tramptab_fixups(elf, globl_funct_mults):
     pass

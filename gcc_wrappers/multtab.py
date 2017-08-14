@@ -1,6 +1,9 @@
 import __init__
 
+import error
 import common.elf
+import struct
+import lib_utils
 
 from common.elf import strtab_grab
 from common.elf import strtab_startswith
@@ -15,8 +18,40 @@ class GlobalMultiplicity:
         # this symbol should not be modified
         self.is_claimed = is_claimed 
 
-def build_multtab(globl_funct_mults, write_path):
-    pass
+def build_multtab(target_elf, lspec, globl_funct_mults, write_path):
+    with open(write_path, 'w') as multtab:
+        for elf in target_elf.get_deps(lspec):
+            try:
+                slt_tramptab_sh = elf.find_section('.cdi_slt_tramptab')
+                elf.init_strtab('.cdi_strtab')
+            except common.elf.Elf64.MissingSection:
+                continue # this file is not CDI
+
+            elf_file = open(elf.path, 'r')
+            elf_file.seek(slt_tramptab_sh.sh_offset)
+            num_tramptab_entries = struct.unpack('<Q', elf_file.read(8))[0]
+
+            total_mult = 0
+            mult_bytes = ''
+            for idx in xrange(num_tramptab_entries):
+                cdi_strtab_idx_pieces = struct.unpack('<xxxxxBBB', elf_file.read(8))
+                cdi_strtab_idx = (cdi_strtab_idx_pieces[0] 
+                        + (cdi_strtab_idx_pieces[1] << 8)
+                        + (cdi_strtab_idx_pieces[2] << 16))
+                sym_str = strtab_grab(elf.cdi_strtab, cdi_strtab_idx)
+
+                try:
+                    globl_sym = globl_funct_mults[sym_str]
+                except KeyError:
+                    error.fatal_error("'{}' not found in global multiplicity dict'"
+                            .format(sym_str))
+                total_mult += globl_sym.mult
+                mult_bytes += struct.pack('<I', globl_sym.mult)
+            multtab.write(lib_utils.linker_name(elf.path))
+            multtab.write(total_mult)
+            multtab.write(num_tramptab_entries)
+            multtab.write(mult_bytes)
+            elf_file.close()
 
 def get_funct_mults(target_elf, lspec):
     """Returns a dict mapping {symbol string -> GlobalMultiplicity object}"""
@@ -26,7 +61,6 @@ def get_funct_mults(target_elf, lspec):
 
     elf_deps = target_elf.get_deps(lspec)
     for elf in elf_deps:
-        print elf.path
         try:
             elf.find_section('.cdi')
         except common.elf.Elf64.MissingSection:

@@ -20,6 +20,10 @@ class FunctControlFlowGraph:
         uniq_label = funct.asm_filename + '.' + funct.asm_name
         self._funct_vertices[uniq_label] = funct
 
+    def size(self):
+        """Returns the number of functions in the CFG"""
+        return len(self._funct_vertices)
+
     def funct(self, uniq_label):
         return self._funct_vertices[uniq_label]
 
