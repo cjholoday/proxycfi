@@ -27,7 +27,7 @@ def cdi_fixup_elf(lspec):
     write_removable_syms(target_elf, '.cdi/removable_cdi_syms')
     try:
         subprocess.check_call(['objcopy',
-            '--strip-symbols={}/.cdi/removable_cdi_syms'.format( os.getcwd()), lspec.target])
+            '--strip-symbols={}/.cdi/removable_cdi_syms'.format(os.getcwd()), lspec.target])
     except subprocess.CalledProcessError:
         error.fatal_error("couldn't remove symbols from target '{}'".format(lspec.target))
 

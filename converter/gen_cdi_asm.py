@@ -307,13 +307,22 @@ def cdi_abort(sled_id, asm_filename, dwarf_loc, try_callback_sled, options):
     placed away from code so that the verifier works correctly.
     """
 
+
     loc_str = asm_filename.replace('.fake.o', '.cdi.s')
     if dwarf_loc.valid():
         loc_str = '{}:{}/{}'.format(str(dwarf_loc), os.path.basename(os.getcwd()), loc_str)
 
     cdi_abort_code = cdi_abort_data = ''
     if options['--shared-library']:
-        pass # Don't build jumps to _CDI_abort for now
+        # prepare %rsi with sled info (this is lea)
+        cdi_abort_code += '\tnop\n' * 7
+        cdi_abort_code += '"_CDIX_RREL32P_{}_{}_{}":\n'.format(
+                '4c8d1d', str(sled_id), '_CDIX_SLED_' + str(sled_id))
+
+        # jump to _CDI_abort
+        cdi_abort_code += '\tnop\n' * 5
+        cdi_abort_code += '"_CDIX_RREL32P_{}_{}_{}":\n'.format(
+                'e9', str(sled_id), '_CDI_abort')
     elif options['--sl-fptr-addrs'] and try_callback_sled:
         cdi_abort_code += '\tmovq\t $_CDIX_SLED_' + str(sled_id) + ', %r11\n'
         cdi_abort_code += '\tjmp\t_CDI_callback_sled\n'
