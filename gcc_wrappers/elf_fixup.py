@@ -1,143 +1,112 @@
-import lib_utils
-import common.elf
-import error
+import __init__
+
 import spec
 import os
 import struct
 import itertools
 import subprocess
 
-class GlobalMultiplicity:
-    def __init__(self, sym_name, multiplicity, is_claimed):
-        self.sym = sym_name
-        self.mult = multiplicity
+import error
+import lib_utils
+import common.elf
+import multtab
 
-        # True if claimed by a CDI shared library. This is used to check if a
-        # symbol belongs to a CDI code object. If not, then the PLT entry for
-        # this symbol should not be modified
-        self.is_claimed = is_claimed 
+from common.elf import strtab_grab
+from common.elf import strtab_startswith
 
 def cdi_fixup_elf(lspec):
     """Prepare an elf binary for the CDI loader by overwriting/adding data"""
-    # maps a global symbol name to a GlobalMultiplicity object
-    globl_funct_mults = dict()
 
     target_elf = common.elf.Elf64(lspec.target, error.fatal_error)
+    plt_sym_strs  = extract_plt_sym_strs(target_elf)
 
-    target_fixups = [] 
-    elf_deps = target_elf.get_deps(lspec)
-    for elf in elf_deps:
-        print elf.path
-        try:
-            elf.find_section('.cdi')
-        except common.elf.Elf64.MissingSection:
-            continue # this file isn't CDI. Do not get metadata from it
-        for sym in elf.get_symbols('.symtab'):
-            update_mults(sym, elf.strtab, globl_funct_mults)
+    rrel32_fixups = get_rrel32_fixups(target_elf)
+    rlt_fixups    = get_rlt_fixups(target_elf, plt_sym_strs)
+    target_elf.fixup(rrel32_fixups + rlt_fixups)
 
-    plt_sym_strs = extract_plt_sym_strs(target_elf)
-    plt_ret_addrs = get_plt_ret_addr_dict(target_elf, plt_sym_strs)
+    write_removable_syms(target_elf, '.cdi/removable_cdi_syms')
+    try:
+        subprocess.check_call(['objcopy',
+            '--strip-symbols={}/.cdi/removable_cdi_syms'.format( os.getcwd()), lspec.target])
+    except subprocess.CalledProcessError:
+        error.fatal_error("couldn't remove symbols from target '{}'".format(lspec.target))
 
-    rlt_sh = target_elf.find_section('.cdi_rlt')
-    rlt_fixups = []
+    globl_funct_mults = multtab.get_funct_mults(target_elf, lspec)
 
-    # save all the removable symbol names for objcopy 
-    removable_syms_file = open('.cdi/removable_cdi_syms', 'w')
+    # _CDI_abort multiplicity doesn't affect SLT size, so remove info on it
+    if '_CDI_abort' in globl_funct_mults:
+        del globl_funct_mults['_CDI_abort']
+
+    plt_fixups = get_plt_fixups(target_elf, globl_funct_mults, plt_sym_strs)
+    multtab.build_multtab(globl_funct_mults, '.cdi/cdi_multtab')
+
+    for sym, gmult in globl_funct_mults.iteritems():
+        print '{}\t\t{}\t{}'.format(gmult.sym, gmult.mult, gmult.is_claimed)
+
+def get_rlt_fixups(elf, plt_sym_strs):
+    plt_ret_addrs = get_plt_ret_addr_dict(elf, plt_sym_strs)
+    rlt_sh = elf.find_section('.cdi_rlt')
     
-    # maps each [tdd] of an RREL32 CDI symbol to a list of fixups
-    # See cdi/converter/gen_cdi_asm.py for info on RREL32 symbols
-    rrel32_fixup_dict = dict() 
-    for sym in target_elf.get_symbols('.symtab'):
-        sym_str = common.elf.strtab_cstring(target_elf.strtab, sym.st_name)
-        if sym_str.startswith('_CDIX_'):
-            removable_syms_file.write(sym_str + '\n')
-        if sym_str.startswith('_CDI_RLT_'):
+    rlt_fixups = []
+    for sym in elf.get_symbols('.symtab'):
+        if strtab_startswith(elf.strtab, sym.st_name, '_CDI_RLT_'):
+            sym_str = strtab_grab(elf.strtab, sym.st_name)
             rlt_entry_offset = sym.st_value - rlt_sh.sh_addr + rlt_sh.sh_offset
             plt_ret_addr = plt_ret_addrs[sym_str[len('_CDI_RLT_'):]]
 
             # associate PLT callq return address with this RLT entry
             rlt_fixups.append(common.elf.Elf64.Fixup(
                 rlt_entry_offset - 8, struct.pack('<Q', plt_ret_addr)))
-        elif sym_str.startswith('_CDIX_RREL32'):
-            tdd_sym_str = ''
-            binary_prefix = ''
-            if sym_str[len('_CDIX_RREL32')] == 'P':
-                tdd = sym_str[len('_CDIX_RREL32P_'):]
+    return rlt_fixups
 
-                # skip the dummy info in [tdd]
-                hex_prefix, garbage, tdd_sym_str = tdd.split('_', 2)
+def get_rrel32_fixups(elf):
+    # maps each [tdd] of an RREL32 CDI symbol to a list of fixups
+    # See cdi/converter/gen_cdi_asm.py for info on RREL32 symbols
+    rrel32_fixup_dict = dict() 
+    for sym in elf.get_symbols('.symtab'):
+        # only look at RREL32 symbols
+        if not strtab_startswith(elf.strtab, sym.st_name, '_CDIX_RREL32'):
+            continue
 
-                # split the hex prefix into equal 2 character chunks, then ints
-                hex_prefix = [int(hex_prefix[i:i+2], 16) for i in range(0, len(hex_prefix), 2)]
-                binary_prefix = ''.join([chr(part) for part in hex_prefix])
-            else:
-                tdd_sym_str = sym_str[sym_str.find('_',len('_CDIX_RREL32_')) + 1:]
+        sym_str = strtab_grab(elf.strtab, sym.st_name)
 
-            sym_sh = target_elf.shtab(sym.st_shndx)
-            sym_offset = sym.st_value - sym_sh.sh_addr + sym_sh.sh_offset
+        tdd_sym_str = ''
+        binary_prefix = ''
+        if sym_str[len('_CDIX_RREL32')] == 'P':
+            tdd = sym_str[len('_CDIX_RREL32P_'):]
 
-            rrel32_fixup = common.elf.Elf64.Fixup(sym_offset - 4 - len(binary_prefix), binary_prefix)
-            rrel32_fixup.vaddr = sym.st_value
+            # skip the dummy info in [tdd]
+            hex_prefix, garbage, tdd_sym_str = tdd.split('_', 2)
 
-            try:
-                rrel32_fixup_dict[tdd_sym_str].append(rrel32_fixup)
-            except KeyError:
-                rrel32_fixup_dict[tdd_sym_str] = [rrel32_fixup]
-        elif sym.st_value == 0: # only update multiplicities of existing symbols
-            update_mults(sym, target_elf.strtab, globl_funct_mults)
+            # split the hex prefix into equal 2 character chunks, then ints
+            hex_prefix = [int(hex_prefix[i:i+2], 16) for i in range(0, len(hex_prefix), 2)]
+            binary_prefix = ''.join([chr(part) for part in hex_prefix])
+        else:
+            tdd_sym_str = sym_str[sym_str.find('_',len('_CDIX_RREL32_')) + 1:]
+
+        sym_sh = elf.shtab(sym.st_shndx)
+        sym_offset = sym.st_value - sym_sh.sh_addr + sym_sh.sh_offset
+
+        rrel32_fixup = common.elf.Elf64.Fixup(
+            sym_offset - 4 - len(binary_prefix), binary_prefix)
+        rrel32_fixup.vaddr = sym.st_value
+
+        try:
+            rrel32_fixup_dict[tdd_sym_str].append(rrel32_fixup)
+        except KeyError:
+            rrel32_fixup_dict[tdd_sym_str] = [rrel32_fixup]
 
     # complete the rrel32 fixups by looking for the accompanying symbols
-    for sym in target_elf.get_symbols('.symtab'):
-        sym_str = common.elf.strtab_cstring(target_elf.strtab, sym.st_name)
+    for sym in elf.get_symbols('.symtab'):
+        sym_str = strtab_grab(elf.strtab, sym.st_name)
         if sym_str in rrel32_fixup_dict:
             for fixup in rrel32_fixup_dict[sym_str]:
                 fixup.patch += struct.pack('<i', sym.st_value - fixup.vaddr)
 
-    # _CDI_abort multiplicity doesn't affect SLT size, so remove info on it
-    if '_CDI_abort' in globl_funct_mults:
-        del globl_funct_mults['_CDI_abort']
-        
-    for sym, gmult in globl_funct_mults.iteritems():
-        print '{}\t\t{}\t{}'.format(gmult.sym, gmult.mult, gmult.is_claimed)
+    # collapse the lists of fixups into a single list of fixups
+    return list(itertools.chain.from_iterable(rrel32_fixup_dict.values()))
 
-    rrel32_fixups = list(itertools.chain.from_iterable(rrel32_fixup_dict.values()))
-    plt_fixups = cdi_plt_fixups(target_elf, globl_funct_mults, plt_sym_strs)
-
-    target_elf.fixup(rlt_fixups + rrel32_fixups + plt_fixups)
-
-    removable_syms_file.close()
-    out = subprocess.check_output(['objcopy', '--strip-symbols={}/.cdi/removable_cdi_syms'.format(
-        os.getcwd()), lspec.target])
-            
-
-def extract_plt_sym_strs(elf):
-    """Returns a list of names. Each name is associated with a PLT entry, respectively"""
-
-    plt_relocs = elf.get_rela_relocs('.rela.plt')
-    if plt_relocs == []:
-        return []
-
-    reloc_strs = []
-    for sym in elf.get_symbols('.dynsym'):
-        if sym.idx == (plt_relocs[len(reloc_strs)].r_info >> 32):
-            reloc_strs.append(common.elf.strtab_cstring(elf.dynstr, sym.st_name))
-        if len(plt_relocs) == len(reloc_strs):
-            return reloc_strs
-    else:
-        error.fatal_error('could not find a string for each plt relocation')
-
-def get_plt_ret_addr_dict(elf, plt_sym_strs):
-    """Returns a dict mapping {PLT symbol name -> address after call}"""
-    plt_sh = elf.find_section('.plt')
-
-    plt_ret_addrs = dict()
-    for idx, sym_str in enumerate(plt_sym_strs):
-        entry_vaddr = plt_sh.sh_addr + plt_sh.sh_entsize * (idx + 1)
-        plt_ret_addrs[sym_str] = entry_vaddr + 6 # after the callq
-    return plt_ret_addrs
-
-
-def cdi_plt_fixups(elf, globl_funct_mults, plt_sym_strs):
+def get_plt_fixups(elf, globl_funct_mults, plt_sym_strs):
     """Returns fixups to replace each CDI plt's indirect jump with an indirect call 
     
     PLT entries that are associated with a non CDI shared library (if any exist)
@@ -162,45 +131,37 @@ def cdi_plt_fixups(elf, globl_funct_mults, plt_sym_strs):
             # in the function multiplicity table. Do not fix up this PLT
             pass 
     return fixups
+
+def extract_plt_sym_strs(elf):
+    """Returns the name of each .plt entry, in order"""
+
+    plt_relocs = elf.get_rela_relocs('.rela.plt')
+    if plt_relocs == []:
+        return []
+
+    reloc_strs = []
+    for sym in elf.get_symbols('.dynsym'):
+        if sym.idx == (plt_relocs[len(reloc_strs)].r_info >> 32):
+            reloc_strs.append(strtab_grab(elf.dynstr, sym.st_name))
+        if len(plt_relocs) == len(reloc_strs):
+            return reloc_strs
+    else:
+        error.fatal_error('could not find a string for each plt relocation')
+
+def get_plt_ret_addr_dict(elf, plt_sym_strs):
+    """Returns a dict mapping {PLT symbol name -> address after call}"""
+    plt_sh = elf.find_section('.plt')
+
+    plt_ret_addrs = dict()
+    for idx, sym_str in enumerate(plt_sym_strs):
+        entry_vaddr = plt_sh.sh_addr + plt_sh.sh_entsize * (idx + 1)
+        plt_ret_addrs[sym_str] = entry_vaddr + 6 # after the callq
+    return plt_ret_addrs
     
-def update_mults(sym, strtab, globl_funct_mults):
-    sym_type = sym.st_info & 15 # take the lower four bits
-    sym_bind = (sym.st_info & 240) >> 4 # take the higher four bits
 
-    # insist that the symbol is for a function of global scope
-    if sym_type != 2 or ((not sym_bind == 1) and (not sym_bind == 2)):
-        return
-
-    # if this symbol is defined elsewhere update the multiplicity. Otherwise,
-    # claim the symbol for this code object
-    sym_name = common.elf.strtab_cstring(strtab, sym.st_name)
-    sym_name = strip_versioning(sym_name)
-    if sym.st_value == 0: 
-        try:
-            globl_funct_mults[sym_name].mult += 1
-        except KeyError:
-            globl_funct_mults[sym_name] = GlobalMultiplicity(sym_name, 1, False)
-    else:
-        try:
-            globl_funct_mults[sym_name].is_claimed = True
-        except KeyError:
-            globl_funct_mults[sym_name] = GlobalMultiplicity(sym_name, 0, True)
-
-def strip_versioning(sym_name):
-    versioning_idx = sym_name.find('@@')
-    if versioning_idx == -1:
-        return sym_name
-    else:
-        return sym_name[:versioning_idx]
-        
-
-
-def process_symbol(sym, fixups):
-    pass
-
-
-            
-
-
-
-
+def write_removable_syms(elf, path):
+    """Saves all the removable symbol names in filename at path"""
+    with open(path, 'w') as log:
+        for sym in elf.get_symbols('.symtab'):
+            if strtab_startswith(elf.strtab, sym.st_name, '_CDIX_'):
+                log.write(strtab_grab(elf.strtab, sym.st_name) + '\n')

@@ -98,7 +98,7 @@ class Elf64:
             for idx in xrange(num_sect_headers):
                 read = elf.read(64)
                 sect_header = SectionHeader(read)
-                sect_name = strtab_cstring(shstrtab, sect_header.sh_name)
+                sect_name = strtab_grab(shstrtab, sect_header.sh_name)
                 self.sect_headers_dict[sect_name] = sect_header
                 self.sect_headers.append(sect_header)
 
@@ -165,7 +165,7 @@ class Elf64:
                 d_tag = struct.unpack('<q', elf.read(8))[0]
                 if d_tag == 1:
                     d_val = struct.unpack('<Q', elf.read(8))[0]
-                    sonames.append(strtab_cstring(self.dynstr, d_val))
+                    sonames.append(strtab_grab(self.dynstr, d_val))
         return sonames
 
     def get_deps(self, lspec):
@@ -192,7 +192,11 @@ class Elf64:
             if os.path.isabs(sl_name):
                 sl_path = sl_name
             else:
-                # we're given a SONAME. Get the path
+                # Do not add ld.so as a dependency
+                if gcc_wrappers.lib_utils.sl_linker_name(sl_name) == 'ld-linux-x86-64.so':
+                    continue
+
+                # we were given a SONAME. Get the path
                 sl_path = gcc_wrappers.spec.find_lib(sl_name, lspec)
             sl_realpath = os.path.realpath(sl_path)
 
@@ -201,13 +205,6 @@ class Elf64:
                     continue
             except KeyError:
                 paths_seen[sl_realpath] = True
-                if gcc_wrappers.lib_utils.sl_linker_name(sl_name) == 'libc.so':
-                    # End recursion at libc.so so that ld.so is not added to the 
-                    # dependency list. For now, ld.so will remain non-CDI since it will
-                    # only be used at load time. dlopen and friends are forbidden for
-                    # CDI code
-                    elfs.append(Elf64(sl_realpath, self.error_callback))
-                    continue
                 elfs += self.get_deps_helper(lspec, sl_realpath, paths_seen)
         return elfs
 
@@ -224,6 +221,22 @@ class Rela:
         self.r_offset, self.r_info, self.r_addend = struct.unpack('<QQq', buf)
 
 
-def strtab_cstring(strtab, idx):
+def strtab_grab(strtab, idx):
     """Returns the string at index idx of strtab"""
     return strtab[idx:strtab.find('\x00', idx)]
+
+def strtab_startswith(strtab, start_idx, desired):
+    """Returns true if string at idx starts with desired"""
+    for idx in xrange(start_idx, start_idx + len(desired)):
+        if strtab[idx] != desired[idx - start_idx]:
+            return False
+    return True
+
+def strip_versioning(sym_name):
+    versioning_idx = sym_name.find('@@')
+    if versioning_idx == -1:
+        return sym_name
+    else:
+        return sym_name[:versioning_idx]
+
+
