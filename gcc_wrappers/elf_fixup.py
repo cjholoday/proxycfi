@@ -11,6 +11,7 @@ import lib_utils
 import common.elf
 import multtab
 
+from common.eprint import eprint
 from common.elf import strtab_grab
 from common.elf import strtab_startswith
 
@@ -44,8 +45,13 @@ def cdi_fixup_elf(lspec):
         print '{}\t\t{}\t{}'.format(gmult.sym, gmult.mult, gmult.is_claimed)
 
 def get_rlt_fixups(elf, plt_sym_strs):
+    try:
+        rlt_sh = elf.find_section('.cdi_rlt')
+    except common.elf.Elf64.MissingSection:
+        eprint('cdi-ld: warning: no .cdi_rlt section in target')
+        return []
+
     plt_ret_addrs = get_plt_ret_addr_dict(elf, plt_sym_strs)
-    rlt_sh = elf.find_section('.cdi_rlt')
     
     rlt_fixups = []
     for sym in elf.get_symbols('.symtab'):

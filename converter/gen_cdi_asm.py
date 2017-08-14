@@ -59,7 +59,6 @@ from common.eprint import eprint
 #   _CDI_SLT_tramptab: specifies the beginning of the SLT trampoline table
 #   _CDI_callback_sled: specifies the beginning of the shared library callback sled
 #   _CDI_abort: points to a function that prints out sled debug info and exits
-#   _CDIX_dummy_sym: gives jmps that will be relocated by cdi-ld a dummy target
 
 def gen_cdi_asm(cfg, asm_file_descrs, plt_sites, options):
     """Writes cdi compliant assembly from cfg and assembly file descriptions"""
@@ -130,9 +129,6 @@ def gen_cdi_asm(cfg, asm_file_descrs, plt_sites, options):
             asm_dest.write('\t.text\n')
             write_rlt(cfg, plt_sites, asm_dest, sled_id_faucet, options)
             write_rlt.done = True
-
-        # jmps that will be relocated by cdi-ld need a dummy target
-        asm_dest.write('_CDIX_dummy_sym:\n\t.long 0xdeadbeef\n')
 
         if not write_slt_tramptab.done and options['--shared-library']:
             write_slt_tramptab(asm_dest, cfg, options)
@@ -304,6 +300,8 @@ def convert_return_site(site, funct, asm_line, asm_dest, cfg,
         ret_sled += '_CDIX_RREL32P_{}_{}__CDI_SLT_tramptab_{}:\n'.format(
                 'e9', funct.rel_id_faucet, fix_label(funct.uniq_label))
         funct.rel_id_faucet += 1
+    else:
+        ret_sled += code
 
     abort_data.append(data)
     asm_dest.write(ret_sled)
