@@ -57,7 +57,7 @@ def gen_cfg(asm_file_descrs, plt_sites, options):
         descr_functs = [cfg.funct(descr.filename + '.' + n) for n in descr.funct_names]
         for funct in descr_functs:
             for dir_call_site in funct.direct_call_sites:
-                target_name = dir_call_site.targets[0]
+                target_name = dir_call_site.targets[0].replace('@PLT', '')
                 if target_name in descr.funct_names:
                     dir_call_site.targets[0] = cfg.funct(descr.filename + '.' + target_name)
                 else:

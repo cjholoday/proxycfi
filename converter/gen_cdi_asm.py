@@ -268,7 +268,33 @@ def convert_return_site(site, funct, asm_line, asm_dest, cfg,
         return
 
     ret_sled = '\taddq $8, %rsp\n'
+    for target_label, multiplicity in site.targets.iteritems():
+        eprint(target_label, multiplicity)
+        i = 1
+        while i <= multiplicity:
+            sled_label = '_CDIX_RET_{}_TO_{}_{}'.format(fix_label(funct.uniq_label),
+                    fix_label(target_label), str(i))
+            if options['--shared-library']:
+                ret_sled += '\tnop\n' * 7
+                ret_sled += '"_CDIX_RREL32P_{}_{}_{}":\n'.format(
+                        '4c8d1d', '0', sled_label)
+                ret_sled += '\tcmpq\t%r11, -8(%rsp)\n'
+
+                ret_sled += '\tnop\n' * 6
+                ret_sled += '"_CDIX_RREL32P_{}_{}_{}":\n'.format(
+                        '0f84', '1', sled_label)
+            else:
+                ret_sled += '\tcmpq\t$"' + sled_label + '", -8(%rsp)\n'
+                ret_sled += '\tje\t"' + sled_label + '"\n'
+            i += 1
+
+
+    code, data = cdi_abort(sled_id_faucet(), funct.asm_filename,
+            dwarf_loc, True, options)
     if options['--shared-library']:
+        # only fill %r11 with data. Do not add a jump to _CDI_abort
+        ret_sled += code[:code.find('\n', code.find('_CDIX_SLED_')) + 1]
+
         # make sure each relocation symbol is unique
         if not hasattr(funct, 'rel_id_faucet'):
             funct.rel_id_faucet = 0
@@ -278,23 +304,8 @@ def convert_return_site(site, funct, asm_line, asm_dest, cfg,
         ret_sled += '_CDIX_RREL32P_{}_{}__CDI_SLT_tramptab_{}:\n'.format(
                 'e9', funct.rel_id_faucet, fix_label(funct.uniq_label))
         funct.rel_id_faucet += 1
-        asm_dest.write(ret_sled)
-        return
 
-    for target_label, multiplicity in site.targets.iteritems():
-        i = 1
-        while i <= multiplicity:
-            sled_label = '"_CDIX_RET_{}_TO_{}_{}"'.format(fix_label(funct.uniq_label),
-                    fix_label(target_label), str(i))
-            ret_sled += '\tcmpq\t$' + sled_label + ', -8(%rsp)\n'
-            ret_sled += '\tje\t' + sled_label + '\n'
-            i += 1
-
-    code, data = cdi_abort(sled_id_faucet(), funct.asm_filename,
-            dwarf_loc, True, options)
-    ret_sled += code
     abort_data.append(data)
-
     asm_dest.write(ret_sled)
 
 def convert_indir_jmp_site(site, funct, asm_line, asm_dest):
@@ -452,7 +463,10 @@ def write_slt_tramptab(asm_dest, cfg, options):
         slt_entry_label = '"_CDI_SLT_tramptab_{}"'.format(fix_label(funct.uniq_label))
         asm_dest.write('\t.globl {}\n'.format(slt_entry_label))
         asm_dest.write(slt_entry_label + ':\n')
-        asm_dest.write('\tjmp _CDIX_dummy_sym\n')
+
+        # Save space for a jump. This will be fixed up by the loader
+        asm_dest.write('\t.byte 0xe9\n')
+        asm_dest.write('\tnop\n' * 4)
         asm_dest.write('\tnop\n' * 3) # this will hold a symtab index
 
     asm_dest.write('\t.size _CDI_SLT_tramptab, .-_CDI_SLT_tramptab\n')
