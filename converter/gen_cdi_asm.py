@@ -87,8 +87,11 @@ def gen_cdi_asm(cfg, asm_file_descrs, plt_sites, options):
             # unique labels are always global so that even static functions
             # can be reached from anywhere with sleds (Function pointers can
             # point to ANY function with the same signature, even static 
-            # functions in a different translation unit)
-            asm_dest.write('.globl\t"_CDIX_F_{}"\n'.format(fix_label(funct.uniq_label)))
+            # functions in a different translation unit). We do relocations 
+            # ourselves for shared libraries. In that case, they do not need
+            # to be global, because the linker cannot complain
+            if not options['--shared-library']:
+                asm_dest.write('.globl\t"_CDIX_F_{}"\n'.format(fix_label(funct.uniq_label)))
             asm_dest.write('"_CDIX_F_{}":\n'.format(fix_label(funct.uniq_label)))
 
             funct.label_fixed_count = dict()
@@ -168,7 +171,7 @@ def convert_to_cdi(site, funct, asm_line, asm_dest, cfg,
     elif site.group == site.INDIR_JMP_SITE:
         convert_indir_jmp_site(site, funct, asm_line, asm_dest)
     elif site.group == site.PLT_SITE:
-        convert_plt_site(site, asm_line, funct, asm_dest)
+        convert_plt_site(site, asm_line, funct, asm_dest, options)
     else:
         eprint('warning: site has invalid type: line ' + site.asm_line_num, 
                 'in function named \'' + funct.asm_name + '\'')
@@ -191,8 +194,11 @@ def convert_call_site(site, funct, asm_line, asm_dest,
         label = '"_CDIX_RET_{}_TO_{}_{}"'.format(
                 target_name, fix_label(funct.uniq_label), str(times_fixed))
 
+        # only make the label global if the target is from a different unit
+        # we do relocations ourselves if we're in a shared library, so don't
+        # make it global for shared libraries either
         globl_decl = ''
-        if funct.asm_filename != site.targets[0].asm_filename:
+        if funct.asm_filename != site.targets[0].asm_filename and not options['--shared-library']:
             globl_decl = '.globl\t' + label + '\n'
 
         asm_dest.write(asm_line + globl_decl + label + ':\n')
@@ -346,7 +352,7 @@ def cdi_abort(sled_id, asm_filename, dwarf_loc, try_callback_sled, options):
 
     return (cdi_abort_code, cdi_abort_data)
 
-def convert_plt_site(site, asm_line, funct, asm_dest):
+def convert_plt_site(site, asm_line, funct, asm_dest, options):
     if not hasattr(funct, 'plt_call_multiplicity'):
         funct.plt_call_multiplicity = dict()
 
@@ -360,7 +366,9 @@ def convert_plt_site(site, asm_line, funct, asm_dest):
             .format(fix_label(site.targets[0]), fix_label(funct.uniq_label), 
                 str(funct.plt_call_multiplicity[(site.targets[0], funct.uniq_label)])))
 
-    globl_decl = '.globl\t' + rlt_return_label + '\n'
+    globl_decl = ''
+    if not options['--shared-library']:
+        globl_decl = '.globl\t' + rlt_return_label + '\n'
     asm_dest.write(asm_line + globl_decl + rlt_return_label + ':\n') 
 
 def write_rlt(cfg, plt_sites, asm_dest, sled_id_faucet, options):
