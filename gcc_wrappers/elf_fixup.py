@@ -44,6 +44,9 @@ def cdi_fixup_elf(lspec):
     for sym, gmult in globl_funct_mults.iteritems():
         print '{}\t\t{}\t{}'.format(gmult.sym, gmult.mult, gmult.is_claimed)
 
+def get_slt_tramptab_fixups(elf, globl_funct_mults):
+    pass
+
 def get_rlt_fixups(elf, plt_sym_strs):
     try:
         rlt_sh = elf.find_section('.cdi_rlt')

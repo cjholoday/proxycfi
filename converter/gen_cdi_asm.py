@@ -7,6 +7,7 @@ import subprocess
 import sys
 import re
 import os
+import struct
 
 from common.eprint import eprint
 
@@ -465,6 +466,8 @@ def write_slt_tramptab(asm_dest, cfg, options):
     asm_dest.write('\t.align {}\n'.format(page_size))
     asm_dest.write('\t.globl _CDI_SLT_tramptab\n')
     asm_dest.write('_CDI_SLT_tramptab:\n')
+
+    cdi_strtab = '\x00'
     for funct in cfg:
         slt_entry_label = '"_CDI_SLT_tramptab_{}"'.format(fix_label(funct.uniq_label))
         asm_dest.write('\t.globl {}\n'.format(slt_entry_label))
@@ -473,10 +476,24 @@ def write_slt_tramptab(asm_dest, cfg, options):
         # Save space for a jump. This will be fixed up by the loader
         asm_dest.write('\t.byte 0xe9\n')
         asm_dest.write('\tnop\n' * 4)
-        asm_dest.write('\tnop\n' * 3) # this will hold a symtab index
+
+        # make sure the strtab index can bit in 3 bytes
+        if len(cdi_strtab) >= (1 << (8 * 3)):
+            eprint('gen_cdi: error: .cdi_strtab index cannot fit in 3 bytes')
+            sys.exit(1)
+
+        # write the .cdi_strtab index into the 3 bytes after the trampoline jmp
+        for byte in struct.pack('<I', len(cdi_strtab))[:-1]:
+            asm_dest.write('\t.byte 0x{}\n'.format(struct.unpack('B', byte)[0]))
+        cdi_strtab += funct.asm_name + '\x00'
+
 
     asm_dest.write('\t.size _CDI_SLT_tramptab, .-_CDI_SLT_tramptab\n')
     asm_dest.write('\t.align {}\n'.format(page_size))
+
+    asm_dest.write('\t.section .cdi_strtab, "a", @progbits\n')
+    asm_dest.write('.string "{}"\n'.format(cdi_strtab))
+
 
 def write_callback_sled(asm_dest, options):
     callback_sled = '.globl _CDI_callback_sled\n'
