@@ -34,15 +34,19 @@ def cdi_fixup_elf(lspec):
 
     plt_fixups = get_plt_fixups(target_elf, globl_funct_mults, plt_sym_strs)
 
+    objcopy_mult_opts = []
     if not lspec.target_is_shared:
-        multtab.build_multtab(target_elf, lspec, globl_funct_mults, '.cdi/cdi_multtab')
+        multtab.build_multtab(target_elf, lspec, globl_funct_mults, '.cdi')
+        objcopy_mult_opts.extend(['--update-section', '.cdi_multtab=.cdi/cdi_multtab'])
+        objcopy_mult_opts.extend(['--update-section', '.cdi_mstrtab=.cdi/cdi_mstrtab'])
 
     write_removable_syms(target_elf, '.cdi/removable_cdi_syms')
     try:
-        subprocess.check_call(['objcopy',
-            '--strip-symbols={}/.cdi/removable_cdi_syms'.format(os.getcwd()), lspec.target])
+        subprocess.check_call(['objcopy', 
+            '--strip-symbols=.cdi/removable_cdi_syms', lspec.target]
+            + objcopy_mult_opts)
     except subprocess.CalledProcessError:
-        error.fatal_error("couldn't remove symbols from target '{}'".format(lspec.target))
+        error.fatal_error("couldn't update symbols and/or sections of target '{}'".format(lspec.target))
 
 def get_slt_tramptab_fixups(elf, globl_funct_mults):
     pass

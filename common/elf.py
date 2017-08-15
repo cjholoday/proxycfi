@@ -51,7 +51,6 @@ class Elf64:
         
         raises Elf64.MissingSection if the section cannot be found
         """
-        print "attempting to find '{}'".format(wanted_sect)
         if hasattr(self, 'sect_headers_dict'):
             try:
                 return self.sect_headers_dict[wanted_sect]
@@ -151,10 +150,7 @@ class Elf64:
         return relocs
 
     def get_needed_sls(self):
-        print 'DYNSTR'
         self.init_strtab('.dynstr')
-
-        print 'DYNAMIC'
         dyn_sh = self.find_section('.dynamic')
 
         sonames = []
@@ -211,7 +207,6 @@ class Elf64:
     def fixup(self, elf_fixups):
         with open(self.path, 'r+b') as elf:
             for fixup in elf_fixups:
-                print 'writing at offset {}'.format(hex(fixup.offset))
                 elf.seek(fixup.offset)
                 elf.write(fixup.patch)
 

@@ -20,14 +20,24 @@ class GlobalMultiplicity:
         # this symbol should not be modified
         self.is_claimed = is_claimed 
 
-def build_multtab(target_elf, lspec, globl_funct_mults, write_path):
-    print '======================='
+def build_multtab(target_elf, lspec, globl_funct_mults, write_dir):
+    """Builds and writes multtab in write_dir. Same for multtab_strtab
+    
+    In particular, multtab is written to [write_path]/cdi_multtab and
+    multtab_strtab is written to [write_path]/cdi_mstrtab
+    """
+    print '========= Multiplicity Table ========='
     for sym_str, mult in globl_funct_mults.iteritems():
         print sym_str, mult.mult
-    print '======================='
+    print '======================================'
     multtab_strtab = '\x00'
-    with open(write_path, 'w') as multtab:
-        for elf in target_elf.get_deps(lspec):
+    with open(os.path.join(write_dir, 'cdi_multtab'), 'w') as multtab:
+        elf_deps = target_elf.get_deps(lspec)
+
+        # record the number of libraries for the loader's sake
+        multtab.write(struct.pack('<I', len(elf_deps)))
+
+        for elf in elf_deps:
             try:
                 slt_tramptab_sh = elf.find_section('.cdi_slt_tramptab')
                 elf.init_strtab('.cdi_strtab')
@@ -62,7 +72,7 @@ def build_multtab(target_elf, lspec, globl_funct_mults, write_path):
             multtab.write(struct.pack('<I', num_tramptab_entries))
             multtab.write(mult_bytes)
             elf_file.close()
-    with open(os.path.dirname(write_path) + '/cdi_multtab_strtab', 'w') as strtab:
+    with open(os.path.join(write_dir, 'cdi_mstrtab'), 'w') as strtab:
         strtab.write(multtab_strtab)
 
 

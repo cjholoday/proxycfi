@@ -55,7 +55,6 @@ if __name__ == "__main__":
         sys.exit(0)
     
     asm_filenames = options['asm_filenames']
-    eprint(asm_filenames)
     asm_file_descrs = []
     for filename in asm_filenames:
         asm_file_descrs.append(asm_parsing.AsmFileDescription(filename))

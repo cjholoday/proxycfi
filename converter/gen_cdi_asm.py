@@ -294,7 +294,7 @@ def convert_return_site(site, funct, asm_line, asm_dest, cfg,
 
     code, data = cdi_abort(sled_id_faucet(), funct.asm_filename,
             dwarf_loc, True, options)
-    if options['--shared-library']:
+    if options['--shared-library'] and funct.is_global:
         # only fill %r11 with data. Do not add a jump to _CDI_abort
         ret_sled += code[:code.find('\n', code.find('_CDIX_SLED_')) + 1]
 

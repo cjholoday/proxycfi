@@ -249,4 +249,7 @@ SECTIONS
   .cdi_multtab : {
     *(.cdi_multtab)
   }
+  .cdi_multtab_strtab : {
+    *(.cdi_strtab)
+  }
 }
