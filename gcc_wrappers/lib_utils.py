@@ -331,7 +331,7 @@ def get_vaddr(symbol, execname):
     """Get virtual address of symbol from gdb"""
     gdb_process = subprocess.Popen(['gdb', execname], stderr=subprocess.PIPE, 
             stdout=subprocess.PIPE, stdin=subprocess.PIPE)
-    gdb_process.stdin.write('b main\nrun\ninfo addr {}\nq'.format(symbol))
+    gdb_process.stdin.write('set confirm off\nb main\nrun\ninfo addr {}\nq'.format(symbol))
     vaddr = gdb_process.communicate()[0].splitlines()[-2].split()[5]
 
     gdb_process.stdin.close()
