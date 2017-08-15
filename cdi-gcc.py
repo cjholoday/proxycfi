@@ -78,6 +78,9 @@ if __name__ == '__main__':
     # Use our own linker script to create a CDI segment and CDI sections 
     gcc_opts.append('-Wl,--script=' + SCRIPT_PATH + '/cdi-gcc/cdi-elf64-x86-64-lscript')
 
+    # Use the CDI loader
+    gcc_opts.append('-Wl,--dynamic-linker=' + SCRIPT_PATH + '/cdi-loader/dest/lib/ld-2.23.so')
+
     # Add convenience options for constructing and using shared libraries
     #
     # --make-sl=SHARED_LIB_NAME: the shared library is placed in the current working directory
