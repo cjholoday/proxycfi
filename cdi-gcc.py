@@ -18,11 +18,13 @@ from common.eprint import eprint
 SCRIPT_PATH = os.path.dirname(os.path.realpath(__file__))
 
 def make_sl(gcc_opts, libname):
-    """Create a shared library named 'libname'
-    
-    '--make-sl=LIBNAME' should be removed
+    """Create a shared library named 'libname'.
+
+    opts_idx should be the index of the --make-sl option
+    make_sl assumes that '--use-sl' has been handled if it exists
     '-o' is not supported for --make-sl
     """
+
     try:
         subprocess.check_call(['cdi-gcc-proper', '-c', '-fPIC'] + gcc_opts)
     except subprocess.CalledProcessError:
@@ -39,6 +41,24 @@ def make_sl(gcc_opts, libname):
     except subprocess.CalledProcessError:
         sys.exit(1)
 
+
+def prepare_to_use_sls(gcc_opts, opts_idx):
+    """Returns gcc_opts prepared to use 1 or more libs specified at opts_idx
+
+    opts_idx should be the index of the --use-sl option
+    """
+    lib_paths = gcc_opts[opts_idx][len('--use-sl='):].split(',')
+    del gcc_opts[opts_idx]
+
+    lib_search_options = []
+    for lib_path in lib_paths:
+        base_dir = os.path.dirname(os.path.realpath(lib_path))
+        lib_search_options.append('-L' + base_dir)
+        lib_search_options.append('-Wl,-rpath=' + base_dir)
+
+        # cut off the 'lib' and '.so' parts for the -llibname option
+        gcc_opts.append('-l' + os.path.basename(lib_path)[3:-3])
+    return lib_search_options + gcc_opts
 
 if __name__ == '__main__':
     gcc_opts = sys.argv[1:]
@@ -67,31 +87,36 @@ if __name__ == '__main__':
     #                directory is also added as a runtime library search path. The 
     #                side effects are undesirable but fine for testing purposes
     #                If multiple shared libraries are to be used, they should be separated
-    #                by commas
+    #                by commas.
+    #
+    # At most, only one option of each --make-sl and --use-sl should be present
+    # in the optoins passed 
+    make_sl_idx = -1
+    use_sl_idx = -1
     for idx, opt in enumerate(gcc_opts):
         if opt.startswith('--make-sl='):
+            if make_sl_idx != -1:
+                eprint("cdi-gcc wrapper: error: '--make-sl' can only be specified once")
             if '-o' in gcc_opts:
-                eprint("cdi-gcc wrapper: '-o' is not supported with use of '--make-sl'")
-
-            libname = opt[len('--make-sl='):]
-            del gcc_opts[idx]
-            make_sl(gcc_opts, libname)
-            sys.exit(0)
+                eprint("cdi-gcc wrapper: error: '-o' is not supported with use of '--make-sl'")
+            make_sl_idx = idx
         elif opt.startswith('--use-sl='):
-            lib_paths = opt[len('--use-sl='):].split(',')
-            del gcc_opts[idx]
+            if use_sl_idx != -1:
+                eprint("cdi-gcc wrapper: error: '--use-sl' can only be specified once")
+            use_sl_idx = idx
 
-            lib_search_options = []
-            for lib_path in lib_paths:
-                base_dir = os.path.dirname(os.path.realpath(lib_path))
-                lib_search_options.append('-L' + base_dir)
-                lib_search_options.append('-Wl,-rpath=' + base_dir)
-
-                # cut off the 'lib' and '.so' parts for the -llibname option
-                gcc_opts.append('-l' + os.path.basename(lib_path)[3:-3])
-            gcc_opts = lib_search_options + gcc_opts
-            break
-
+    if make_sl_idx != -1:
+        make_sl_libname = gcc_opts[make_sl_idx][len('--make-sl='):]
+        del gcc_opts[make_sl_idx]
+        if use_sl_idx != -1:
+            if use_sl_idx > make_sl_idx:
+                use_sl_idx -= 1
+            gcc_opts = prepare_to_use_sls(gcc_opts, use_sl_idx)
+        make_sl(gcc_opts, make_sl_libname)
+        sys.exit(0)
+    if use_sl_idx != -1:
+        gcc_opts = prepare_to_use_sls(gcc_opts, use_sl_idx)
+    
     # NOTE: we cannot use -Wl,-z,now to force non-lazy binding. Using this option
     # will replace the PLT with a series of 6 byte indirect jumps into shared libraries
     # With padding, this leaves only 8 bytes per access into a shared library, but 
