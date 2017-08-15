@@ -1,5 +1,7 @@
 import __init__
 
+import os
+
 import error
 import common.elf
 import struct
@@ -19,6 +21,11 @@ class GlobalMultiplicity:
         self.is_claimed = is_claimed 
 
 def build_multtab(target_elf, lspec, globl_funct_mults, write_path):
+    print '======================='
+    for sym_str, mult in globl_funct_mults.iteritems():
+        print sym_str, mult.mult
+    print '======================='
+    multtab_strtab = '\x00'
     with open(write_path, 'w') as multtab:
         for elf in target_elf.get_deps(lspec):
             try:
@@ -47,11 +54,17 @@ def build_multtab(target_elf, lspec, globl_funct_mults, write_path):
                             .format(sym_str))
                 total_mult += globl_sym.mult
                 mult_bytes += struct.pack('<I', globl_sym.mult)
-            multtab.write(lib_utils.linker_name(elf.path))
-            multtab.write(total_mult)
-            multtab.write(num_tramptab_entries)
+
+            multtab.write(struct.pack('<I', len(multtab_strtab)))
+            multtab_strtab += lib_utils.sl_linker_name(elf.path) + '\x00'
+
+            multtab.write(struct.pack('<I', total_mult))
+            multtab.write(struct.pack('<I', num_tramptab_entries))
             multtab.write(mult_bytes)
             elf_file.close()
+    with open(os.path.dirname(write_path) + '/cdi_multtab_strtab', 'w') as strtab:
+        strtab.write(multtab_strtab)
+
 
 def get_funct_mults(target_elf, lspec):
     """Returns a dict mapping {symbol string -> GlobalMultiplicity object}"""
@@ -78,21 +91,22 @@ def update_mults(sym, strtab, globl_funct_mults):
     sym_type = sym.st_info & 15 # take the lower four bits
     sym_bind = (sym.st_info & 240) >> 4 # take the higher four bits
 
+    sym_str = strtab_grab(strtab, sym.st_name)
     # insist that the symbol is for a function of global scope
     if sym_type != 2 or ((not sym_bind == 1) and (not sym_bind == 2)):
         return
 
     # if this symbol is defined elsewhere update the multiplicity. Otherwise,
     # claim the symbol for this code object
-    sym_name = strtab_grab(strtab, sym.st_name)
-    sym_name = common.elf.strip_versioning(sym_name)
+    sym_str = strtab_grab(strtab, sym.st_name)
+    sym_str = common.elf.strip_versioning(sym_str)
     if sym.st_value == 0: 
         try:
-            globl_funct_mults[sym_name].mult += 1
+            globl_funct_mults[sym_str].mult += 1
         except KeyError:
-            globl_funct_mults[sym_name] = GlobalMultiplicity(sym_name, 1, False)
+            globl_funct_mults[sym_str] = GlobalMultiplicity(sym_str, 1, False)
     else:
         try:
-            globl_funct_mults[sym_name].is_claimed = True
+            globl_funct_mults[sym_str].is_claimed = True
         except KeyError:
-            globl_funct_mults[sym_name] = GlobalMultiplicity(sym_name, 0, True)
+            globl_funct_mults[sym_str] = GlobalMultiplicity(sym_str, 0, True)

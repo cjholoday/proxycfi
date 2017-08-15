@@ -37,8 +37,6 @@ def cdi_fixup_elf(lspec):
     if not lspec.target_is_shared:
         multtab.build_multtab(target_elf, lspec, globl_funct_mults, '.cdi/cdi_multtab')
 
-    for sym, gmult in globl_funct_mults.iteritems():
-        print '{}\t\t{}\t{}'.format(gmult.sym, gmult.mult, gmult.is_claimed) 
     write_removable_syms(target_elf, '.cdi/removable_cdi_syms')
     try:
         subprocess.check_call(['objcopy',

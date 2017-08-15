@@ -467,11 +467,13 @@ def write_slt_tramptab(asm_dest, cfg, options):
     asm_dest.write('\t.globl _CDI_SLT_tramptab\n')
     asm_dest.write('_CDI_SLT_tramptab:\n')
 
+    global_functs = [funct for funct in cfg if funct.is_global]
+
     # begin by writing the number of entries in the trampoline table
-    asm_dest.write('\t.quad {}\n'.format(cfg.size()))
+    asm_dest.write('\t.quad {}\n'.format(len(global_functs)))
 
     cdi_strtab = '\x00'
-    for funct in cfg:
+    for funct in global_functs:
         slt_entry_label = '"_CDI_SLT_tramptab_{}"'.format(fix_label(funct.uniq_label))
         asm_dest.write('\t.globl {}\n'.format(slt_entry_label))
         asm_dest.write(slt_entry_label + ':\n')
