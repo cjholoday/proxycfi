@@ -22,7 +22,8 @@ if [ "$?" != 0 ]; then
     exit 1
 fi
 
-diff output correct_output
+cat output | sort > output_sorted
+diff output_sorted correct_output_sorted
 
 if [ "$?" != 0 ]; then
     echo ERROR: Incorrect output!
