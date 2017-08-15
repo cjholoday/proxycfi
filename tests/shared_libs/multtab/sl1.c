@@ -1,10 +1,5 @@
 #include <stdio.h>
-
-void sl1_foo();
-void sl1_bar();
-void sl1_baz();
-void sl1_qux();
-void sl1_internal();
+#include "sl1.h"
 
 // multiplicity 3
 void sl1_foo() {
