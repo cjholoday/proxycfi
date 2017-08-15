@@ -40,6 +40,8 @@ if lspec.cdi_options:
         print ' '.join(lspec.raw())
         sys.exit(0)
 
+print ' '.join(lspec.raw())
+
 archives = []
 for i, path in enumerate(lspec.ar_paths):
     # FIXME: This is VERY unportable
@@ -131,6 +133,21 @@ normification_fixups = []
 normification_fixups += normify.ar_normify(archives)
 normification_fixups += normify.fake_objs_normify(explicit_fake_objs)
 normification_fixups += normify.sl_normify(lspec, lspec.sl_paths)
+
+# get a fixup to use the regular linker
+loader_fixup = spec.LinkerSpec.Fixup(None, None, None)
+for idx, entry in enumerate(lspec.miscs):
+    if entry.startswith('--dynamic-linker='):
+        rtld_realpath = os.path.realpath(entry[len('--dynamic-linker='):])
+        if '/cdi/cdi-loader/dest/lib/' in rtld_realpath:
+            loader_fixup.idx = idx
+            loader_fixup.entry_type = 'misc'
+            loader_fixup.replacement = ''
+            break
+else:
+    fatal_error("Unable to find --dynamic-linker specification for CDI loader")
+
+normification_fixups.append(loader_fixup)
 
 try:
     normified_spec = lspec.fixup(normification_fixups)
@@ -281,20 +298,25 @@ except subprocess.CalledProcessError:
 if not lspec.target_is_shared:
     # check that the predicted shared library load addresses are accurate
     for sl_path, lib_load_addr in lib_utils.sl_trace_bin(lspec.target, lspec.target_is_shared):
-        if sl_load_addrs[os.path.realpath(sl_path)] != lib_load_addr:
-            fatal_error("load address shifted upon recompilation for shared "
-                    "library '{}'. Original: {}. New: {}." .format(os.path.realpath(sl_path), 
-                        sl_load_addrs[os.path.realpath(sl_path)], lib_load_addr))
+        try:
+            if sl_load_addrs[os.path.realpath(sl_path)] != lib_load_addr:
+                fatal_error("load address shifted upon recompilation for shared "
+                        "library '{}'. Original: {}. New: {}." .format(os.path.realpath(sl_path), 
+                            sl_load_addrs[os.path.realpath(sl_path)], lib_load_addr))
+        except KeyError:
+            if '/cdi/cdi-loader/' not in sl_path:
+                raise
+
+    # signal handling will break because we swap out the normal rtld with the 
+    # CDI one when we do a normified compilation. In the future, a better 
+    # alternative is to have the CDI loader check if the executable is CDI
+    # and compile as CDI if it is
+
     # check that at least one predicted address for __restore_rt is correct
-    if lib_utils.get_vaddr('__restore_rt', lspec.target) not in restore_rt_vaddrs:
-        fatal_error("__restore_rt address '{}' is different than all predicted addrs: {}"
-                .format(lib_utils.get_vaddr('__restore_rt'), ', '.join(restore_rt_vaddrs)))
+    #if lib_utils.get_vaddr('__restore_rt', lspec.target) not in restore_rt_vaddrs:
+    #    fatal_error("__restore_rt address '{}' is different than all predicted addrs: {}"
+    #            .format(lib_utils.get_vaddr('__restore_rt', lspec.target), ', '.join(restore_rt_vaddrs)))
 
 restore_original_objects()
 
 elf_fixup.cdi_fixup_elf(lspec)
-#binary = common.elf.Elf64(lspec.target, fatal_error)
-#print binary.find_section('.cdi_strtab')
-
-#for sym in binary.get_symbols():
-#    print hex(sym.st_value), common.elf.strtab_cstring(binary.strtab, sym.st_name)
