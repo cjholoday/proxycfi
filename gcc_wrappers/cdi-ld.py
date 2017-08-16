@@ -296,16 +296,21 @@ except subprocess.CalledProcessError:
 
 # do some sanity checks for executables
 if not lspec.target_is_shared:
+    pass
+
+    # disable these checks for now. They'll be turned on again once the CDI 
+    # loader accepts non-CDI code
+
     # check that the predicted shared library load addresses are accurate
-    for sl_path, lib_load_addr in lib_utils.sl_trace_bin(lspec.target, lspec.target_is_shared):
-        try:
-            if sl_load_addrs[os.path.realpath(sl_path)] != lib_load_addr:
-                fatal_error("load address shifted upon recompilation for shared "
-                        "library '{}'. Original: {}. New: {}." .format(os.path.realpath(sl_path), 
-                            sl_load_addrs[os.path.realpath(sl_path)], lib_load_addr))
-        except KeyError:
-            if '/cdi/cdi-loader/' not in sl_path:
-                raise
+    #for sl_path, lib_load_addr in lib_utils.sl_trace_bin(lspec.target, lspec.target_is_shared):
+    #    try:
+    #        if sl_load_addrs[os.path.realpath(sl_path)] != lib_load_addr:
+    #            fatal_error("load address shifted upon recompilation for shared "
+    #                    "library '{}'. Original: {}. New: {}." .format(os.path.realpath(sl_path), 
+    #                        sl_load_addrs[os.path.realpath(sl_path)], lib_load_addr))
+    #    except KeyError:
+    #        if '/cdi/cdi-loader/' not in sl_path:
+    #            raise
 
     # signal handling will break because we swap out the normal rtld with the 
     # CDI one when we do a normified compilation. In the future, a better 
@@ -318,5 +323,7 @@ if not lspec.target_is_shared:
     #            .format(lib_utils.get_vaddr('__restore_rt', lspec.target), ', '.join(restore_rt_vaddrs)))
 
 restore_original_objects()
+error.restore_original_objects_fptr = None
 
 elf_fixup.cdi_fixup_elf(lspec)
+
