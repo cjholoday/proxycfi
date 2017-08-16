@@ -243,13 +243,16 @@ SECTIONS
   /* CDI: add load time metadata sections */
   . = SEGMENT_START("cdi", cdi_segment_start);
   . = ALIGN(64 / 8);
+  .cdi_header : {
+    *(.cdi_header)
+  }
   .cdi_strtab : {
     *(.cdi_strtab)
   }
   .cdi_multtab : {
     *(.cdi_multtab)
   }
-  .cdi_multtab_strtab : {
-    *(.cdi_strtab)
+  .cdi_libstrtab : {
+    *(.cdi_libstrtab)
   }
 }

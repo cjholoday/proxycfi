@@ -34,19 +34,65 @@ def cdi_fixup_elf(lspec):
 
     plt_fixups = get_plt_fixups(target_elf, globl_funct_mults, plt_sym_strs)
 
-    objcopy_mult_opts = []
+    objcopy_opts = []
     if not lspec.target_is_shared:
         multtab.build_multtab(target_elf, lspec, globl_funct_mults, '.cdi')
-        objcopy_mult_opts.extend(['--update-section', '.cdi_multtab=.cdi/cdi_multtab'])
-        objcopy_mult_opts.extend(['--update-section', '.cdi_mstrtab=.cdi/cdi_mstrtab'])
+
+        # we don't need to write .cdi_strtab because it only exists in
+        # shared library elf files
+        write_cdi_header(['.cdi_multtab', '.cdi_libstrtab'])
+        objcopy_opts.extend(['--update-section', '.cdi_multtab=.cdi/cdi_multtab'])
+        objcopy_opts.extend(['--update-section', '.cdi_libstrtab=.cdi/cdi_libstrtab'])
+        objcopy_opts.extend(['--update-section', '.cdi_header=.cdi/cdi_header'])
 
     write_removable_syms(target_elf, '.cdi/removable_cdi_syms')
     try:
         subprocess.check_call(['objcopy', 
             '--strip-symbols=.cdi/removable_cdi_syms', lspec.target]
-            + objcopy_mult_opts)
+            + objcopy_opts)
     except subprocess.CalledProcessError:
         error.fatal_error("couldn't update symbols and/or sections of target '{}'".format(lspec.target))
+
+def write_cdi_header(sect_strs):
+    """Given a list of section strings, writes .cdi_header at write_dir/cdi_header
+    
+    This function assumes sect_strs can be found at .cdi/<sect_str> where 
+    <sect_str> is the section name without a dot
+    """
+
+    # 4 bytes for the number of header entries. Then 8 bytes for each header entry
+    cdi_header_size = 4 + 8 * len(sect_strs)
+
+    # the offset of each section from the .cdi segment. Starting with .cdi_header
+    segment_offsets = [0, cdi_header_size]
+    for sect_str in sect_strs:
+        try:
+            sect_size = int(subprocess.check_output(['wc', '-c', '.cdi/' + sect_str[1:]]).split()[0])
+        except subprocess.CalledProcessError:
+            error.fatal_error("Cannot get file size of '{}' in bytes".format(
+                sect_str))
+
+        # write the start offset of the next section
+        segment_offsets.append(segment_offsets[-1] + sect_size)
+
+    # we wrote more than one offset than is necessary
+    del segment_offsets[-1]
+
+    with open('.cdi/cdi_header', 'w') as header:
+        # write the number of header entries
+        header.write(struct.pack('<I', len(sect_strs)))
+        for sect_idx in xrange(1, len(segment_offsets)):
+            sect_id = -1
+            if sect_strs[sect_idx - 1]   == '.cdi_strtab':
+                sect_id = 0
+            elif sect_strs[sect_idx - 1] == '.cdi_multtab':
+                sect_id = 1
+            elif sect_strs[sect_idx - 1] == '.cdi_libstrtab':
+                sect_id = 2
+            else:
+                error.fatal_error("unknown CDI metadata section: '{}'"
+                        .format(sect_strs[sect_idx - 1]))
+            header.write(struct.pack('<II', segment_offsets[sect_idx], sect_id))
 
 def get_slt_tramptab_fixups(elf, globl_funct_mults):
     pass

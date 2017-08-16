@@ -24,7 +24,7 @@ def build_multtab(target_elf, lspec, globl_funct_mults, write_dir):
     """Builds and writes multtab in write_dir. Same for multtab_strtab
     
     In particular, multtab is written to [write_path]/cdi_multtab and
-    multtab_strtab is written to [write_path]/cdi_mstrtab
+    multtab_strtab is written to [write_path]/cdi_libstrtab
     """
     print '========= Multiplicity Table ========='
     for sym_str, mult in globl_funct_mults.iteritems():
@@ -72,7 +72,7 @@ def build_multtab(target_elf, lspec, globl_funct_mults, write_dir):
             multtab.write(struct.pack('<I', num_tramptab_entries))
             multtab.write(mult_bytes)
             elf_file.close()
-    with open(os.path.join(write_dir, 'cdi_mstrtab'), 'w') as strtab:
+    with open(os.path.join(write_dir, 'cdi_libstrtab'), 'w') as strtab:
         strtab.write(multtab_strtab)
 
 
@@ -85,7 +85,7 @@ def get_funct_mults(target_elf, lspec):
     elf_deps = target_elf.get_deps(lspec)
     for elf in elf_deps:
         try:
-            elf.find_section('.cdi')
+            elf.find_section('.cdi_header')
         except common.elf.Elf64.MissingSection:
             continue # this file isn't CDI. Do not get metadata from it
         for sym in elf.get_symbols('.symtab'):
