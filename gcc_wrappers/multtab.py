@@ -50,6 +50,7 @@ def build_multtab(target_elf, lspec, globl_funct_mults, write_dir):
 
             total_mult = 0
             mult_bytes = ''
+            num_used_globals = 0
             for idx in xrange(num_tramptab_entries):
                 cdi_strtab_idx_pieces = struct.unpack('<xxxxxBBB', elf_file.read(8))
                 cdi_strtab_idx = (cdi_strtab_idx_pieces[0] 
@@ -64,12 +65,15 @@ def build_multtab(target_elf, lspec, globl_funct_mults, write_dir):
                             .format(sym_str))
                 total_mult += globl_sym.mult
                 mult_bytes += struct.pack('<I', globl_sym.mult)
+                if globl_sym.mult > 0:
+                    num_used_globals += 1
 
             multtab.write(struct.pack('<I', len(multtab_strtab)))
             multtab_strtab += lib_utils.sl_linker_name(elf.path) + '\x00'
 
             multtab.write(struct.pack('<I', total_mult))
             multtab.write(struct.pack('<I', num_tramptab_entries))
+            multtab.write(struct.pack('<I', num_used_globals))
             multtab.write(mult_bytes)
             elf_file.close()
     with open(os.path.join(write_dir, 'cdi_libstrtab'), 'w') as strtab:
