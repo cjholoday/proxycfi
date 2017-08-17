@@ -51,13 +51,8 @@ Elf64_Word _clb_tablen = 0;
 CLB *_clb_table = 0;
 CDI_Metadata_Sections *_cdi_mdata = 0;
 
-void _cdi_hello_world(void) {
-    GLRO(dl_debug_fd) = 2;
-    _dl_debug_printf_c("Hello World!\n");
-}
-
 void _cdi_init(CDI_Header *cdi_header) {
-    _cdi_mdata = (CDI_Metadata_Sections*) malloc(sizeof(CDI_Metadata_Sections));
+    _cdi_mdata = malloc(sizeof(CDI_Metadata_Sections));
     _cdi_mdata->header    = cdi_header;
     _cdi_mdata->strtab    = 0;
     _cdi_mdata->libstrtab = 0;

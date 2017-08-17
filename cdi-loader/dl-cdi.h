@@ -110,7 +110,6 @@ Elf64_Word _cdi_slt_size(Elf64_Word total_mult, Elf64_Word num_called_syms);
  * Debugging Functions
  */
 void _cdi_print_header(CDI_Header *cdi_header);
-void _cdi_hello_world(void);
 void _cdi_print_clb(CLB *clb);
 void _cdi_print_clbs(void);
 

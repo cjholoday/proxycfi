@@ -2064,8 +2064,6 @@ ERROR: ld.so: object '%s' cannot be loaded as audit interface: %s; ignored.\n",
 	 the dynamic linker out of order because it has no copy relocs (we
 	 know that because it is self-contained).  */
       
-      _cdi_hello_world();
-
       int consider_profiling = GLRO(dl_profile) != NULL;
 #ifndef HP_TIMING_NONAVAIL
       hp_timing_t start;
