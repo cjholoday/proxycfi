@@ -753,6 +753,9 @@ dl_main (const ElfW(Phdr) *phdr,
 #endif
   void *tcbp = NULL;
 
+    /*CDI*/
+    GLRO(dl_debug_fd) = 2;
+
 #ifdef _LIBC_REENTRANT
   /* Explicit initialization since the reloc would just be more work.  */
   GL(dl_error_catch_tsd) = &_dl_initial_error_catch_tsd;
@@ -1015,6 +1018,8 @@ of this helper program; chances are you did not intend to run this program.\n\
   /* And it was opened directly.  */
   ++main_map->l_direct_opencount;
 
+  ElfW(Addr) _cdi_segment_start = 0;
+
   /* Scan the program header table for the dynamic section.  */
   for (ph = phdr; ph < &phdr[phnum]; ++ph)
     switch (ph->p_type)
@@ -1082,6 +1087,11 @@ of this helper program; chances are you did not intend to run this program.\n\
 	    main_map->l_map_end = allocend;
 	  if ((ph->p_flags & PF_X) && allocend > main_map->l_text_end)
 	    main_map->l_text_end = allocend;
+
+          /* The last segment is the CDI segment */
+          if (mapstart > _cdi_segment_start) {
+            _cdi_segment_start = main_map->l_addr + ph->p_vaddr;
+          }
 	}
 	break;
 
@@ -1116,6 +1126,21 @@ of this helper program; chances are you did not intend to run this program.\n\
 	main_map->l_relro_size = ph->p_memsz;
 	break;
       }
+  _dl_debug_printf(".cdi_header address: %lu\n", _cdi_segment_start);
+
+  CDI_Header *cdi_header = (CDI_Header *)_cdi_segment_start;
+  _dl_debug_printf("hello?\n");
+  _cdi_init(cdi_header);
+  _dl_debug_printf("hello2?\n");
+  
+  char *_cdi_byte_ptr = (char*)_cdi_segment_start;
+  for (int i = 0; i < 20; i += 4) {
+    _dl_debug_printf("%u, %u, %u, %u\n", 
+          (int)(_cdi_byte_ptr[i + 0]),
+          (int)(_cdi_byte_ptr[i + 1]),
+          (int)(_cdi_byte_ptr[i + 2]),
+          (int)(_cdi_byte_ptr[i + 3]));
+  }
 
   /* Adjust the address of the TLS initialization image in case
      the executable is actually an ET_DYN object.  */
