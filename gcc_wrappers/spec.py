@@ -238,6 +238,7 @@ class LinkerSpec():
                         " '{}'".format(mystery_file.name))
                 return 'misc'
         else:
+            print entry
             return 'misc'
 
     def norm(self):
@@ -293,15 +294,15 @@ def find_lib(libstem, lspec):
         for path in find_lib.search_dirs:
             candidate = '{}/{}'.format(path, libstem)
             if os.path.isfile(candidate):
-                return os.path.realpath(candidate)
+                return os.path.abspath(candidate)
         else:
             raise NoMatchingLibrary(libstem)
     for path in find_lib.search_dirs:
         candidate_stem = '{}/lib{}'.format(path, libstem)
         if os.path.isfile(candidate_stem + '.so'):
-            return os.path.realpath(candidate_stem + '.so')
+            return os.path.abspath(candidate_stem + '.so')
         elif os.path.isfile(candidate_stem + '.a'):
-            return os.path.realpath(candidate_stem + '.a')
+            return os.path.abspath(candidate_stem + '.a')
     else:
         raise NoMatchingLibrary(libstem)
 
@@ -332,7 +333,7 @@ def is_elf(mystery_file_path):
     with open(mystery_file_path, 'rb') as mystery_file:
         return mystery_file.read(len('\x7FELF')) == '\x7FELF'
 
-LD_ARG_REQUIRED_OPTIONS = ['-m', '-o', '-a', '-audit', '-A', '-b', '-c', '--depaudit', '-P', '-e', '--exclude-libs', '--exclude-modules-for-implib', '-f', '-F', '-G', '-h', '-l', '-L', '-O', '-R', '-T', '-dT', '-u', '-y', '-Y', '-z', '-assert', '-z', '--exclude-symbols', '--heap', '--image-base', '--major-image-version', '--major-os-version', '--major-subsystem-version', '--minor-image-version', '--minor-os-version', '--minor-subsystem-version', '--output-def', '--out-implib', '--dll-search-prefix', '--stack', '--subsystem', '--bank-window', '--got']
+LD_ARG_REQUIRED_OPTIONS = ['-m', '-o', '-a', '-audit', '-A', '-b', '-c', '--depaudit', '-P', '-e', '--exclude-libs', '--exclude-modules-for-implib', '-f', '-F', '-G', '-h', '-l', '-L', '-O', '-R', '-T', '-dT', '-u', '-y', '-Y', '-z', '-assert', '-z', '--exclude-symbols', '--heap', '--image-base', '--major-image-version', '--major-os-version', '--major-subsystem-version', '--minor-image-version', '--minor-os-version', '--minor-subsystem-version', '--output-def', '--out-implib', '--dll-search-prefix', '--stack', '--subsystem', '--bank-window', '--got', '-soname', '--soname']
 
 
 

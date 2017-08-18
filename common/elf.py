@@ -194,14 +194,13 @@ class Elf64:
 
                 # we were given a SONAME. Get the path
                 sl_path = gcc_wrappers.spec.find_lib(sl_name, lspec)
-            sl_realpath = os.path.realpath(sl_path)
 
             try:
-                if paths_seen[sl_realpath]:
+                if paths_seen[sl_path]:
                     continue
             except KeyError:
-                paths_seen[sl_realpath] = True
-                elfs += self.get_deps_helper(lspec, sl_realpath, paths_seen)
+                paths_seen[sl_path] = True
+                elfs += self.get_deps_helper(lspec, sl_path, paths_seen)
         return elfs
 
     def fixup(self, elf_fixups):
@@ -227,11 +226,25 @@ def strtab_startswith(strtab, start_idx, desired):
             return False
     return True
 
-def strip_versioning(sym_name):
+def strip_sym_versioning(sym_name):
     versioning_idx = sym_name.find('@@')
     if versioning_idx == -1:
         return sym_name
     else:
         return sym_name[:versioning_idx]
 
+def strip_sl_versioning(sl_path):
+    """Assumes that 'sl_path' contains a '.so'"""
+    return sl_path[:sl_path.rfind('.so') + len('.so')]
 
+def get_soname(sl_path):
+    """Transforms a path into an SONAME i.e. /path/to/libc.so.6.1.2 -> libc.so.6
+
+    If there is no versioning, this is equivalent to getting the lib filename
+    """
+    so_idx = sl_path.rfind('.so')
+    soname_end_idx = sl_path.find('.', so_idx + len('.so') + 1)
+    if soname_end_idx == -1:
+        return os.path.basename(sl_path)
+    else:
+        return os.path.basename(sl_path[:soname_end_idx])

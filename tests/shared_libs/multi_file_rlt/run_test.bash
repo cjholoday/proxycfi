@@ -1,6 +1,7 @@
 #!/bin/bash
 
 rm -f *.o *.s *.json *.i *.ftypes *.out *.fptypes output out *.so
+rm -f *.so.[0-9]*  *.so.[0-9]*.[0-9]*
 
 # purpose: test that --cdi-test causes unsafe movement
 

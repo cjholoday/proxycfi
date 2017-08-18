@@ -1,28 +1,31 @@
 #!/bin/bash
 
-rm -f *.o *.s *.json *.i *.ftypes *.out *.fptypes output out *.so
+rm -f *.o *.s *.json *.i *.ftypes *.out *.fptypes output out
+
+# remove versioned shared libraries, symlinks and all
+rm -f *.so *.so.[0-9]*  *.so.[0-9]*.[0-9]*
 
 verify="../../../verifier/verify.py"
 
-cdi-gcc --make-sl=lib1.so sl1.c
+cdi-gcc --make-sl=lib1.so.1.0.0 sl1.c
 if [ "$?" != 0 ]; then
     echo ERROR: Compilation failed!
     exit 1
 fi
 
-cdi-gcc --make-sl=lib2.so --use-sl=lib1.so sl2.c
+cdi-gcc --make-sl=lib2.so.2.0.0 --use-sl=lib1.so sl2.c
 if [ "$?" != 0 ]; then
     echo ERROR: Compilation failed!
     exit 1
 fi
 
-cdi-gcc --make-sl=lib3.so --use-sl=lib1.so sl3.c
+cdi-gcc --make-sl=lib3.so.3.0.0 --use-sl=lib1.so sl3.c
 if [ "$?" != 0 ]; then
     echo ERROR: Compilation failed!
     exit 1
 fi
 
-cdi-gcc --use-sl=lib1.so,lib2.so,lib3.so main.c -o out
+cdi-gcc --use-sl=lib1.so.1,lib2.so,lib3.so main.c -o out
 if [ "$?" != 0 ]; then
     echo ERROR: Compilation failed!
     exit 1

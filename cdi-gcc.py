@@ -4,6 +4,7 @@ import sys
 import os
 import subprocess
 
+import common.elf
 from common.eprint import eprint
 
 ##############################################################################
@@ -18,7 +19,7 @@ from common.eprint import eprint
 SCRIPT_PATH = os.path.dirname(os.path.realpath(__file__))
 
 def make_sl(gcc_opts, libname):
-    """Create a shared library named 'libname'.
+    """Create a shared library named 'libname', which may have versioning
 
     opts_idx should be the index of the --make-sl option
     make_sl assumes that '--use-sl' has been handled if it exists
@@ -37,9 +38,26 @@ def make_sl(gcc_opts, libname):
             gcc_opts[idx] = opt[:-2] + '.o'
 
     try:
-        subprocess.check_call(['cdi-gcc-proper', '-shared', '-o', libname] + gcc_opts)
+        print ['cdi-gcc-proper', '-shared', 
+            '-Wl,-soname,' + common.elf.get_soname(libname), '-o', libname] + gcc_opts
+
+        subprocess.check_call(['cdi-gcc-proper', '-shared', 
+            '-Wl,-soname,' + common.elf.get_soname(libname), '-o', libname]
+            + gcc_opts)
+        print libname
+        print common.elf.strip_sl_versioning(libname)
+
+        if libname != common.elf.strip_sl_versioning(libname):
+            # set up symlinks from the bare name and the soname to the 
+            # full libname.  i.e. libname.so   -> libname.so.1.0.0 
+            #                     libname.so.1 -> libname.so.1.0.0
+            subprocess.check_call(['ln', '-s', os.path.abspath(libname),
+                os.path.abspath(common.elf.strip_sl_versioning(libname))])
+            subprocess.check_call(['ln', '-s', os.path.abspath(libname),
+                os.path.abspath(common.elf.get_soname(libname))])
     except subprocess.CalledProcessError:
         sys.exit(1)
+
 
 
 def prepare_to_use_sls(gcc_opts, opts_idx):
@@ -56,8 +74,9 @@ def prepare_to_use_sls(gcc_opts, opts_idx):
         lib_search_options.append('-L' + base_dir)
         lib_search_options.append('-Wl,-rpath=' + base_dir)
 
-        # cut off the 'lib' and '.so' parts for the -llibname option
-        gcc_opts.append('-l' + os.path.basename(lib_path)[3:-3])
+        # cut off the 'lib' and '.so.X.Y.Z' parts for the -llibname option
+        gcc_opts.append('-l' + 
+                common.elf.strip_sl_versioning(os.path.basename(lib_path))[3:-3])
     return lib_search_options + gcc_opts
 
 if __name__ == '__main__':

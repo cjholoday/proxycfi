@@ -1,13 +1,13 @@
 #!/bin/bash
 
-rm -f *.o *.s *.json *.i *.ftypes *.out *.fptypes output out
+rm -f *.o *.s *.json *.i *.ftypes *.out *.fptypes output out *.so
 
 verify="../../../verifier/verify.py"
 
-cdi-gcc -c -fpic hello.c
-cdi-gcc -shared -o libhello.so hello.o
+gcc -c -fpic hello.c
+gcc -shared -Wl,-soname,libhello.so.6 -o libhello.so.6.0.0 hello.o
 
-cdi-gcc -L"$(pwd)" -Wl,-rpath="$(pwd)" -o out main.c -lhello
+gcc -L"$(pwd)" -Wl,-rpath="$(pwd)" -o out main.c -lhello
 
 if [ "$?" != 0 ]; then
     echo ERROR: Compilation failed!

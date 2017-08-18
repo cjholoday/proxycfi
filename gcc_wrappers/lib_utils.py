@@ -233,9 +233,11 @@ def sl_trace_bin(binary, is_shared):
     library load addresses
     """
 
+    print binary, is_shared
     traced_output = None
     if is_shared:
         traced_output = subprocess.check_output(['ldd', binary])
+        print traced_output
     else:
         traced_output = subprocess.check_output(['./' + binary], 
                 env=dict(os.environ, **{'LD_TRACE_LOADED_OBJECTS':'1'}))

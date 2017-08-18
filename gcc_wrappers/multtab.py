@@ -21,26 +21,30 @@ class GlobalMultiplicity:
         self.is_claimed = is_claimed 
 
 def build_multtab(target_elf, lspec, globl_funct_mults, write_dir):
-    """Builds and writes multtab in write_dir. Same for multtab_strtab
+    """Builds and writes multtab in write_dir. Same for libstrtab
     
     In particular, multtab is written to [write_path]/cdi_multtab and
-    multtab_strtab is written to [write_path]/cdi_libstrtab
+    libstrtab is written to [write_path]/cdi_libstrtab
     """
     print '========= Multiplicity Table ========='
     for sym_str, mult in globl_funct_mults.iteritems():
         print sym_str, mult.mult
     print '======================================'
-    multtab_strtab = '\x00'
+    libstrtab = '\x00'
     with open(os.path.join(write_dir, 'cdi_multtab'), 'w') as multtab:
         elf_deps = target_elf.get_deps(lspec)
 
-        # record the number of libraries for the loader's sake
-        multtab.write(struct.pack('<I', len(elf_deps)))
+        # save space to record the number of CDI shared libraries that are
+        # in this multtab. We'll overwrite this once we've looked through 
+        # all the dependencies
+        multtab.write(struct.pack('<I', 0))
 
+        num_cdi_deps = 0
         for elf in elf_deps:
             try:
                 slt_tramptab_sh = elf.find_section('.cdi_slt_tramptab')
                 elf.init_strtab('.cdi_strtab')
+                num_cdi_deps += 1
             except common.elf.Elf64.MissingSection:
                 continue # this file is not CDI
 
@@ -68,16 +72,21 @@ def build_multtab(target_elf, lspec, globl_funct_mults, write_dir):
                 if globl_sym.mult > 0:
                     num_used_globals += 1
 
-            multtab.write(struct.pack('<I', len(multtab_strtab)))
-            multtab_strtab += lib_utils.sl_linker_name(elf.path) + '\x00'
+            multtab.write(struct.pack('<I', len(libstrtab)))
+            libstrtab += common.elf.get_soname(elf.path) + '\x00'
 
             multtab.write(struct.pack('<I', total_mult))
             multtab.write(struct.pack('<I', num_tramptab_entries))
             multtab.write(struct.pack('<I', num_used_globals))
             multtab.write(mult_bytes)
             elf_file.close()
+
+        # we now know how many CDI libraries there are
+        multtab.seek(0)
+        multtab.write(struct.pack('<I', num_cdi_deps));
+
     with open(os.path.join(write_dir, 'cdi_libstrtab'), 'w') as strtab:
-        strtab.write(multtab_strtab)
+        strtab.write(libstrtab)
 
 
 def get_funct_mults(target_elf, lspec):
@@ -113,7 +122,7 @@ def update_mults(sym, strtab, globl_funct_mults):
     # if this symbol is defined elsewhere update the multiplicity. Otherwise,
     # claim the symbol for this code object
     sym_str = strtab_grab(strtab, sym.st_name)
-    sym_str = common.elf.strip_versioning(sym_str)
+    sym_str = common.elf.strip_sym_versioning(sym_str)
     if sym.st_value == 0: 
         try:
             globl_funct_mults[sym_str].mult += 1
