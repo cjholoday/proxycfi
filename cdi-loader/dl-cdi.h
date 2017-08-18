@@ -45,7 +45,7 @@ typedef struct {
 */
 
 typedef struct {
-    Elf64_Word sl_name; /* an index into .cdi_libstrtab */
+    Elf64_Word soname_idx; /* an index into .cdi_libstrtab */
     Elf64_Word total_mult;
     Elf64_Word num_global_syms;
 
@@ -73,7 +73,7 @@ typedef struct CDI_Linkage_Block {
     void *slt;
 
     SLT_Trampoline *slt_tramptab;
-    char *sl_name;
+    char *soname;
 
     /* points to the part of the multiplicity table associated with this code object */
     CDI_Multtab_Block *multtab_block;
@@ -102,6 +102,17 @@ extern CDI_Metadata_Sections *_cdi_mdata;
 void _cdi_init(CDI_Header *cdi_header);
 
 /*
+ * Returns a pointer to the CLB associated with soname. soname may be 
+ * expressed as a path
+ */
+CLB *_cdi_clb_from_soname(const char *soname);
+
+/*
+ * Implements strcmp. This is needed because we need strcmp before libc is mapped
+ */
+int _cdi_strcmp(const char *str1, const char *str2);
+
+/*
  * Calculates the size of an SLT
  */
 Elf64_Word _cdi_slt_size(Elf64_Word total_mult, Elf64_Word num_called_syms);
@@ -109,8 +120,8 @@ Elf64_Word _cdi_slt_size(Elf64_Word total_mult, Elf64_Word num_called_syms);
 /*
  * Debugging Functions
  */
-void _cdi_print_header(CDI_Header *cdi_header);
-void _cdi_print_clb(CLB *clb);
+void _cdi_print_header(const CDI_Header *cdi_header);
+void _cdi_print_clb(const CLB *clb);
 void _cdi_print_clbs(void);
 
 #endif

@@ -84,14 +84,14 @@ void _cdi_init(CDI_Header *cdi_header) {
     for (int i = 0; i < _clb_tablen; i++) {
         /* Each multtab_block is associated with a code object. Create their
          * CLBs here. Initialize as much as we can */
-        _clb_table[i].sl_name = _cdi_mdata->libstrtab + multtab_block->sl_name;
+        _clb_table[i].soname = _cdi_mdata->libstrtab + multtab_block->soname_idx;
         _clb_table[i].multtab_block = multtab_block;
         _clb_table[i].slt_size = _cdi_slt_size(
                 multtab_block->total_mult, multtab_block->num_used_globals);
 
         /* advance to the next multiplicity table block */
         multtab_block = (CDI_Multtab_Block*)((char*)multtab_block 
-                + sizeof(Elf64_Word) * (3 + multtab_block->num_global_syms));
+                + sizeof(Elf64_Word) * (4 + multtab_block->num_global_syms));
     }
     _cdi_print_clbs();
 }
@@ -109,7 +109,37 @@ Elf64_Word _cdi_slt_size(Elf64_Word total_mult, Elf64_Word num_used_syms) {
 
 }
 
-void _cdi_print_header(CDI_Header *cdi_header) {
+CLB *_cdi_clb_from_soname(const char *soname_path) {
+    /* we need to get rid of the path if it exists */
+    int basename_idx = 0;
+    for (const char *ptr = soname_path; *ptr; ptr++) {
+        if (*ptr == '/') {
+            basename_idx = (ptr - soname_path) + 1;
+        }
+    }
+
+    /* now do a linear search for the matching CLB */
+    const char *soname = soname_path + basename_idx;
+    for (int i = 0; i < _clb_tablen; i++) {
+        if (!_cdi_strcmp(soname, _clb_table[i].soname)) {
+            return &_clb_table[i];
+        }
+    }
+    return 0;
+}
+
+int _cdi_strcmp(const char *str1, const char *str2) {
+    while (*str1) {
+        if (*str1 != *str2) {
+            return *str1 > *str2 ? 1 : -1;
+        }
+        str1++;
+        str2++;
+    }
+    return *str2 ? -1 : 0;
+}
+
+void _cdi_print_header(const CDI_Header *cdi_header) {
     _dl_debug_printf_c("number of header entries: %u\n", cdi_header->num_entries);
     for (int i = 0; i < cdi_header->num_entries; i++) {
         _dl_debug_printf_c("Header %u\n", i);
@@ -126,9 +156,9 @@ void _cdi_print_clbs(void) {
     }
 }
 
-void _cdi_print_clb(CLB *clb) {
+void _cdi_print_clb(const CLB *clb) {
     _dl_debug_printf_c("CLB for '%s' (libstrtab idx %u)\n", 
-            clb->sl_name, (unsigned)(clb->sl_name - _cdi_mdata->libstrtab));
+            clb->soname, (unsigned)(clb->soname - _cdi_mdata->libstrtab));
     _dl_debug_printf_c("--------------------+------------------\n");
     _dl_debug_printf_c("    slt             | %lx\n", (uintptr_t)clb->slt);
     _dl_debug_printf_c("    slt_size        | %u\n", clb->slt_size);
@@ -138,7 +168,7 @@ void _cdi_print_clb(CLB *clb) {
     _dl_debug_printf_c("    total mult      | %u\n", clb->multtab_block->total_mult);
     _dl_debug_printf_c("    num globl fns   | %u\n", clb->multtab_block->num_global_syms);
     _dl_debug_printf_c("    num used globls | %u\n", clb->multtab_block->num_used_globals);
-    _dl_debug_printf_c("    parent libname  | %s\n", clb->multtab_block->sl_name + _cdi_mdata->libstrtab);
+    _dl_debug_printf_c("    parent libname  | %s\n", clb->multtab_block->soname_idx + _cdi_mdata->libstrtab);
     _dl_debug_printf_c("--------------------+------------------\n");
     _dl_debug_printf_c("\n");
 }
