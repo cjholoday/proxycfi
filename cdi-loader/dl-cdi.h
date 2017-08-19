@@ -69,6 +69,8 @@ typedef struct {
  * It contains information associated with each code object
  */
 typedef struct CDI_Linkage_Block {
+    struct link_map *l;
+
     Elf64_Word slt_size;
     Elf64_Addr slt;
 
@@ -118,10 +120,16 @@ int _cdi_strcmp(const char *str1, const char *str2);
 Elf64_Word _cdi_slt_size(Elf64_Word total_mult, Elf64_Word num_called_syms);
 
 /*
+ * Returns the address of symbol in a link_map given a string *
+ */
+ElfW(Addr) _cdi_lookup(const char *sym_str, struct link_map *l);
+
+/*
  * Debugging Functions
  */
 void _cdi_print_header(const CDI_Header *cdi_header);
 void _cdi_print_clb(const CLB *clb);
 void _cdi_print_clbs(void);
+void _cdi_print_link_map(const struct link_map *l);
 
 #endif

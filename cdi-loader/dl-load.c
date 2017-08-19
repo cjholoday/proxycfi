@@ -1222,6 +1222,8 @@ cannot allocate TLS data structures for initial thread");
     if (type == ET_DYN) {
         clb = _cdi_clb_from_soname(l->l_name);
         if (clb) {
+            clb->l = l;
+
             /* this is where the mapping would end without CDI */
             ElfW(Addr) norm_allocend = loadcmds[nloadcmds - 1].allocend;
 

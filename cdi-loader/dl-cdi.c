@@ -45,6 +45,7 @@
 
 #include <assert.h>              
 
+#include <link.h>
 #include <dl-cdi.h>
 
 Elf64_Word _clb_tablen = 0;
@@ -154,6 +155,49 @@ void _cdi_print_clbs(void) {
     for (int i = 0; i < _clb_tablen; i++) {
         _cdi_print_clb(_clb_table + i);
     }
+}
+
+ElfW(Addr) _cdi_lookup(const char *sym_str, struct link_map *l) {
+    const ElfW(Sym) *ref = 0;
+
+    struct r_scope_elem scope;
+    struct r_scope_elem *scope_ptr = &scope;
+
+    /* only lookup in the map that was given */
+    scope.r_list = &l;
+    scope.r_nlist = 1;
+
+    lookup_t lookup = _dl_lookup_symbol_x (sym_str, l, &ref, &scope_ptr, 
+            0, 0, DL_LOOKUP_RETURN_NEWEST, 0);
+    if (ref != 0) {
+        return (ElfW(Addr)) DL_SYMBOL_ADDRESS (lookup, ref);
+    }
+    else {
+        return 0;
+    }
+}
+
+void _cdi_print_link_map(const struct link_map *l) {
+    _dl_debug_printf_c("Link Map for '%s'\n", l->l_name);
+    _dl_debug_printf_c("--------------------+------------------\n");
+    _dl_debug_printf_c("    l_addr          | %lx\n", l->l_addr);
+    _dl_debug_printf_c("    l_ld (dyn sect) | %lx\n", (uintptr_t)l->l_ld);
+    _dl_debug_printf_c("    l_removed       | %u\n", l->l_removed);
+    _dl_debug_printf_c("    l_real          | %s\n", l->l_real->l_name);
+    _dl_debug_printf_c("    l_used          | %u\n", l->l_used);
+    _dl_debug_printf_c("    l_origin        | %s\n", l->l_origin);
+    _dl_debug_printf_c("                    | \n");
+    _dl_debug_printf_c("    l_map_start     | %lx\n", l->l_map_start);
+    _dl_debug_printf_c("    l_map_end       | %lx\n", l->l_map_end);
+    _dl_debug_printf_c("    l_text_end      | %lx\n", l->l_text_end);
+    _dl_debug_printf_c("                    | \n");
+    _dl_debug_printf_c("    l_prev          | %s\n", l->l_prev ? l->l_prev->l_name : "N/A");
+    _dl_debug_printf_c("    l_next          | %s\n", l->l_next ? l->l_next->l_name : "N/A");
+    _dl_debug_printf_c("                    | \n");
+    _dl_debug_printf_c("    link_map addr   | %lx\n", (uintptr_t)l);
+    _dl_debug_printf_c("    l_real addr     | %lx\n", (uintptr_t)l->l_real);
+    _dl_debug_printf_c("--------------------+------------------\n");
+    _dl_debug_printf_c("\n");
 }
 
 void _cdi_print_clb(const CLB *clb) {
