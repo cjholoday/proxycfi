@@ -70,7 +70,7 @@ typedef struct {
  */
 typedef struct CDI_Linkage_Block {
     Elf64_Word slt_size;
-    void *slt;
+    Elf64_Addr slt;
 
     SLT_Trampoline *slt_tramptab;
     char *soname;
