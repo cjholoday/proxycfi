@@ -472,7 +472,9 @@ def write_slt_tramptab(asm_dest, cfg, options):
     # begin by writing the number of entries in the trampoline table
     asm_dest.write('\t.quad {}\n'.format(len(global_functs)))
 
-    cdi_strtab = '\x00'
+    # make sure there is enough space to write _CDI_RLT_ before every string
+    # in the .cdi_strtab. 
+    cdi_strtab = '\x00_CDI_RLT_\x00'
     for funct in global_functs:
         slt_entry_label = '"_CDI_SLT_tramptab_{}"'.format(fix_label(funct.uniq_label))
         asm_dest.write('\t.globl {}\n'.format(slt_entry_label))
@@ -497,8 +499,14 @@ def write_slt_tramptab(asm_dest, cfg, options):
     asm_dest.write('\t.align {}\n'.format(page_size))
 
     asm_dest.write('\t.section .cdi_strtab, "a", @progbits\n')
-    asm_dest.write('.string "{}"\n'.format(cdi_strtab))
 
+    # now translate the strtab into assembler
+    cdi_strtab = cdi_strtab.split('\x00')[1:-1]
+    print cdi_strtab
+    asm_dest.write('\t.string ""')
+    for string in cdi_strtab:
+        asm_dest.write(', "{}"'.format(string))
+    asm_dest.write('\n')
 
 def write_callback_sled(asm_dest, options):
     callback_sled = '.globl _CDI_callback_sled\n'
