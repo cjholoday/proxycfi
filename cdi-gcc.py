@@ -100,6 +100,8 @@ if __name__ == '__main__':
     # Use the CDI loader
     gcc_opts.append('-Wl,--dynamic-linker=' + SCRIPT_PATH + '/cdi-loader/dest/lib/ld-2.23.so')
 
+    gcc_opts.append('-rdynamic')
+
     # Add convenience options for constructing and using shared libraries
     #
     # --make-sl=SHARED_LIB_NAME: the shared library is placed in the current working directory

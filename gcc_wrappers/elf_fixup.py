@@ -19,34 +19,37 @@ def cdi_fixup_elf(lspec):
     """Prepare an elf binary for the CDI loader by overwriting/adding data"""
 
     target_elf = common.elf.Elf64(lspec.target, error.fatal_error)
-    plt_sym_strs  = extract_plt_sym_strs(target_elf)
-
-    rrel32_fixups = get_rrel32_fixups(target_elf)
-    rlt_fixups    = get_rlt_fixups(target_elf, plt_sym_strs)
-    target_elf.fixup(rrel32_fixups + rlt_fixups)
-
-
     globl_funct_mults = multtab.get_funct_mults(target_elf, lspec)
+    plt_sym_strs  = extract_plt_sym_strs(target_elf)
 
     # _CDI_abort multiplicity doesn't affect SLT size, so remove info on it
     if '_CDI_abort' in globl_funct_mults:
         del globl_funct_mults['_CDI_abort']
 
-    plt_fixups = get_plt_fixups(target_elf, globl_funct_mults, plt_sym_strs)
+
+    rrel32_fixups = get_rrel32_fixups(target_elf)
+    rlt_fixups    = get_rlt_fixups(target_elf, plt_sym_strs)
+    plt_fixups    = get_plt_fixups(target_elf, globl_funct_mults, plt_sym_strs)
+
+    target_elf.fixup(rrel32_fixups + rlt_fixups + plt_fixups)
 
     objcopy_opts = []
     if lspec.target_is_shared:
         target_elf.init_strtab('.cdi_strtab')
-        write_cdi_header(['.cdi_strtab'], [len(target_elf.cdi_strtab)])
+        write_cdi_header(['.cdi_strtab', '.cdi_seg_end'], [len(target_elf.cdi_strtab), 8])
+        objcopy_opts.extend(['--update-section', '.cdi_header=.cdi/cdi_header'])
+        objcopy_opts.extend(['--remove-section', '.cdi_multtab'])
+        objcopy_opts.extend(['--remove-section', '.cdi_libstrtab'])
     else:
         multtab.build_multtab(target_elf, lspec, globl_funct_mults, '.cdi')
 
-        added_sects = ['.cdi_multtab', '.cdi_libstrtab']
-        write_cdi_header(added_sects, get_sect_sizes(added_sects))
+        added_sects = ['.cdi_multtab', '.cdi_libstrtab', '.cdi_seg_end']
+        write_cdi_header(added_sects, get_sect_sizes(added_sects[:-1]) + [8])
         
         objcopy_opts.extend(['--update-section', '.cdi_multtab=.cdi/cdi_multtab'])
         objcopy_opts.extend(['--update-section', '.cdi_libstrtab=.cdi/cdi_libstrtab'])
         objcopy_opts.extend(['--update-section', '.cdi_header=.cdi/cdi_header'])
+        objcopy_opts.extend(['--remove-section', '.cdi_strtab'])
 
     write_removable_syms(target_elf, '.cdi/removable_cdi_syms')
     try:
@@ -82,6 +85,8 @@ def write_cdi_header(sect_strs, sect_sizes):
                 sect_id = 1
             elif sect_strs[sect_idx - 1] == '.cdi_libstrtab':
                 sect_id = 2
+            elif sect_strs[sect_idx - 1] == '.cdi_seg_end':
+                sect_id = 100
             else:
                 error.fatal_error("unknown CDI metadata section: '{}'"
                         .format(sect_strs[sect_idx - 1]))

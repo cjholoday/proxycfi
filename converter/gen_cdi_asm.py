@@ -474,7 +474,7 @@ def write_slt_tramptab(asm_dest, cfg, options):
 
     # make sure there is enough space to write _CDI_RLT_ before every string
     # in the .cdi_strtab. 
-    cdi_strtab = '\x00_CDI_RLT_\x00'
+    cdi_strtab = '_CDI_RLT_\x00'
     for funct in global_functs:
         slt_entry_label = '"_CDI_SLT_tramptab_{}"'.format(fix_label(funct.uniq_label))
         asm_dest.write('\t.globl {}\n'.format(slt_entry_label))
@@ -501,11 +501,16 @@ def write_slt_tramptab(asm_dest, cfg, options):
     asm_dest.write('\t.section .cdi_strtab, "a", @progbits\n')
 
     # now translate the strtab into assembler
-    cdi_strtab = cdi_strtab.split('\x00')[1:-1]
+    cdi_strtab = cdi_strtab.split('\x00')[:-1]
     print cdi_strtab
-    asm_dest.write('\t.string ""')
+    # asm_dest.write('\t.string ""')
+    hit = False
     for string in cdi_strtab:
-        asm_dest.write(', "{}"'.format(string))
+        if not hit:
+            hit = True
+            asm_dest.write('\t.string "{}"'.format(string))
+        else:
+            asm_dest.write(', "{}"'.format(string))
     asm_dest.write('\n')
 
 def write_callback_sled(asm_dest, options):

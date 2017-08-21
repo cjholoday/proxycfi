@@ -54,28 +54,8 @@ CDI_Metadata_Sections *_cdi_mdata = 0;
 
 void _cdi_init(CDI_Header *cdi_header) {
     _cdi_mdata = malloc(sizeof(CDI_Metadata_Sections));
-    _cdi_mdata->header    = cdi_header;
-    _cdi_mdata->strtab    = 0;
-    _cdi_mdata->libstrtab = 0;
-    _cdi_mdata->multtab   = 0;
 
-    /* Fill _cdi_mdata with the metadata sections */
-    for (int i = 0; i < cdi_header->num_entries; i++) {
-        switch (cdi_header->entries[i].sect_id) {
-            case 0:
-                _cdi_mdata->strtab = ((char*)cdi_header) 
-                    + cdi_header->entries[i].hdr_off;
-                break;
-            case 1:
-                _cdi_mdata->multtab = (void*)(((char*)cdi_header) 
-                    + cdi_header->entries[i].hdr_off);
-                break;
-            case 2:
-                _cdi_mdata->libstrtab = ((char*)cdi_header) 
-                    + cdi_header->entries[i].hdr_off;
-                break;
-        }
-    }
+    _cdi_find_mdata(cdi_header, _cdi_mdata);
 
     /* the multiplicity table begins with the number of shared libraries */
     _clb_tablen = *((Elf64_Word*) _cdi_mdata->multtab);
@@ -96,6 +76,107 @@ void _cdi_init(CDI_Header *cdi_header) {
     }
     _cdi_print_clbs();
 }
+
+void _cdi_build_slt(CLB *clb, struct link_map *main_map) {
+    void *slt_used_tail = (char*)clb->slt;
+    ElfW(Xword) num_slt_tramps = *((ElfW(Xword)*) clb->slt_tramptab);
+
+    _dl_debug_printf_c("l_real: %lx\n", (uintptr_t)main_map->l_real);
+    _dl_debug_printf_c("l_real: %lx\n", _cdi_lookup("main", main_map));
+    main_map->l_real = main_map;
+    _cdi_print_link_map(clb->l);
+
+    /* Do a sanity check for compatibility */
+    if (num_slt_tramps != clb->multtab_block->num_global_syms) {
+        _dl_debug_printf_c("executable and shared library are "
+                "incompatible: the executable expected %u global symbols, but "
+                "'%s' has %lu global symbols\n", 
+                clb->multtab_block->num_global_syms, clb->soname,
+                num_slt_tramps);
+    }
+
+    /* we'll grab a bit extra from mdata_end but that's okay */
+    ElfW(Addr) cdi_strtab_start_page = (uintptr_t)clb->mdata.strtab & ~(GLRO(dl_pagesize) - 1);
+    ElfW(Addr) cdi_strtab_end_page = (uintptr_t)clb->mdata.mdata_end & ~(GLRO(dl_pagesize) - 1);
+
+    ElfW(Xword) cdi_strtab_size = cdi_strtab_end_page - cdi_strtab_start_page;
+    if (!cdi_strtab_size) {
+        /* .cdi_strtab starts and ends on the same page */
+        cdi_strtab_size = GLRO(dl_pagesize);
+    }
+
+    _dl_debug_printf_c("page1: %lx\n", cdi_strtab_start_page);
+    _dl_debug_printf_c("page2: %lx\n", cdi_strtab_end_page);
+    _dl_debug_printf_c("size: %lx\n", cdi_strtab_size);
+
+    /* we need to set .cdi_strtab as writable since we'll be prefixing 
+     * symbols with _CDI_RLT_. We'll make it read-only after we're done */
+    mprotect((void*)cdi_strtab_start_page, cdi_strtab_size, PROT_READ | PROT_WRITE);
+
+    _dl_debug_printf_c("num trampolines : %lu", num_slt_tramps);
+
+    /* Get rid of the first dummy entry so that we increment in lockstep with
+       the multtab block */
+    /* SLT_Trampoline *slt_tramptab = clb->slt_tramptab + 1; */
+    for (int i = 0; i < num_slt_tramps; i++) {
+        if (clb->multtab_block->mults[i] > 0) {
+            ElfW(Word) cdi_strtab_idx = clb->slt_tramptab[i].symtab_idx_bytes[0]
+                | clb->slt_tramptab[i].symtab_idx_bytes[1] << 8
+                | clb->slt_tramptab[i].symtab_idx_bytes[2] << 16;
+
+            /* temporarily overwrite the preceding chars to prefix with _CDI_RLT */
+            const int RLT_PREFIX_LEN = 9;
+            char *rlt_str = clb->mdata.strtab + cdi_strtab_idx - RLT_PREFIX_LEN;
+
+            char saved_chars[RLT_PREFIX_LEN];
+            memcpy(saved_chars, rlt_str, RLT_PREFIX_LEN);
+            memcpy(rlt_str, "_CDI_RLT_", RLT_PREFIX_LEN);
+
+            ElfW(Addr) rlt_addr = _cdi_lookup(rlt_str, main_map);
+            _cdi_write_slt_sled_entry(slt_used_tail, rlt_addr);
+        
+            /* restore .cdi_strtab */
+            memcpy(rlt_str, saved_chars, RLT_PREFIX_LEN);
+        }
+    }
+        
+    mprotect((void*)cdi_strtab_start_page, cdi_strtab_size, PROT_READ);
+
+    /* mprotect the SLT */
+    main_map->l_real = 0;
+}
+
+void _cdi_write_slt_sled_entry(char *slt_used_tail, ElfW(Addr) rlt_addr) {
+    _dl_debug_printf_c("used_tail: %lx\n", (uintptr_t)slt_used_tail);
+    _dl_debug_printf_c("rlt_addr: %lx\n", rlt_addr);
+}
+
+void _cdi_find_mdata(CDI_Header *cdi_header, CDI_Metadata_Sections *mdata) {
+    mdata->header = cdi_header;
+    mdata->strtab = mdata->libstrtab = mdata->multtab = mdata->mdata_end = 0; 
+
+    for (int i = 0; i < cdi_header->num_entries; i++) {
+        switch (cdi_header->entries[i].sect_id) {
+            case 0:
+                mdata->strtab = ((char*)cdi_header) 
+                    + cdi_header->entries[i].hdr_off;
+                break;
+            case 1:
+                mdata->multtab = (void*)(((char*)cdi_header) 
+                    + cdi_header->entries[i].hdr_off);
+                break;
+            case 2:
+                mdata->libstrtab = ((char*)cdi_header) 
+                    + cdi_header->entries[i].hdr_off;
+                break;
+            case 100:
+                mdata->mdata_end = ((char*)cdi_header) 
+                    + cdi_header->entries[i].hdr_off;
+                break;
+        }
+    }
+}
+
 
 Elf64_Word _cdi_slt_size(Elf64_Word total_mult, Elf64_Word num_used_syms) {
     /* lea: 7 bytes, cmp: 5 bytes, je: 6 bytes */
@@ -129,15 +210,14 @@ CLB *_cdi_clb_from_soname(const char *soname_path) {
     return 0;
 }
 
+/*
+ * Implementation taken from http://clc-wiki.net/wiki/C_standard_library:string.h:strcmp
+ */
 int _cdi_strcmp(const char *str1, const char *str2) {
-    while (*str1) {
-        if (*str1 != *str2) {
-            return *str1 > *str2 ? 1 : -1;
-        }
-        str1++;
-        str2++;
+    while(*str1 && (*str1==*str2)) {
+        str1++,str2++;
     }
-    return *str2 ? -1 : 0;
+    return *(const unsigned char*)str1-*(const unsigned char*)str2;
 }
 
 void _cdi_print_header(const CDI_Header *cdi_header) {
@@ -154,26 +234,6 @@ void _cdi_print_header(const CDI_Header *cdi_header) {
 void _cdi_print_clbs(void) {
     for (int i = 0; i < _clb_tablen; i++) {
         _cdi_print_clb(_clb_table + i);
-    }
-}
-
-ElfW(Addr) _cdi_lookup(const char *sym_str, struct link_map *l) {
-    const ElfW(Sym) *ref = 0;
-
-    struct r_scope_elem scope;
-    struct r_scope_elem *scope_ptr = &scope;
-
-    /* only lookup in the map that was given */
-    scope.r_list = &l;
-    scope.r_nlist = 1;
-
-    lookup_t lookup = _dl_lookup_symbol_x (sym_str, l, &ref, &scope_ptr, 
-            0, 0, DL_LOOKUP_RETURN_NEWEST, 0);
-    if (ref != 0) {
-        return (ElfW(Addr)) DL_SYMBOL_ADDRESS (lookup, ref);
-    }
-    else {
-        return 0;
     }
 }
 
@@ -213,6 +273,12 @@ void _cdi_print_clb(const CLB *clb) {
     _dl_debug_printf_c("    num globl fns   | %u\n", clb->multtab_block->num_global_syms);
     _dl_debug_printf_c("    num used globls | %u\n", clb->multtab_block->num_used_globals);
     _dl_debug_printf_c("    parent libname  | %s\n", clb->multtab_block->soname_idx + _cdi_mdata->libstrtab);
+    _dl_debug_printf_c("                    | \n");
+    _dl_debug_printf_c("    cdi_header      | %lx\n", (uintptr_t)clb->mdata.header);
+    _dl_debug_printf_c("    cdi_strtab      | %lx\n", (uintptr_t)clb->mdata.strtab);
+    _dl_debug_printf_c("    cdi_multtab     | %lx\n", (uintptr_t)clb->mdata.multtab);
+    _dl_debug_printf_c("    cdi_libstrtab   | %lx\n", (uintptr_t)clb->mdata.libstrtab);
+    _dl_debug_printf_c("    mdata_end       | %lx\n", (uintptr_t)clb->mdata.mdata_end);
     _dl_debug_printf_c("--------------------+------------------\n");
     _dl_debug_printf_c("\n");
 }

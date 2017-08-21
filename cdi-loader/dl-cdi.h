@@ -41,7 +41,8 @@ typedef struct {
    0             | .cdi_strtab                                                     
    1             | .cdi_multtab                                                    
    2             | .cdi_libstrtab                                                  
-   3 -> (2^32-1) | undefined                    
+   100           | .cdi_seg_end
+   all others    | undefined                    
 */
 
 typedef struct {
@@ -64,6 +65,15 @@ typedef struct {
     unsigned char symtab_idx_bytes[3];
 } SLT_Trampoline;
 
+/* CDI metadata section pointers */
+typedef struct {
+    CDI_Header *header;
+    char *strtab;
+    char *libstrtab;
+    void *multtab;
+    void *mdata_end;
+} CDI_Metadata_Sections;
+
 /* CDI Linkage Block
  *
  * It contains information associated with each code object
@@ -75,19 +85,14 @@ typedef struct CDI_Linkage_Block {
     Elf64_Addr slt;
 
     SLT_Trampoline *slt_tramptab;
+
     char *soname;
+    CDI_Metadata_Sections mdata;
 
     /* points to the part of the multiplicity table associated with this code object */
     CDI_Multtab_Block *multtab_block;
 } CLB; 
 
-/* CDI metadata section pointers */
-typedef struct {
-    CDI_Header *header;
-    char *strtab;
-    char *libstrtab;
-    void *multtab;
-} CDI_Metadata_Sections;
 
 /* CDI Globals */
 extern CLB *_clb_table;
@@ -125,11 +130,26 @@ Elf64_Word _cdi_slt_size(Elf64_Word total_mult, Elf64_Word num_called_syms);
 ElfW(Addr) _cdi_lookup(const char *sym_str, struct link_map *l);
 
 /*
+ * Fills a CDI metadata struct with metadata locations
+ */
+void _cdi_find_mdata(CDI_Header *cdi_header, CDI_Metadata_Sections *mdata);
+
+/*
+ * Builds the SLT and SLT trampoline table for a given clb
+ *
+ * This function assumes that every CLB is fully initialized and that
+ * each code object's hash table is ready for use
+ */
+void _cdi_build_slt(CLB *clb, struct link_map *main_map);
+
+
+void _cdi_write_slt_sled_entry(char *slt_used_tail, ElfW(Addr) rlt_addr);
+
+/*
  * Debugging Functions
  */
 void _cdi_print_header(const CDI_Header *cdi_header);
 void _cdi_print_clb(const CLB *clb);
 void _cdi_print_clbs(void);
 void _cdi_print_link_map(const struct link_map *l);
-
 #endif

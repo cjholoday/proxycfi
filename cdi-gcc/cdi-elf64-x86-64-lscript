@@ -16,8 +16,6 @@ SECTIONS
   .note.gnu.build-id : { *(.note.gnu.build-id) }
   .hash           : { *(.hash) }
   .gnu.hash       : { *(.gnu.hash) }
-  .dynsym         : { *(.dynsym) }
-  .dynstr         : { *(.dynstr) }
   .gnu.version    : { *(.gnu.version) }
   .gnu.version_d  : { *(.gnu.version_d) }
   .gnu.version_r  : { *(.gnu.version_r) }
@@ -70,6 +68,8 @@ SECTIONS
   PROVIDE (__etext = .);
   PROVIDE (_etext = .);
   PROVIDE (etext = .);
+  .dynsym         : { *(.dynsym) }
+  .dynstr         : { *(.dynstr) }
 
   /* CDI: Create sections for the RLT and SLT, so that we can find them in elf
    *      binaries that we create
@@ -254,5 +254,8 @@ SECTIONS
   }
   .cdi_libstrtab : {
     *(.cdi_libstrtab)
+  }
+  .cdi_seg_end : {
+    *(.cdi_seg_end)
   }
 }

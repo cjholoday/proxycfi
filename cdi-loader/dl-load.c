@@ -1050,6 +1050,8 @@ _dl_map_object_from_fd (const char *name, const char *origname, int fd,
     l->l_ld = 0;
     l->l_phdr = 0;
     l->l_addr = 0; */
+
+    ElfW(Addr) _cdi_segment_start = 0;
     for (ph = phdr; ph < &phdr[l->l_phnum]; ++ph)
       switch (ph->p_type)
 	{
@@ -1087,6 +1089,12 @@ _dl_map_object_from_fd (const char *name, const char *origname, int fd,
 	  c->dataend = ph->p_vaddr + ph->p_filesz;
 	  c->allocend = ph->p_vaddr + ph->p_memsz;
 	  c->mapoff = ALIGN_DOWN (ph->p_offset, GLRO(dl_pagesize));
+
+          /* The last segment is the CDI segment */
+          if (c->mapstart > _cdi_segment_start) {
+            /* We'll need to adjust this later on once we know l_addr */
+            _cdi_segment_start = ph->p_vaddr;
+          }
 
 	  /* Determine whether there is a gap between the last segment
 	     and this one.  */
@@ -1262,8 +1270,14 @@ cannot allocate TLS data structures for initial thread");
       goto call_lose;
     }
 
+    /* CDI: adjust the SLT and get the address of .cdi_strtab */
     if (clb) {
       clb->slt += l->l_addr;
+      CDI_Header *cdi_header = (CDI_Header *)(_cdi_segment_start + l->l_addr);
+      _dl_debug_printf_c("cdi segment start for '%s': %lx\n", clb->soname,
+              (uintptr_t)cdi_header);
+
+      _cdi_find_mdata(cdi_header, &clb->mdata);
     }
   }
 
