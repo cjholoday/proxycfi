@@ -7,3 +7,9 @@ void sl2_internal() {
     sl1_bar();
     sl1_baz();
 }
+
+
+void sl2_call_sl1_foo() {
+    printf("sl2_call_sl1_foo()\n");
+    sl1_foo();
+}
