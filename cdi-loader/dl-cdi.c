@@ -82,6 +82,8 @@ void _cdi_build_slt(CLB *clb, struct link_map *main_map) {
     ElfW(Xword) num_slt_tramps = *((ElfW(Xword)*) clb->slt_tramptab);
     _cdi_print_link_map(clb->l);
 
+    ElfW(Addr) cdi_abort_addr = _cdi_lookup("_CDI_abort", clb->l);
+
     /* Do a sanity check for compatibility */
     if (num_slt_tramps != clb->multtab_block->num_global_syms) {
         _dl_debug_printf_c("executable and shared library are "
@@ -116,7 +118,7 @@ void _cdi_build_slt(CLB *clb, struct link_map *main_map) {
     SLT_Trampoline *slt_tramptab = clb->slt_tramptab + 1;
     for (int i = 0; i < num_slt_tramps; i++) {
         slt_used_tail = _cdi_write_slt_sled(slt_used_tail, &slt_tramptab[i],
-                clb->multtab_block->mults[i], clb, main_map);
+                clb->multtab_block->mults[i], clb, main_map, cdi_abort_addr);
     }
         
     mprotect((void*)cdi_strtab_start_page, cdi_strtab_size, PROT_READ);
@@ -125,7 +127,7 @@ void _cdi_build_slt(CLB *clb, struct link_map *main_map) {
 }
 
 char *_cdi_write_slt_sled(char *sled_addr, SLT_Trampoline *tramp, 
-        ElfW(Word) mult, CLB *clb, struct link_map *main_map) {
+        ElfW(Word) mult, CLB *clb, struct link_map *main_map, ElfW(Addr) abort_addr) {
     if (mult == 0) {
         return sled_addr;
     }
@@ -174,12 +176,30 @@ char *_cdi_write_slt_sled(char *sled_addr, SLT_Trampoline *tramp,
 finish_sled:
     /* restore .cdi_strtab */
     memcpy(rlt_str, saved_chars, RLT_PREFIX_LEN);
-    /* CDI_abort */
+
+    _dl_debug_printf_c("cdi abort addr: %lx\n", abort_addr);
+
+    /* jmp _CDI_abort */
+    ElfW(Sword) offset_to_abort = _cdi_signed_offset(
+            (uintptr_t)sled_tail + 5, abort_addr);
+
+    *sled_tail++ = 0xe9;
+    memcpy(sled_tail, &offset_to_abort, sizeof(ElfW(Sword)));
+    sled_tail += sizeof(ElfW(Sword));
 
     return sled_tail;
 }
 
-/* TODO: update slt_size calculator */
+ElfW(Sword) _cdi_signed_offset(ElfW(Addr) from_addr, ElfW(Addr) to_addr) {
+    if (from_addr > to_addr) {
+        return (ElfW(Sword))(from_addr - to_addr) * -1;
+    }
+    else {
+        return (ElfW(Sword))(to_addr - from_addr);
+    }
+}
+
+
 
 char *_cdi_write_slt_sled_entry(char *sled_tail, ElfW(Addr) rlt_addr,
         ElfW(Xword) target_l_addr) {
@@ -194,7 +214,6 @@ char *_cdi_write_slt_sled_entry(char *sled_tail, ElfW(Addr) rlt_addr,
     /* Fill %r10 with the PLT return address with a movabs instruction */
     *sled_tail++ = 0x49;
     *sled_tail++ = 0xba;
-    _dl_debug_printf_c("plt ret addr: %lx\n", plt_return_addr);
     memcpy(sled_tail, &plt_return_addr, sizeof(ElfW(Addr)));
     sled_tail += sizeof(ElfW(Addr));
 
@@ -210,7 +229,6 @@ char *_cdi_write_slt_sled_entry(char *sled_tail, ElfW(Addr) rlt_addr,
     /* mov the rlt address into %r10 */
     *sled_tail++ = 0x49;
     *sled_tail++ = 0xba;
-    _dl_debug_printf_c("rlt addr: %lx\n\n", rlt_addr);
     memcpy(sled_tail, &rlt_addr, sizeof(ElfW(Addr)));
     sled_tail += sizeof(ElfW(Addr));
 
@@ -220,6 +238,29 @@ char *_cdi_write_slt_sled_entry(char *sled_tail, ElfW(Addr) rlt_addr,
     *sled_tail++ = 0xe2;
 
     return sled_tail;
+}
+
+Elf64_Word _cdi_slt_size(Elf64_Word total_mult, Elf64_Word num_used_syms) {
+    /*
+     * Per multiplicity:
+     * * * * * * * * * * * * * * *
+     * movabs plt_ret_addr, %r10   [10 bytes]
+     * cmp    %r10, -8(%rsp)       [5 bytes]
+     * jne    next_sled_entry      [2 bytes]
+     * movabs rlt_addr, %r10       [10 bytes]
+     * jmp    %r10                 [3 bytes]
+     *                           = [30 bytes]
+     * Per sled
+     * * * * * * * * * * * * * * *
+     * jmp _CDI_abort              [5 bytes]
+     */
+
+    const Elf64_Word mult_size = 30;
+    const Elf64_Word abort_size = 5;
+
+    /* while this calculation is simple now, it might get complicated in
+     * the future if we choose to align SLT sleds */
+    return mult_size * total_mult + num_used_syms * abort_size;
 }
 
 void _cdi_find_mdata(CDI_Header *cdi_header, CDI_Metadata_Sections *mdata) {
@@ -249,28 +290,6 @@ void _cdi_find_mdata(CDI_Header *cdi_header, CDI_Metadata_Sections *mdata) {
 }
 
 
-Elf64_Word _cdi_slt_size(Elf64_Word total_mult, Elf64_Word num_used_syms) {
-    /*
-     * Per multiplicity:
-     * * * * * * * * * * * * * * *
-     * movabs plt_ret_addr, %r10   [10 bytes]
-     * cmp    %r10, -8(%rsp)       [5 bytes]
-     * jne    next_sled_entry      [2 bytes]
-     * movabs rlt_addr, %r10       [10 bytes]
-     * jmp    %r10                 [3 bytes]
-     *                           = [30 bytes]
-     * Per sled
-     * * * * * * * * * * * * * * *
-     * jmp _CDI_abort              [5 bytes]
-     */
-
-    const Elf64_Word mult_size = 30;
-    const Elf64_Word abort_size = 5;
-
-    /* while this calculation is simple now, it might get complicated in
-     * the future if we choose to align SLT sleds */
-    return mult_size * total_mult + num_used_syms * abort_size;
-}
 
 CLB *_cdi_clb_from_soname(const char *soname_path) {
     /* we need to get rid of the path if it exists */

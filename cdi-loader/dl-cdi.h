@@ -144,9 +144,11 @@ void _cdi_build_slt(CLB *clb, struct link_map *main_map);
 
 
 char *_cdi_write_slt_sled(char *sled_addr, SLT_Trampoline *tramp, 
-        ElfW(Word) mult, CLB *clb, struct link_map *main_map);
+        ElfW(Word) mult, CLB *clb, struct link_map *main_map,  ElfW(Addr) abort_addr);
 char *_cdi_write_slt_sled_entry(char *sled_tail, ElfW(Addr) rlt_addr,
         ElfW(Xword) target_l_addr);
+
+ElfW(Sword) _cdi_signed_offset(ElfW(Addr) from_addr, ElfW(Addr) to_addr);
 
 /*
  * Debugging Functions
