@@ -4,6 +4,7 @@ import sys
 
 restore_original_objects_fptr = None
 raw_ld_spec = None
+file_deleted_on_error = None
 def fatal_error(message):
     """Prints error message with the spec passed to cdi-ld.py and exits with error
 
@@ -16,4 +17,8 @@ def fatal_error(message):
     eprint('\nSpec passed to cdi-ld.py: {}'.format(' '.join(raw_ld_spec)))
     if restore_original_objects_fptr:
         restore_original_objects_fptr()
+
+    if file_deleted_on_error:
+        subprocess.check_call(['rm', file_deleted_on_error])
+
     sys.exit(1)

@@ -294,6 +294,8 @@ except subprocess.CalledProcessError:
     fatal_error("calling 'ld' with the following spec failed:\n\n{}"
             .format(' '.join(cdi_spec)))
 
+error.file_deleted_on_error = lspec.target
+
 # do some sanity checks for executables
 if not lspec.target_is_shared:
     pass
@@ -325,5 +327,6 @@ if not lspec.target_is_shared:
 restore_original_objects()
 error.restore_original_objects_fptr = None
 
+# fix up the ELF file for loading with shared libraries
 elf_fixup.cdi_fixup_elf(lspec)
 

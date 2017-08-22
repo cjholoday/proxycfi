@@ -2,6 +2,9 @@
 
 rm -f *.o *.s *.json *.i *.ftypes *.out *.fptypes output out *.so
 
+# remove versioned shared libraries, symlinks and all
+rm -f *.so *.so.[0-9]*  *.so.[0-9]*.[0-9]*
+
 # purpose: test that --cdi-test causes unsafe movement
 
 verify="../../../verifier/verify.py"

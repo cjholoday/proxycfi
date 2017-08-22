@@ -205,7 +205,12 @@ def get_plt_fixups(elf, globl_funct_mults, plt_sym_strs):
 def extract_plt_sym_strs(elf):
     """Returns the name of each .plt entry, in order"""
 
-    plt_relocs = elf.get_rela_relocs('.rela.plt')
+    try:
+        plt_relocs = elf.get_rela_relocs('.rela.plt')
+    except common.elf.Elf64.MissingSection:
+        # the section is omitted if there is no PLT
+        return []
+
     if plt_relocs == []:
         return []
 
