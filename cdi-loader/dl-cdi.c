@@ -103,10 +103,6 @@ void _cdi_build_slt(CLB *clb, struct link_map *main_map) {
         cdi_strtab_size = GLRO(dl_pagesize);
     }
 
-    _dl_debug_printf_c("page1: %lx\n", cdi_strtab_start_page);
-    _dl_debug_printf_c("page2: %lx\n", cdi_strtab_end_page);
-    _dl_debug_printf_c("size: %lx\n", cdi_strtab_size);
-
     /* we need to set .cdi_strtab as writable since we'll be prefixing 
      * symbols with _CDI_RLT_. We'll make it read-only after we're done */
     mprotect((void*)cdi_strtab_start_page, cdi_strtab_size, PROT_READ | PROT_WRITE);
@@ -115,8 +111,6 @@ void _cdi_build_slt(CLB *clb, struct link_map *main_map) {
        notice that the SLT trampoline table is guaranteed to be aligned */
     ElfW(Xword) tramptab_size = (num_slt_tramps + 1) * sizeof(SLT_Trampoline);
     mprotect(clb->slt_tramptab, tramptab_size, PROT_READ | PROT_WRITE);
-
-    _dl_debug_printf_c("num trampolines : %lu\n", num_slt_tramps);
 
     /* Index with respect to the second entry so that we increment in 
        lockstep with the multtab block */
@@ -152,8 +146,6 @@ char *_cdi_write_slt_sled(char *sled_addr, SLT_Trampoline *tramp,
         | tramp->symtab_idx_bytes[1] << 8
         | tramp->symtab_idx_bytes[2] << 16;
 
-    _dl_debug_printf_c("processing sym '%s'\n", clb->mdata.strtab + cdi_strtab_idx);
-
     /* temporarily overwrite the preceding chars to prefix with _CDI_RLT */
     const int RLT_PREFIX_LEN = 9;
     char *rlt_str = clb->mdata.strtab + cdi_strtab_idx - RLT_PREFIX_LEN;
@@ -165,8 +157,6 @@ char *_cdi_write_slt_sled(char *sled_addr, SLT_Trampoline *tramp,
     /* inspect the main map first so that it's put first in each SLT sled */
     ElfW(Addr) rlt_addr = _cdi_lookup(rlt_str, main_map);
     if (rlt_addr) {
-        _dl_debug_printf_c("\tRLT: %lx\n", rlt_addr);
-        _dl_debug_printf_c("\tRLT chain addr: %lx\n", *((ElfW(Addr) *)(rlt_addr - 8)));
         sled_tail = _cdi_write_slt_sled_entry(sled_tail, rlt_addr, 0);
         if (++num_matches_found == mult) {
             goto finish_sled;
@@ -181,8 +171,10 @@ char *_cdi_write_slt_sled(char *sled_addr, SLT_Trampoline *tramp,
         rlt_addr = _cdi_lookup(rlt_str, _clb_table[j].l);
         if (rlt_addr) {
             sled_tail = _cdi_write_slt_sled_entry(sled_tail, rlt_addr, _clb_table[j].l->l_addr);
+            /*
             _dl_debug_printf_c("\tRLT: %lx\n", rlt_addr);
-            _dl_debug_printf_c("\tRLT chain addr: %lx\n", *((ElfW(Addr) *)(rlt_addr - 8)));
+            _dl_debug_printf_c("\tPLT ret addr: %lx\n", *((ElfW(Addr) *)(rlt_addr - 8)));
+            */
             if (++num_matches_found == mult) break;
         }
     }
@@ -190,8 +182,6 @@ char *_cdi_write_slt_sled(char *sled_addr, SLT_Trampoline *tramp,
 finish_sled:
     /* restore .cdi_strtab */
     memcpy(rlt_str, saved_chars, RLT_PREFIX_LEN);
-
-    _dl_debug_printf_c("cdi abort addr: %lx\n", abort_addr);
 
     /* jmp _CDI_abort */
     ElfW(Sword) offset_to_abort = _cdi_signed_offset(
@@ -355,9 +345,8 @@ void _cdi_print_link_map(const struct link_map *l) {
     _dl_debug_printf_c("Link Map for '%s'\n", l->l_name);
     _dl_debug_printf_c("--------------------+------------------\n");
     _dl_debug_printf_c("    l_addr          | %lx\n", l->l_addr);
-    _dl_debug_printf_c("    l_ld (dyn sect) | %lx\n", (uintptr_t)l->l_ld);
+    _dl_debug_printf_c("    l_ld (.dynamic) | %lx\n", (uintptr_t)l->l_ld);
     _dl_debug_printf_c("    l_removed       | %u\n", l->l_removed);
-    _dl_debug_printf_c("    l_real          | %s\n", l->l_real->l_name);
     _dl_debug_printf_c("    l_used          | %u\n", l->l_used);
     _dl_debug_printf_c("    l_origin        | %s\n", l->l_origin);
     _dl_debug_printf_c("                    | \n");
@@ -368,8 +357,7 @@ void _cdi_print_link_map(const struct link_map *l) {
     _dl_debug_printf_c("    l_prev          | %s\n", l->l_prev ? l->l_prev->l_name : "N/A");
     _dl_debug_printf_c("    l_next          | %s\n", l->l_next ? l->l_next->l_name : "N/A");
     _dl_debug_printf_c("                    | \n");
-    _dl_debug_printf_c("    link_map addr   | %lx\n", (uintptr_t)l);
-    _dl_debug_printf_c("    l_real addr     | %lx\n", (uintptr_t)l->l_real);
+    _dl_debug_printf_c("    link map addr   | %lx\n", (uintptr_t)l);
     _dl_debug_printf_c("--------------------+------------------\n");
     _dl_debug_printf_c("\n");
 }
@@ -386,7 +374,7 @@ void _cdi_print_clb(const CLB *clb) {
     _dl_debug_printf_c("    total mult      | %u\n", clb->multtab_block->total_mult);
     _dl_debug_printf_c("    num globl fns   | %u\n", clb->multtab_block->num_global_syms);
     _dl_debug_printf_c("    num used globls | %u\n", clb->multtab_block->num_used_globals);
-    _dl_debug_printf_c("    parent libname  | %s\n", clb->multtab_block->soname_idx + _cdi_mdata->libstrtab);
+    _dl_debug_printf_c("    mblock soname   | %s\n", clb->multtab_block->soname_idx + _cdi_mdata->libstrtab);
     _dl_debug_printf_c("                    | \n");
     _dl_debug_printf_c("    cdi_header      | %lx\n", (uintptr_t)clb->mdata.header);
     _dl_debug_printf_c("    cdi_strtab      | %lx\n", (uintptr_t)clb->mdata.strtab);

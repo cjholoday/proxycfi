@@ -132,7 +132,7 @@ def sl_cdi_fixups(lspec, binary_path):
                     " '{}'".format(sl_path))
         else:
             eprint("cdi-ld: warning: compiling against non-CDI shared library"
-                    " '{}' with symbol reference '{}'".format(sl_path, symbol_ref))
+                    " '{}'\n\twith symbol reference '{}'".format(sl_path, symbol_ref))
 
     sl_fixups = []
     for idx, sl_path in enumerate(lspec.sl_paths):

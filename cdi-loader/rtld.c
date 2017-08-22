@@ -1126,29 +1126,9 @@ of this helper program; chances are you did not intend to run this program.\n\
 	main_map->l_relro_size = ph->p_memsz;
 	break;
       }
-  _dl_debug_printf(".cdi_header address: %lu\n", _cdi_segment_start);
 
   CDI_Header *cdi_header = (CDI_Header *)_cdi_segment_start;
-  _dl_debug_printf("hello?\n");
   _cdi_init(cdi_header);
-
-  CLB *clb = _cdi_clb_from_soname("/path/to/lib3.so.3");
-  if (!clb) {
-      _dl_debug_printf_c("clb == NULL");
-  }
-  else {
-      _cdi_print_clb(clb);
-  }
-  _dl_debug_printf("hello2?\n");
-  
-  char *_cdi_byte_ptr = (char*)_cdi_segment_start;
-  for (int i = 0; i < 20; i += 4) {
-    _dl_debug_printf("%u, %u, %u, %u\n", 
-          (int)(_cdi_byte_ptr[i + 0]),
-          (int)(_cdi_byte_ptr[i + 1]),
-          (int)(_cdi_byte_ptr[i + 2]),
-          (int)(_cdi_byte_ptr[i + 3]));
-  }
 
   /* Adjust the address of the TLS initialization image in case
      the executable is actually an ET_DYN object.  */

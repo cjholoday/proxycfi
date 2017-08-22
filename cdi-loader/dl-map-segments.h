@@ -38,10 +38,6 @@ _dl_map_segments (struct link_map *l, int fd,
 {
   const struct loadcmd *c = loadcmds;
 
-
-  _dl_debug_printf_c("code object: %s\n", l->l_name);
-  _dl_debug_printf_c("is shared?: %u\n", (unsigned)(type == ET_DYN));
-
   if (__glibc_likely (type == ET_DYN))
     {
       /* This is a position-independent shared object.  We can let the
@@ -82,7 +78,10 @@ _dl_map_segments (struct link_map *l, int fd,
                     PROT_NONE);
 
       l->l_contiguous = 1;
-      _dl_debug_printf_c("    elf mapstart: %lx\n", c->mapstart);
+
+      /* CDI debugging statements
+
+      _dl_debug_printf_c("    loadcmd mapstart: %lx\n", c->mapstart);
       _dl_debug_printf_c("    actual mapstart: %lx\n", l->l_map_start);
       _dl_debug_printf_c("    l_addr: %lx\n", l->l_addr);
       _dl_debug_printf_c("    num cmds: %lu\n", nloadcmds);
@@ -95,8 +94,8 @@ _dl_map_segments (struct link_map *l, int fd,
           _dl_debug_printf_c("        mappref: %lx\n", mappref);
       }
       _dl_debug_printf_c("    maplength: %lx\n", maplength);
-
       _dl_debug_printf_c("\n");
+      */
 
       goto postmap;
     }

@@ -145,11 +145,23 @@ void _cdi_find_mdata(CDI_Header *cdi_header, CDI_Metadata_Sections *mdata);
 void _cdi_build_slt(CLB *clb, struct link_map *main_map);
 
 
+/*
+ * Writes an SLT sled and returns a pointer to the next available address in
+ * the SLT. This function doen't modify the SLT trampoline table
+ */
 char *_cdi_write_slt_sled(char *sled_addr, SLT_Trampoline *tramp, 
         ElfW(Word) mult, CLB *clb, struct link_map *main_map,  ElfW(Addr) abort_addr);
+
+/*
+ * Writes a piece of an SLT sled. Each call of this function is responsible for
+ * handling one code object to which the associated shared library returns from
+ */
 char *_cdi_write_slt_sled_entry(char *sled_tail, ElfW(Addr) rlt_addr,
         ElfW(Xword) target_l_addr);
 
+/*
+ * Returns a signed offset as it would be calculated in an x86 instruction
+ */
 ElfW(Sword) _cdi_signed_offset(ElfW(Addr) from_addr, ElfW(Addr) to_addr);
 
 /*
@@ -158,5 +170,8 @@ ElfW(Sword) _cdi_signed_offset(ElfW(Addr) from_addr, ElfW(Addr) to_addr);
 void _cdi_print_header(const CDI_Header *cdi_header);
 void _cdi_print_clb(const CLB *clb);
 void _cdi_print_clbs(void);
+
+/* warning: this function will segfault if used with the main map */
 void _cdi_print_link_map(const struct link_map *l);
+
 #endif
