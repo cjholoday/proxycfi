@@ -55,15 +55,15 @@ def cdi_fixup_elf(lspec):
     try:
         subprocess.check_call(['objcopy', 
             '--strip-symbols=.cdi/removable_cdi_syms', lspec.target]
-            + objcopy_opts)
+            + objcopy_opts, stdout=open(os.devnull, 'wb'), stderr=subprocess.STDOUT)
     except subprocess.CalledProcessError:
         error.fatal_error("couldn't update symbols and/or sections of target '{}'".format(lspec.target))
 
 def write_cdi_header(sect_strs, sect_sizes):
     """Writes .cdi_header, which tells where CDI metadata can be found"""
 
-    # 4 bytes for the number of header entries. Then 8 bytes for each header entry
-    cdi_header_size = 4 + 8 * len(sect_strs)
+    # 12 bytes for num_entris and CDI magic. Then 8 bytes for each header entry
+    cdi_header_size = 12 + 8 * len(sect_strs)
 
     # the offset of each section from the .cdi segment. Starting with .cdi_header
     segment_offsets = [0, cdi_header_size]
@@ -75,6 +75,9 @@ def write_cdi_header(sect_strs, sect_sizes):
     del segment_offsets[-1]
 
     with open('.cdi/cdi_header', 'w') as header:
+        # write CDI identifier bytes (CDI magic bytes)
+        header.write('\x7fCDI\x7fELF')
+
         # write the number of header entries
         header.write(struct.pack('<I', len(sect_strs)))
         for sect_idx in xrange(1, len(segment_offsets)):

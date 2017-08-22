@@ -40,8 +40,6 @@ if lspec.cdi_options:
         print ' '.join(lspec.raw())
         sys.exit(0)
 
-print ' '.join(lspec.raw())
-
 archives = []
 for i, path in enumerate(lspec.ar_paths):
     # FIXME: This is VERY unportable

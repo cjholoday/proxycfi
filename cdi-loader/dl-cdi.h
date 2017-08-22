@@ -23,7 +23,9 @@
  * can be found
  */
 typedef struct {
-    Elf64_Word num_entries;
+    /* these magic bytes mark a shared library as CDI: '\x7fCDI\x7fELF' */
+    unsigned char cdi_magic[8];
+    ElfW(Word) num_entries;
 
     /* the actual length is num_header_entries. Since we only ever create struct
      * pointers and point them at statically constructed structs, we can get 

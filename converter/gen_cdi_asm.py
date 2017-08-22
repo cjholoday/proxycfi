@@ -272,7 +272,6 @@ def convert_return_site(site, funct, asm_line, asm_dest, cfg,
 
     ret_sled = '\taddq $8, %rsp\n'
     for target_label, multiplicity in site.targets.iteritems():
-        eprint(target_label, multiplicity)
         i = 1
         while i <= multiplicity:
             sled_label = '_CDIX_RET_{}_TO_{}_{}'.format(fix_label(funct.uniq_label),
@@ -510,7 +509,6 @@ def write_slt_tramptab(asm_dest, cfg, options):
 
     # now translate the strtab into assembler
     cdi_strtab = cdi_strtab.split('\x00')[:-1]
-    print cdi_strtab
     # asm_dest.write('\t.string ""')
     hit = False
     for string in cdi_strtab:

@@ -38,14 +38,9 @@ def make_sl(gcc_opts, libname):
             gcc_opts[idx] = opt[:-2] + '.o'
 
     try:
-        print ['cdi-gcc-proper', '-shared', 
-            '-Wl,-soname,' + common.elf.get_soname(libname), '-o', libname] + gcc_opts
-
         subprocess.check_call(['cdi-gcc-proper', '-shared', 
             '-Wl,-soname,' + common.elf.get_soname(libname), '-o', libname]
             + gcc_opts)
-        print libname
-        print common.elf.strip_sl_versioning(libname)
 
         if libname != common.elf.strip_sl_versioning(libname):
             # set up symlinks from the bare name and the soname to the 

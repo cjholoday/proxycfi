@@ -7,6 +7,8 @@ import sys
 
 import spec
 import fake_types
+import common.elf
+
 from common.eprint import eprint
 from error import fatal_error
 
@@ -103,6 +105,10 @@ def sl_cdi_fixups(lspec, binary_path):
     sl_cdi_paths = dict()
     for sl_path, garbage in sl_trace_bin(binary_path, lspec.target_is_shared):
         sl_realpath = os.path.realpath(sl_path)
+
+        if common.elf.is_cdi(sl_realpath):
+            sl_cdi_paths[sl_realpath] = sl_realpath
+            continue
 
         # Pending on CDI shared libraries being implemented:
         #
@@ -233,11 +239,9 @@ def sl_trace_bin(binary, is_shared):
     library load addresses
     """
 
-    print binary, is_shared
     traced_output = None
     if is_shared:
         traced_output = subprocess.check_output(['ldd', binary])
-        print traced_output
     else:
         traced_output = subprocess.check_output(['./' + binary], 
                 env=dict(os.environ, **{'LD_TRACE_LOADED_OBJECTS':'1'}))

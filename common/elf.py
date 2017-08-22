@@ -248,3 +248,45 @@ def get_soname(sl_path):
         return os.path.basename(sl_path)
     else:
         return os.path.basename(sl_path[:soname_end_idx])
+
+def is_cdi(elf_path):
+    with open(elf_path, 'rb') as elf:
+        elf.seek(16 + 2 + 2 + 4 + 8)
+        phdr_off = struct.unpack('<Q', elf.read(8))[0]
+
+        elf.seek(16 + 2 + 2 + 4 + 8 + 8 + 8 + 4 + 2)
+        phdr_entsize, num_phdrs = struct.unpack('<HH', elf.read(4))
+
+        last_seg_vaddr = 0
+        last_seg_off = 0
+        last_seg_filesz = 0
+        for phdr_idx in xrange(num_phdrs):
+            elf.seek(phdr_off + phdr_idx * phdr_entsize)
+            p_type = struct.unpack('<I', elf.read(4))[0]
+
+            # only look at PT_LOAD headers
+            if p_type != 1:
+                continue
+
+            # skip p_flags
+            elf.seek(4, 1)
+            p_offset, p_vaddr = struct.unpack('<QQ', elf.read(16))
+
+            if p_vaddr > last_seg_vaddr:
+                last_seg_vaddr = p_vaddr
+                last_seg_off = p_offset
+
+                # skip p_paddr
+                elf.seek(8, 1)
+                last_seg_filesz = struct.unpack('<Q', elf.read(8))[0]
+
+        if last_seg_vaddr and last_seg_filesz >= 8:
+            cdi_magic = '\x7fCDI\x7fELF'
+            elf.seek(last_seg_off)
+            for idx, byte in enumerate(struct.unpack('BBBBBBBB', elf.read(8))):
+                if chr(byte) != cdi_magic[idx]:
+                    return False
+            else:
+                return True
+        else:
+            return False

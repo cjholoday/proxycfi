@@ -145,7 +145,7 @@ for dep_fname in source_deps + header_deps:
         fptypes.close()
 
     if not dep_used:
-        eprint("cdi-as: warning: no ftypes/fptypes found with: '" + dep_fname + "'")
+        # We refrain from omitting this to output since it has yet to be useful
         fake_object.write('# warning no_type_info {}\n'.format(dep_fname))
 
 fake_object.write('# assembly\n')

@@ -238,7 +238,6 @@ class LinkerSpec():
                         " '{}'".format(mystery_file.name))
                 return 'misc'
         else:
-            print entry
             return 'misc'
 
     def norm(self):
