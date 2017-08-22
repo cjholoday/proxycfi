@@ -295,12 +295,18 @@ def convert_return_site(site, funct, asm_line, asm_dest, cfg,
     code, data = cdi_abort(sled_id_faucet(), funct.asm_filename,
             dwarf_loc, True, options)
     if options['--shared-library'] and funct.is_global:
+        # subtract another 8 bytes off the stack pointer since we'll be 
+        # using two return address on the way back: one to get from the SLT
+        # to the RLT and another to get from the RLT to the executable code
+        ret_sled += '\taddq $8, %rsp\n'
+
         # only fill %r11 with data. Do not add a jump to _CDI_abort
         ret_sled += code[:code.find('\n', code.find('_CDIX_SLED_')) + 1]
 
         # make sure each relocation symbol is unique
         if not hasattr(funct, 'rel_id_faucet'):
             funct.rel_id_faucet = 0
+
 
         # The jmp will be relocated to jmp to an SLT trampoline entry
         ret_sled += '\tnop\n' * 5

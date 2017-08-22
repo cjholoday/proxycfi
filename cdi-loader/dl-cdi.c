@@ -110,6 +110,11 @@ void _cdi_build_slt(CLB *clb, struct link_map *main_map) {
     /* we need to set .cdi_strtab as writable since we'll be prefixing 
      * symbols with _CDI_RLT_. We'll make it read-only after we're done */
     mprotect((void*)cdi_strtab_start_page, cdi_strtab_size, PROT_READ | PROT_WRITE);
+    
+    /* enable writing into the SLT trampoline table so that we can patch it up 
+       notice that the SLT trampoline table is guaranteed to be aligned */
+    ElfW(Xword) tramptab_size = (num_slt_tramps + 1) * sizeof(SLT_Trampoline);
+    mprotect(clb->slt_tramptab, tramptab_size, PROT_READ | PROT_WRITE);
 
     _dl_debug_printf_c("num trampolines : %lu\n", num_slt_tramps);
 
@@ -117,13 +122,22 @@ void _cdi_build_slt(CLB *clb, struct link_map *main_map) {
        lockstep with the multtab block */
     SLT_Trampoline *slt_tramptab = clb->slt_tramptab + 1;
     for (int i = 0; i < num_slt_tramps; i++) {
+        /* make the SLT trampoline jump down to the SLT sled */
+        ElfW(Sword) offset_to_sled = _cdi_signed_offset(
+                (ElfW(Addr))slt_tramptab[i].jmp_bytes + 5, (ElfW(Addr))slt_used_tail);
+        memcpy(&slt_tramptab[i].jmp_bytes[1], &offset_to_sled, sizeof(offset_to_sled));
+
         slt_used_tail = _cdi_write_slt_sled(slt_used_tail, &slt_tramptab[i],
                 clb->multtab_block->mults[i], clb, main_map, cdi_abort_addr);
     }
         
     mprotect((void*)cdi_strtab_start_page, cdi_strtab_size, PROT_READ);
 
-    /* mprotect the SLT and trampoline table */
+    /* Disable write access to the SLT and SLT tramploline tables */
+    ElfW(Addr) aligned_slt = (ElfW(Addr))clb->slt & ~(GLRO(dl_pagesize) - 1);
+    mprotect((void*)aligned_slt, (ElfW(Addr))slt_used_tail - aligned_slt, 
+            PROT_READ | PROT_EXEC);
+    mprotect(clb->slt_tramptab, tramptab_size, PROT_READ | PROT_EXEC);
 }
 
 char *_cdi_write_slt_sled(char *sled_addr, SLT_Trampoline *tramp, 
@@ -218,8 +232,8 @@ char *_cdi_write_slt_sled_entry(char *sled_tail, ElfW(Addr) rlt_addr,
     sled_tail += sizeof(ElfW(Addr));
 
     /* Compare %r10 with the return address on the stack 
-       i.e. cmp %r10, -0x8(%rsp) */
-    memcpy(sled_tail, "\x4c\x39\x54\x24\xf8", 5);
+       i.e. cmp %r10, -0x16(%rsp) */
+    memcpy(sled_tail, "\x4c\x39\x54\x24\xf0", 5);
     sled_tail += 5;
 
     /* Goto the next sled entry (jne) */
