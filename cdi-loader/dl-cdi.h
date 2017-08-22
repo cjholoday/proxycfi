@@ -143,7 +143,10 @@ void _cdi_find_mdata(CDI_Header *cdi_header, CDI_Metadata_Sections *mdata);
 void _cdi_build_slt(CLB *clb, struct link_map *main_map);
 
 
-void _cdi_write_slt_sled_entry(char *slt_used_tail, ElfW(Addr) rlt_addr);
+char *_cdi_write_slt_sled(char *sled_addr, SLT_Trampoline *tramp, 
+        ElfW(Word) mult, CLB *clb, struct link_map *main_map);
+char *_cdi_write_slt_sled_entry(char *sled_tail, ElfW(Addr) rlt_addr,
+        ElfW(Xword) target_l_addr);
 
 /*
  * Debugging Functions

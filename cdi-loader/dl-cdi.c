@@ -80,10 +80,6 @@ void _cdi_init(CDI_Header *cdi_header) {
 void _cdi_build_slt(CLB *clb, struct link_map *main_map) {
     void *slt_used_tail = (char*)clb->slt;
     ElfW(Xword) num_slt_tramps = *((ElfW(Xword)*) clb->slt_tramptab);
-
-    _dl_debug_printf_c("l_real: %lx\n", (uintptr_t)main_map->l_real);
-    _dl_debug_printf_c("l_real: %lx\n", _cdi_lookup("main", main_map));
-    main_map->l_real = main_map;
     _cdi_print_link_map(clb->l);
 
     /* Do a sanity check for compatibility */
@@ -113,42 +109,117 @@ void _cdi_build_slt(CLB *clb, struct link_map *main_map) {
      * symbols with _CDI_RLT_. We'll make it read-only after we're done */
     mprotect((void*)cdi_strtab_start_page, cdi_strtab_size, PROT_READ | PROT_WRITE);
 
-    _dl_debug_printf_c("num trampolines : %lu", num_slt_tramps);
+    _dl_debug_printf_c("num trampolines : %lu\n", num_slt_tramps);
 
-    /* Get rid of the first dummy entry so that we increment in lockstep with
-       the multtab block */
-    /* SLT_Trampoline *slt_tramptab = clb->slt_tramptab + 1; */
+    /* Index with respect to the second entry so that we increment in 
+       lockstep with the multtab block */
+    SLT_Trampoline *slt_tramptab = clb->slt_tramptab + 1;
     for (int i = 0; i < num_slt_tramps; i++) {
-        if (clb->multtab_block->mults[i] > 0) {
-            ElfW(Word) cdi_strtab_idx = clb->slt_tramptab[i].symtab_idx_bytes[0]
-                | clb->slt_tramptab[i].symtab_idx_bytes[1] << 8
-                | clb->slt_tramptab[i].symtab_idx_bytes[2] << 16;
-
-            /* temporarily overwrite the preceding chars to prefix with _CDI_RLT */
-            const int RLT_PREFIX_LEN = 9;
-            char *rlt_str = clb->mdata.strtab + cdi_strtab_idx - RLT_PREFIX_LEN;
-
-            char saved_chars[RLT_PREFIX_LEN];
-            memcpy(saved_chars, rlt_str, RLT_PREFIX_LEN);
-            memcpy(rlt_str, "_CDI_RLT_", RLT_PREFIX_LEN);
-
-            ElfW(Addr) rlt_addr = _cdi_lookup(rlt_str, main_map);
-            _cdi_write_slt_sled_entry(slt_used_tail, rlt_addr);
-        
-            /* restore .cdi_strtab */
-            memcpy(rlt_str, saved_chars, RLT_PREFIX_LEN);
-        }
+        slt_used_tail = _cdi_write_slt_sled(slt_used_tail, &slt_tramptab[i],
+                clb->multtab_block->mults[i], clb, main_map);
     }
         
     mprotect((void*)cdi_strtab_start_page, cdi_strtab_size, PROT_READ);
 
-    /* mprotect the SLT */
-    main_map->l_real = 0;
+    /* mprotect the SLT and trampoline table */
 }
 
-void _cdi_write_slt_sled_entry(char *slt_used_tail, ElfW(Addr) rlt_addr) {
-    _dl_debug_printf_c("used_tail: %lx\n", (uintptr_t)slt_used_tail);
-    _dl_debug_printf_c("rlt_addr: %lx\n", rlt_addr);
+char *_cdi_write_slt_sled(char *sled_addr, SLT_Trampoline *tramp, 
+        ElfW(Word) mult, CLB *clb, struct link_map *main_map) {
+    if (mult == 0) {
+        return sled_addr;
+    }
+    char *sled_tail = sled_addr;
+    int num_matches_found = 0;
+
+    ElfW(Word) cdi_strtab_idx = tramp->symtab_idx_bytes[0]
+        | tramp->symtab_idx_bytes[1] << 8
+        | tramp->symtab_idx_bytes[2] << 16;
+
+    _dl_debug_printf_c("processing sym '%s'\n", clb->mdata.strtab + cdi_strtab_idx);
+
+    /* temporarily overwrite the preceding chars to prefix with _CDI_RLT */
+    const int RLT_PREFIX_LEN = 9;
+    char *rlt_str = clb->mdata.strtab + cdi_strtab_idx - RLT_PREFIX_LEN;
+
+    char saved_chars[RLT_PREFIX_LEN];
+    memcpy(saved_chars, rlt_str, RLT_PREFIX_LEN);
+    memcpy(rlt_str, "_CDI_RLT_", RLT_PREFIX_LEN);
+
+    /* inspect the main map first so that it's put first in each SLT sled */
+    ElfW(Addr) rlt_addr = _cdi_lookup(rlt_str, main_map);
+    if (rlt_addr) {
+        _dl_debug_printf_c("\tRLT: %lx\n", rlt_addr);
+        _dl_debug_printf_c("\tRLT chain addr: %lx\n", *((ElfW(Addr) *)(rlt_addr - 8)));
+        sled_tail = _cdi_write_slt_sled_entry(sled_tail, rlt_addr, 0);
+        if (++num_matches_found == mult) {
+            goto finish_sled;
+        }
+    }
+    for (int j = 0; j < _clb_tablen; j++) {
+        /* skip the CLB for which we are building an SLT */
+        if (clb == _clb_table + j) {
+            continue;
+        }
+
+        rlt_addr = _cdi_lookup(rlt_str, _clb_table[j].l);
+        if (rlt_addr) {
+            sled_tail = _cdi_write_slt_sled_entry(sled_tail, rlt_addr, _clb_table[j].l->l_addr);
+            _dl_debug_printf_c("\tRLT: %lx\n", rlt_addr);
+            _dl_debug_printf_c("\tRLT chain addr: %lx\n", *((ElfW(Addr) *)(rlt_addr - 8)));
+            if (++num_matches_found == mult) break;
+        }
+    }
+
+finish_sled:
+    /* restore .cdi_strtab */
+    memcpy(rlt_str, saved_chars, RLT_PREFIX_LEN);
+    /* CDI_abort */
+
+    return sled_tail;
+}
+
+/* TODO: update slt_size calculator */
+
+char *_cdi_write_slt_sled_entry(char *sled_tail, ElfW(Addr) rlt_addr,
+        ElfW(Xword) target_l_addr) {
+    /* We compare with the PLT return address, which is stored right before
+       the RLT address */
+    ElfW(Addr) plt_return_addr = *((ElfW(Addr)*)(rlt_addr - sizeof(ElfW(Addr))));
+
+    /* we need to adjust the plt return address so that it takes into account
+       the variability of shared library load addresses */
+    plt_return_addr += target_l_addr;
+
+    /* Fill %r10 with the PLT return address with a movabs instruction */
+    *sled_tail++ = 0x49;
+    *sled_tail++ = 0xba;
+    _dl_debug_printf_c("plt ret addr: %lx\n", plt_return_addr);
+    memcpy(sled_tail, &plt_return_addr, sizeof(ElfW(Addr)));
+    sled_tail += sizeof(ElfW(Addr));
+
+    /* Compare %r10 with the return address on the stack 
+       i.e. cmp %r10, -0x8(%rsp) */
+    memcpy(sled_tail, "\x4c\x39\x54\x24\xf8", 5);
+    sled_tail += 5;
+
+    /* Goto the next sled entry (jne) */
+    *sled_tail++ = 0x75;
+    *sled_tail++ = 0x0d;
+
+    /* mov the rlt address into %r10 */
+    *sled_tail++ = 0x49;
+    *sled_tail++ = 0xba;
+    _dl_debug_printf_c("rlt addr: %lx\n\n", rlt_addr);
+    memcpy(sled_tail, &rlt_addr, sizeof(ElfW(Addr)));
+    sled_tail += sizeof(ElfW(Addr));
+
+    /* Jump to %r10 */
+    *sled_tail++ = 0x41;
+    *sled_tail++ = 0xff;
+    *sled_tail++ = 0xe2;
+
+    return sled_tail;
 }
 
 void _cdi_find_mdata(CDI_Header *cdi_header, CDI_Metadata_Sections *mdata) {
@@ -179,16 +250,26 @@ void _cdi_find_mdata(CDI_Header *cdi_header, CDI_Metadata_Sections *mdata) {
 
 
 Elf64_Word _cdi_slt_size(Elf64_Word total_mult, Elf64_Word num_used_syms) {
-    /* lea: 7 bytes, cmp: 5 bytes, je: 6 bytes */
-    const Elf64_Word sled_mult_size = 7 + 5 + 6;
+    /*
+     * Per multiplicity:
+     * * * * * * * * * * * * * * *
+     * movabs plt_ret_addr, %r10   [10 bytes]
+     * cmp    %r10, -8(%rsp)       [5 bytes]
+     * jne    next_sled_entry      [2 bytes]
+     * movabs rlt_addr, %r10       [10 bytes]
+     * jmp    %r10                 [3 bytes]
+     *                           = [30 bytes]
+     * Per sled
+     * * * * * * * * * * * * * * *
+     * jmp _CDI_abort              [5 bytes]
+     */
 
-    /* jmp: 5 bytes */
+    const Elf64_Word mult_size = 30;
     const Elf64_Word abort_size = 5;
 
     /* while this calculation is simple now, it might get complicated in
      * the future if we choose to align SLT sleds */
-    return sled_mult_size * total_mult + num_used_syms * abort_size;
-
+    return mult_size * total_mult + num_used_syms * abort_size;
 }
 
 CLB *_cdi_clb_from_soname(const char *soname_path) {

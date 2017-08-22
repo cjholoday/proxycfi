@@ -1131,6 +1131,14 @@ of this helper program; chances are you did not intend to run this program.\n\
   CDI_Header *cdi_header = (CDI_Header *)_cdi_segment_start;
   _dl_debug_printf("hello?\n");
   _cdi_init(cdi_header);
+
+  CLB *clb = _cdi_clb_from_soname("/path/to/lib3.so.3");
+  if (!clb) {
+      _dl_debug_printf_c("clb == NULL");
+  }
+  else {
+      _cdi_print_clb(clb);
+  }
   _dl_debug_printf("hello2?\n");
   
   char *_cdi_byte_ptr = (char*)_cdi_segment_start;
@@ -2184,6 +2192,18 @@ ERROR: ld.so: object '%s' cannot be loaded as audit interface: %s; ignored.\n",
 	}
     }
 #endif
+
+  /* get the address of each SLT trampoline table */
+  for (int i = 0; i < _clb_tablen; i++) {
+      _clb_table[i].slt_tramptab = (SLT_Trampoline *) _cdi_lookup(
+              "_CDI_SLT_tramptab", _clb_table[i].l);
+  }
+  _cdi_print_clbs();
+
+  /* build the SLT and SLT trampoline tables */
+  for (int i = 0; i < _clb_tablen; i++) {
+      _cdi_build_slt(&_clb_table[i], main_map);
+  }
 
   /* Notify the debugger all new objects are now ready to go.  We must re-get
      the address since by now the variable might be in another object.  */

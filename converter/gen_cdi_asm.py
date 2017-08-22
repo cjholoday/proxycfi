@@ -420,8 +420,10 @@ def write_rlt(cfg, plt_sites, asm_dest, sled_id_faucet, options):
         entry_label = '"_CDI_RLT_{}"'.format(fix_label(sl_funct_uniq_label))
 
         # reserve space for cdi-ld to store the associated PLT return address
+        asm_dest.write('\t.align 8\n') # make sure PLT ret addr is aligned
         asm_dest.write('\t.quad 0xdeadbeefefbeadde\n')
         asm_dest.write('\t.type {}, @function\n'.format(entry_label))
+        asm_dest.write('\t.globl {}\n'.format(entry_label))
         asm_dest.write(entry_label + ':\n')
 
         # Add sled entries for each RLT target
