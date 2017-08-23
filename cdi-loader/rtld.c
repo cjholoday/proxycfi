@@ -776,9 +776,14 @@ dl_main (const ElfW(Phdr) *phdr,
   /* Process the environment variable which control the behaviour.  */
   process_envvars (&mode);
 
+  /* CDI: we must always do non-lazy binding. override user settings */
+  GLRO(dl_lazy) = 0;
+
 #ifndef HAVE_INLINED_SYSCALLS
   /* Set up a flag which tells we are just starting.  */
   _dl_starting_up = 1;
+
+
 #endif
 
   if (*user_entry == (ElfW(Addr)) ENTRY_POINT)
