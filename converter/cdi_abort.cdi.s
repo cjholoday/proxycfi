@@ -8,10 +8,8 @@
         .string "\n"
 
 # parameters:
-#   %rsi: pointer to [quad][string of len size]
-#   %rax: unsafe target address
+#   %r11: pointer to [.quad len][string of len size]
 # 
-#   TODO: print out the unsafe target in text
 _CDI_abort:
 .LFB0:
 	.cfi_startproc
@@ -20,7 +18,7 @@ _CDI_abort:
 	.cfi_offset 6, -16
 	movq	%rsp, %rbp
 	.cfi_def_cfa_register 6
-        pushq   %rsi                        # save specific sled info for later
+        pushq   %r11                        # save specific sled info for later
         leaq    .generic_msg(%rip), %rsi
         movq    $.generic_msg_len, %rdx
         movq    $1, %rax                    # write

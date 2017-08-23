@@ -571,7 +571,7 @@ def write_callback_sled(asm_dest, options):
             callback_sled += '1:\n'
     callback_sled += '\tmovq\t-8(%rsp), %rax\n'
     callback_sled += '\tmovq\t%r11, %rsi\n'
-    callback_sled += '\tcall _CDI_abort\n'
+    callback_sled += '\tjmp _CDI_abort\n'
     asm_dest.write(callback_sled)
 
 def fix_label(label):
