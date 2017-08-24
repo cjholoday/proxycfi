@@ -1,14 +1,14 @@
 !<arch>
-print.o/        1495138353  1000  1000  100664  13842     `
+print.o/        1503615318  1000  1000  100664  13805     `
 #<deff>
 # as_spec --64 -o print.o print.s
 # as_spec_no_io --64 
-# source_directory /home/colton/research/cdi/tests/build_system/archives_using_archives
+# source_directory /home/colton/research/cdi/tests/build_system/cdi-ld_idempotent
 # dependencies print.c /home/colton/research/cdi/cdi-gcc/dest/lib/gcc/x86_64-pc-linux-gnu/6.1.0/include/stddef.h /usr/include/x86_64-linux-gnu/bits/types.h /usr/include/libio.h /usr/include/stdio.h /usr/include/x86_64-linux-gnu/bits/sys_errlist.h
 # typeinfo print.c.ftypes
-# print.c:3:6:print _CDIv_Z5printPc
-# print.c:7:6:other_print1 _CDIv_Z12other_print1Pc
-# print.c:11:6:other_print2 _CDIv_Z12other_print2Pc
+# print.c:3:6:print v_Pc
+# print.c:7:6:other_print1 v_Pc
+# print.c:11:6:other_print2 v_Pc
 
 # typeinfo print.c.fptypes
 
@@ -812,8 +812,6 @@ other_print2:
 	.string	"_IO_buf_end"
 .LASF28:
 	.string	"_old_offset"
-.LASF58:
-	.string	"/home/colton/research/cdi/tests/build_system/archives_using_archives"
 .LASF57:
 	.string	"print.c"
 .LASF23:
@@ -826,8 +824,6 @@ other_print2:
 	.string	"sizetype"
 .LASF33:
 	.string	"_offset"
-.LASF56:
-	.string	"GNU C11 6.1.0 -mtune=generic -march=x86-64 -g -fno-jump-tables"
 .LASF17:
 	.string	"_IO_write_ptr"
 .LASF12:
@@ -836,14 +832,16 @@ other_print2:
 	.string	"other_print1"
 .LASF19:
 	.string	"_IO_buf_base"
+.LASF32:
+	.string	"_lock"
 .LASF24:
 	.string	"_markers"
 .LASF14:
 	.string	"_IO_read_end"
 .LASF51:
 	.string	"stderr"
-.LASF32:
-	.string	"_lock"
+.LASF11:
+	.string	"char"
 .LASF6:
 	.string	"long int"
 .LASF29:
@@ -878,8 +876,10 @@ other_print2:
 	.string	"_IO_read_ptr"
 .LASF2:
 	.string	"short unsigned int"
-.LASF11:
-	.string	"char"
+.LASF58:
+	.string	"/home/colton/research/cdi/tests/build_system/cdi-ld_idempotent"
+.LASF56:
+	.string	"GNU C11 6.1.0 -mtune=generic -march=x86-64 -g -fno-jump-tables -fno-omit-frame-pointer"
 .LASF43:
 	.string	"_next"
 .LASF34:
@@ -934,3 +934,4 @@ other_print2:
 	.string	"_IO_lock_t"
 	.ident	"GCC: (GNU) 6.1.0"
 	.section	.note.GNU-stack,"",@progbits
+

@@ -1,2 +1,2 @@
-main.c:8:6:foo _CDIv_Z3foorVKPrVKPVK11custom_type
-main.c:12:5:main _CDIi_Z4mainv
+main.c:8:6:foo v_rVKPrVKPVK11custom_type
+main.c:12:5:main i_v

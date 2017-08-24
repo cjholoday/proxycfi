@@ -1,4 +1,4 @@
-main.c:16:6:foo _CDIv_Z3foo3tag
-main.c:19:6:bar _CDIv_Z3bar12tagless_type
-main.c:22:6:baz _CDIv_Z3baz3tag
-main.c:26:5:main _CDIi_Z4mainv
+main.c:16:6:foo v_3tag
+main.c:19:6:bar v_12tagless_type
+main.c:22:6:baz v_3tag
+main.c:26:5:main i_v

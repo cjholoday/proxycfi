@@ -1,15 +1,15 @@
 !<arch>
-call_print.o/   1503615318  1000  1000  100664  3790      `
+call_print.o/   1495138489  1000  1000  100664  3800      `
 #<deff>
 # as_spec --64 -o call_print.o call_print.s
 # as_spec_no_io --64 
-# source_directory /home/colton/research/cdi/tests/build_system/cdi-ld_idempotent
+# source_directory /home/colton/research/cdi/tests/build_system/archives_using_archives
 # dependencies call_print.c 
 # typeinfo call_print.c.ftypes
-# call_print.c:3:6:call_print v_Pc
+# call_print.c:3:6:call_print _CDIv_Z10call_printPc
 
 # typeinfo call_print.c.fptypes
-# call_print.c:5:5:call_print v_Pc
+# call_print.c:5:5:call_print _CDIv_ZPc
 
 # assembly
 	.file	"call_print.c"
@@ -230,16 +230,16 @@ call_print:
 	.section	.debug_line,"",@progbits
 .Ldebug_line0:
 	.section	.debug_str,"MS",@progbits,1
+.LASF0:
+	.string	"GNU C11 6.1.0 -mtune=generic -march=x86-64 -g -fno-jump-tables"
 .LASF3:
 	.string	"call_print"
-.LASF2:
-	.string	"/home/colton/research/cdi/tests/build_system/cdi-ld_idempotent"
 .LASF1:
 	.string	"call_print.c"
-.LASF0:
-	.string	"GNU C11 6.1.0 -mtune=generic -march=x86-64 -g -fno-jump-tables -fno-omit-frame-pointer"
 .LASF4:
 	.string	"oper"
+.LASF2:
+	.string	"/home/colton/research/cdi/tests/build_system/archives_using_archives"
 .LASF5:
 	.string	"char"
 	.ident	"GCC: (GNU) 6.1.0"

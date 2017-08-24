@@ -5,11 +5,17 @@ rm -f *.o *.s *.json *.i *.ftypes *.fptypes output out
 # purpose: test that cdi-ld.py can be run with the same spec multiple times
 #          in a row without error. This guarrantee helps with debugging
 
-cdi_flags="-g --save-temps -fno-jump-tables"
 ld_spec=$(cdi-gcc $cdi_flags main.c libcall_print.a libprint.a -o out \
     -Wl,--cdi-options="--spec"  | tail -1 | sed 's/--cdi-options=--spec//g')
 
-cdi-gcc $cdi_flags main.c libcall_print.a libprint.a -o out
+cdi-gcc call_print.c -c
+ar rcs libcall_print.a call_print.o
+
+cdi-gcc print.c -c
+ar rcs libprint.a print.o
+
+
+cdi-gcc main.c libcall_print.a libprint.a -o out
 
 
 if [ "$?" != 0 ]; then
