@@ -1,6 +1,7 @@
 import __init__
 
 import funct_cfg
+import copy
 import operator
 import asm_parsing
 import subprocess
@@ -83,6 +84,7 @@ def gen_cdi_asm(cfg, asm_file_descrs, plt_sites, options):
     write_rlt.done = False
     write_slt_tramptab.done = False
     write_callback_sled.done = False
+    write_type_tables.done = False
     
     for descr in asm_file_descrs:
         asm_parsing.DwarfSourceLoc.wipe_filename_mapping()
@@ -119,8 +121,6 @@ def gen_cdi_asm(cfg, asm_file_descrs, plt_sites, options):
                 
                 convert_to_cdi(site, funct, line_to_fix, asm_dest, cfg,
                         sled_id_faucet, abort_data, dwarf_loc, options)
-                        
-
 
         debug_section_matcher = re.compile(r'^\t\.section\t\.debug_info.+')
         debug_section_found = False
@@ -151,6 +151,10 @@ def gen_cdi_asm(cfg, asm_file_descrs, plt_sites, options):
         if not write_slt_tramptab.done and options['--shared-library']:
             write_slt_tramptab(asm_dest, cfg, options)
             write_slt_tramptab.done = True
+
+        if not write_type_tables.done:
+            write_type_tables(cfg)
+            write_type_tables.done = True
         
         asm_dest.write(stack_section_decl)
         asm_src.close()
@@ -282,7 +286,7 @@ def convert_return_site(site, funct, asm_line, asm_dest, cfg,
 
     # constructors/destructors run before/after main so they do not need to be
     # fixed up, at least for this version
-    if funct.ftype.mangled_str == '(CON/DE)STRUCTOR':
+    if funct.ftype == '(CON/DE)STRUCTOR':
         asm_dest.write(asm_line)
         return
 
@@ -593,6 +597,28 @@ def write_callback_sled(asm_dest, options):
     callback_sled += '\tmovq\t%r11, %rsi\n'
     callback_sled += '\tjmp _CDI_abort\n'
     asm_dest.write(callback_sled)
+
+def write_type_tables(cfg):
+    functs = copy.deepcopy(cfg.functs())
+
+    fptr_sites = []
+    for funct in functs:
+        for site in funct.sites:
+            if hasattr(site, 'fptype'):
+                fptr_sites.append(site)
+    
+    # prioritize typestring size when sorting
+    def type_compare(type1, type2):
+        if len(type1) != len(type2):
+            return len(type1) - len(type2)
+        else:
+            return cmp(type1, type2)
+
+    functs.sort(key=operator.attrgetter('ftype'), cmp=type_compare)
+    # fptr_sites.sort(key=operator.attrgetter('fptype'), cmp=type_compare)
+
+    for funct in functs:
+        print '{}: \t\t{}'.format(funct.asm_name, funct.ftype)
 
 def fix_label(label):
     return label.replace('@PLT', '').replace('/', '__').replace('.fake.o', '.cdi.s')

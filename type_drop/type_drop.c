@@ -170,7 +170,7 @@ void cdi_print_funct_decl_info(FILE *typefile, tree funct_decl, location_t loc) 
             IDENTIFIER_POINTER(DECL_NAME(funct_decl)));
 
 
-    cdi_print_mangled_funct(typefile, funct_decl, loc);
+    cdi_print_funct_sig(typefile, funct_decl, loc);
     fputc('\n', typefile);
 }
 
@@ -211,11 +211,11 @@ void cdi_print_fp_info(FILE *typefile, tree fp_tree, location_t loc) {
         fprintf(typefile, ":? ");
     }
 
-    cdi_print_mangled_funct(typefile, funct_tree, loc);
+    cdi_print_funct_sig(typefile, funct_tree, loc);
     fputc('\n', typefile);
 }
 
-void cdi_print_mangled_funct(FILE *typefile, tree funct_tree, location_t loc) {
+void cdi_print_funct_sig(FILE *typefile, tree funct_tree, location_t loc) {
     if (!typefile) { 
         return;
     }
@@ -245,18 +245,17 @@ void cdi_print_mangled_funct(FILE *typefile, tree funct_tree, location_t loc) {
     }
 
     tree return_type = TREE_TYPE(funct_tree);
-
-    fprintf(typefile, "_CDI");
     cdi_print_type(typefile, return_type, loc);
-    fprintf(typefile, "_Z");
+    fputc('_', typefile);
 
-    if (funct_decl) {
-        if (!TREE_PUBLIC(funct_decl)) {
-            fputc('L', typefile);
-        }
-        const char *funct_name = IDENTIFIER_POINTER(DECL_NAME(funct_decl));
-        fprintf(typefile, "%lu%s", strlen(funct_name), funct_name);
-    }
+    /* We don't need to know if functions are local since they can be passed
+     * around as callbacks and used outside of their translation unit anyway
+     * Keep the code here for now, just in case
+     */
+    // if (funct_decl && !TREE_PUBLIC(funct_decl)) {
+    //     fputc('L', typefile);
+    // }
+
     cdi_print_arg_types(typefile, funct_tree, loc);
 }
 
@@ -597,7 +596,7 @@ integer_type_codes[itk_none] =
 };
 
 /* Taken from the C++ implementation */
-void
+    void
 cdi_print_builtin_type(FILE *stream, tree type, location_t loc)
 {
     if (TYPE_CANONICAL (type))

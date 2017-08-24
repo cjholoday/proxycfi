@@ -29,9 +29,6 @@ if __name__ == "__main__":
     parser.add_argument('-pu', '--profile-use', type=str, metavar='PROFILE',
             help='uses profile data to optimize the CDI sleds. TODO',
             dest='--profile-use', default='')
-    parser.add_argument('-nn', '--no-narrowing', action='store_true',
-            help='if set, sleds won\'t be narrowed based on type signature',
-            dest='--no-narrowing')
     parser.add_argument('-sl', '--shared-library', action='store_true',
             help='if set, generate code for use as a CDI shared library',
             dest='--shared-library')

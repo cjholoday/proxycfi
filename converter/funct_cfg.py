@@ -38,6 +38,9 @@ class FunctControlFlowGraph:
             encoding = jsonpickle.encode(self)
             cfg_file.write(encoding)
 
+    def functs(self):
+        return self._funct_vertices.values()
+
 class FunctControlFlowGraphIterator:
     def __init__(self, cfg):
         self.cfg_iter = iter(cfg._funct_vertices.values())
@@ -51,16 +54,13 @@ class FunctControlFlowGraphIterator:
 class Function:
     def __init__(self, asm_name, asm_filename, src_filename, sites, asm_line_num):
         self.asm_name = asm_name
-        self.asm_filename = asm_filename
-        self.sites = sites
-        self.asm_line_num = asm_line_num
         self.uniq_label = asm_filename + '.' + asm_name
-        self.src_filename = src_filename 
+        self.sites = sites
 
-        # unitialized / improperly set until gen_cfg finishes
-        self.ftype = None # function type
-        self.ret_dict = dict()
-        self.is_global = True
+        self.asm_filename = asm_filename
+        self.asm_line_num = asm_line_num
+
+        self.src_filename = src_filename 
 
         # differentiate between returns using an id. This is used to generate
         # labels at the end of each return site so that the loader can patch
@@ -78,41 +78,26 @@ class Function:
                 site.indir_call_id = self.num_indir_calls
                 self.num_indir_calls += 1
 
-class FunctionType:
-    """A function signature type. May be associated with a particular function"""
+        # ALL following members are unitialized or in an inconsistent state
+        # until gen_cfg() finishes
+        self.ret_dict = dict()
+        self.is_global = True
 
-    def __init__(self, mangled_str):
-        self.mangled_str = mangled_str
-        self.src_name = '' # used when function type
+        # filled with FptrCall's from metadata
+        self.fptr_calls = [] 
 
-        # location
-        # self.src_filename = '' TODO delete
-        self.src_line_num = -1
-        self.enclosing_funct_name = '' # optional (used for fp location)
+        # format: [return_type] || _ || [C++ mangling after fn name]
+        self.ftype = None
 
-    def __str__(self):
-        if not self.src_name:
-            return self.mangled_str
-        after_z_index = self.mangled_str.find('_Z') + len('_Z')
-        name_index = self.mangled_str.find(self.src_name, after_z_index)
-        return (self.mangled_str[:after_z_index] + 
-                self.mangled_str[name_index + len(self.src_name):])
+        # filled with Site instances which are matched with FptrCall's 
+        # via source line numbers.
+        self.fptr_sites = []
 
-    def is_local(self):
-        """Returns true if signature associated with particular funct is static"""
 
-        # must be associated with particular function
-        assert self.src_name
-        z_index = self.mangled_str.find('_Z')
-        return self.mangled_str[z_index + len('_Z')] == 'L'
-
-    def __eq__(self, other):
-        return str(self) == str(other)
-
-    def __ne__(self, other):
-        return not __eq__(self, other)
-
-FunctionType.arbitrary = FunctionType('')
+class FptrCall:
+    def __init__(self, type_sig, src_line_num):
+        self.type = type_sig
+        self.src_line_num = src_line_num
 
 class SledIdFaucet:
     def __init__(self):
@@ -138,6 +123,9 @@ class Site:
         self.enclosing_funct_uniq_label = uniq_label
         self.asm_line_num = line_num
         self.group = type_of_site
+
+        # this is set for indirect call sites by the time gen_cfg finishes
+        self.fptype = None
 
         # targets are of "Function" type. len(targets) == 1 for a direct call site 
         self.targets = targets 

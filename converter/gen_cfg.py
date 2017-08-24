@@ -114,7 +114,9 @@ def extract_funct(asm_file, funct_name, line_num, dwarf_loc, options):
         pass # ignore empty line
 
     comment_continues = False
+
     sites = []
+    fptr_sites = []
     direct_call_sites = []
     empty_ret_dict = dict()
 
@@ -140,6 +142,8 @@ def extract_funct(asm_file, funct_name, line_num, dwarf_loc, options):
             if '%' not in arg_str:
                 new_site.targets.append(arg_str)
                 direct_call_sites.append(new_site)
+            else:
+                fptr_sites.append(new_site)
             sites.append(new_site)
         elif key_symbol in returns:
             # empty return dict passed so that every site's return dict is
@@ -158,6 +162,7 @@ def extract_funct(asm_file, funct_name, line_num, dwarf_loc, options):
     new_funct = funct_cfg.Function(funct_name, asm_file.name, 
             dwarf_loc.filename(), sites, start_line_num)
     new_funct.direct_call_sites = direct_call_sites
+    new_funct.fptr_sites = fptr_sites
     new_funct.ret_dict = empty_ret_dict
 
     return new_funct, line_num
@@ -168,89 +173,20 @@ def build_indir_targets(cfg, asm_file_descrs, options):
     Currently only builds the targets for indirect calls
     """
 
-    def is_indir_call_site(site):
-        return (site.group == funct_cfg.Site.CALL_SITE 
-                and site.targets == [])
-
-
-    if options['--no-narrowing']:
-        for funct in cfg:
-            fptr_sites = filter(is_indir_call_site, funct.sites)
-            for fptr_site in fptr_sites:
-                fptr_site.targets = [f for f in cfg]
-        return
-
-    funct_types = dict()
-    fptr_types = dict()
     for descr in asm_file_descrs:
         try:
-            parse_cdi_metadata(descr, funct_types, fptr_types, options)
+            parse_cdi_metadata(cfg, descr, options)
         except:
             eprint("gen_cdi: error: parsing CDI metadata from file '{}' failed. Aborting..."
                     .format(descr.filename))
             raise
-    
-    # associate function types with assembly functions (need to fix for C++)
-    optimized_functs_children = []
+
     for funct in cfg:
-        try:
-            funct.ftype = funct_types[funct.asm_filename + '.' + funct.asm_name]
-        except KeyError:
-            # gcc may optimize functions by splitting, cloning, or otherwise
-            # modifying them. In all cases (it seems), gcc appends 
-            # '.[optimization name].[number]' to the original function
-            # 
-            # these functions are not in the type information gcc spits out 
-            # because type info is gathered at the preprocessing stage. Since
-            # not all functions have had their ftype information assigned, wait
-            # until after this loop to copy the type info from the original function
-            function_part_matcher = re.compile(r'^[^\s0-9][^\s.]*\.[^\s]*\.[0-9]*$')
-            if function_part_matcher.match(funct.asm_name):
-                optimized_functs_children.append(funct)
-            else:
-                eprint("error: no type found for function '{}' from file '{}'"
-                        .format(funct.asm_name, funct.asm_filename))
-                exit(1)
-
-    # grab type information from the unoptimized version
-    for funct in optimized_functs_children:
-        try:
-            parent_funct_asm_name = funct.asm_name.split('.')[0]
-            optimization_name = funct.asm_name.split('.')[1]
-
-            # part      -> function splitting optimization
-            # isra      -> scalar replacement of Aggregates
-            # constprop -> function cloning
-            if optimization_name not in ['part', 'isra', 'constprop']:
-                eprint("warning: unknown optimization '{}' on function "
-                        "'{}' in file '{}'".format(optimization_name, 
-                            funct.asm_name, funct.asm_filename))
-
-            # we use funct_types and not cfg.funct(...) below since it's possible 
-            # to have only the optimized version available. In that case, the 
-            # original function wouldn't be in the cfg
-
-            # deepcopy just in case (future additions could make it necessary)
-            funct.ftype = copy.deepcopy(funct_types[funct.asm_filename + '.' 
-                + parent_funct_asm_name])
-            
-        except KeyError:
-            eprint("error: '{}' from file '{}' appears to be optimized from"
-                    " a function named '{}', but no such function can be found"
-                    .format(funct.asm_name, funct.asm_filename, parent_funct_asm_name))
-            exit(1)
-            
-    for funct in cfg:
-        fptr_sites = filter(is_indir_call_site, funct.sites)
         # TODO: what about object files with the same name?
-        funct.fptr_types = fptr_types.get(
-                funct.asm_filename + '.' + funct.asm_name, []) # fix for C++
-        if fptr_sites:
-            assign_targets(fptr_sites, funct, cfg, options)
-        del(funct.fptr_types)
+        assign_targets(cfg, funct, options)
 
 
-def assign_targets(fptr_sites, funct, cfg, options):
+def assign_targets(cfg, funct, options):
     """Assigns each fptr site a target list filled with function references
     
     fptr_sites is a list of sites in funct that have indirect calls
@@ -260,10 +196,10 @@ def assign_targets(fptr_sites, funct, cfg, options):
         assign_targets_profiled(fptr_sites, funct, cfg, options)
         return
 
-    fptr_sites = sorted(fptr_sites, key=operator.attrgetter('src_line_num'))
-    funct.fptr_types = sorted(funct.fptr_types, key=operator.attrgetter('src_line_num'))
+    funct.fptr_sites.sort(key=operator.attrgetter('src_line_num'))
+    funct.fptr_calls.sort(key=operator.attrgetter('src_line_num'))
 
-    arbitrary_ftype = funct_cfg.FunctionType.arbitrary
+    arbitrary_type = ''
 
     i = j = 0
     def print_fptr_type_unmatched_msg():
@@ -272,40 +208,37 @@ def assign_targets(fptr_sites, funct, cfg, options):
                 + 'call. The fptr call may have been inlined. '
                 + 'fptr type: ' + str(funct.fptr_types[i]))
     def print_fptr_site_unmatched_msg():
-        eprint(funct.src_filename + ':' + str(fptr_sites[j].src_line_num) + ':'
-                + funct.asm_filename + ':' + str(fptr_sites[j].asm_line_num)
+        eprint(funct.src_filename + ':' + str(funct.fptr_sites[j].src_line_num) + ':'
+                + funct.asm_filename + ':' + str(funct.fptr_sites[j].asm_line_num)
                 + ': warning: no type for indirect call site in function '
                 'named \'' + funct.asm_name + '\'') # fix for C++
 
     # associate each fptr type with a site
-    while (i < len(funct.fptr_types) and j < len(fptr_sites)):
-        if funct.fptr_types[i].src_line_num < fptr_sites[j].src_line_num:
+    while (i < len(funct.fptr_calls) and j < len(funct.fptr_sites)):
+        if funct.fptr_calls[i].src_line_num < funct.fptr_sites[j].src_line_num:
             print_fptr_type_unmatched_msg()
             i += 1
-        elif funct.fptr_types[i].src_line_num > fptr_sites[j].src_line_num:
+        elif funct.fptr_calls[i].src_line_num > funct.fptr_sites[j].src_line_num:
             print_fptr_site_unmatched_msg()
-            fptr_sites[j].fptr_type = arbitrary_ftype
+            funct.fptr_sites[j].fptype = arbitrary_type
             j += 1
         else:
-            fptr_sites[j].fptr_type = funct.fptr_types[i]
+            funct.fptr_sites[j].fptype = funct.fptr_calls[i].type
             i += 1
             j += 1
-    while i < len(funct.fptr_types):
+    while i < len(funct.fptr_calls):
         print_fptr_type_unmatched_msg()
         i += 1
-    while j < len(fptr_sites):
+    while j < len(funct.fptr_sites):
         print_fptr_site_unmatched_msg()
-        fptr_sites[j].fptr_type = arbitrary_ftype
+        funct.fptr_sites[j].fptype = arbitrary_type
         j += 1
 
-    for site in fptr_sites:
-        if site.fptr_type is arbitrary_ftype:
+    for site in funct.fptr_sites:
+        if site.fptype is arbitrary_type:
             site.targets = [f for f in cfg]
         else:
-            site.targets = [f for f in cfg if site.fptr_type == f.ftype]
-
-def assign_targets_profiled(fptr_sites, funct, cfg, options):
-    pass # TODO
+            site.targets = [f for f in cfg if site.fptype == f.ftype]
     
 def increment_dict(dictionary, key, start = 1):
     dictionary[key] = dictionary.get(key, start - 1) + 1
@@ -319,7 +252,6 @@ def build_ret_dicts(cfg):
     return dictionary depends on which functions call foo
     """
 
-    arbitrary_ftype = funct_cfg.FunctionType.arbitrary
     beg_multiplicity = 1
 
     for funct in cfg:
@@ -335,50 +267,8 @@ def build_ret_dicts(cfg):
             except KeyError:
                 eprint("warning: function cannot be found: " + target_label )
 
-def read_function_types(asm_descrs, options):
-    """Reads in function type information and stores it in a dict
-
-    The dict has the following mapping:
-        
-        <src filename>.<src function name>   -->  <function type>
-
-    For C++, we'll have to change <src function name> to a mangling of the 
-    function since there can be multiple functions with the same name in a 
-    source file (e.g. overloading)
-    """
-
-
-    if options['--verbose']:
-        print 'read function types:\n===================='
-
-    funct_types = dict()
-
-    for src_filename in src_filename_set:
-        try:
-            funct_typefile = open(src_filename + '.ftypes', 'r')
-        except IOError:
-            continue # source files don't NEED functions (e.g. header files)
-
-        for line in funct_typefile:
-            if options['--verbose']:
-                print line,     # don't print newline in file
-            loc, mangled_str = line.split()[0], line.split()[1]
-            loc_list = loc.split(':')
-
-            funct_type = funct_cfg.FunctionType(mangled_str)
-            funct_type.src_filename = src_filename
-            funct_type.src_line_num = int(loc_list[1])
-            funct_type.src_name = loc_list[3]
-            key = src_filename + '.' + funct_type.src_name
-            funct_types[key] = funct_type
-        funct_typefile.close()
-
-    if options['--verbose']:
-        print '\n',
-
-    return funct_types
-
-def parse_cdi_metadata(asm_descr, funct_types, fptr_types, options):
+def parse_cdi_metadata(cfg, asm_descr, options):
+    optimized_functs_children = []
     with open(asm_descr.filename, 'r') as asm_file:
         state = 'normal'
         for line in asm_file:
@@ -396,41 +286,84 @@ def parse_cdi_metadata(asm_descr, funct_types, fptr_types, options):
                     continue
                 if options['--verbose']:
                     print line[2:-1] # don't print newline or '#'
-                loc, mangled_str = line.split()[1], line.split()[2]
-                loc_list = loc.split(':')
+                loc, type_sig = line.split()[1], line.split()[2]
+                funct_name = loc.split(':')[3]
 
-                if '?' in mangled_str:
-                    eprint("gen_cdi: warning: mangling '{}' from '{}' contains unknown type"
+                if '?' in type_sig:
+                    eprint("gen_cdi: warning: type signature '{}' from '{}' contains unknown type"
                             .format(mangled_str, asm_descr.filename))
                     if options['--no-mystery-types']:
-                        eprint("gen_cdi: error: '--no-mystery-types' means unknown type in mangling is fatal")
+                        eprint("gen_cdi: error: '--no-mystery-types' disallows unknown types")
                         sys.exit(1)
 
-
-                funct_type = funct_cfg.FunctionType(mangled_str)
-                funct_type.src_line_num = int(loc_list[1])
-                funct_type.src_name = loc_list[3]
-                key = asm_descr.filename + '.' + funct_type.src_name
-                funct_types[key] = funct_type
+                try: 
+                    uniq_label = asm_descr.filename + '.' + funct_name
+                    cfg.funct(uniq_label).ftype = type_sig
+                except KeyError:
+                    # gcc may optimize functions by splitting, cloning, or otherwise
+                    # modifying them. In all cases (it seems), gcc appends 
+                    # '.[optimization name].[number]' to the original function
+                    # 
+                    # these functions are not in the type information gcc spits out 
+                    # because type info is gathered at the preprocessing stage. Since
+                    # not all functions have had their ftype information assigned, wait
+                    # until after this loop to copy the type info from the original function
+                    function_part_matcher = re.compile(r'^[^\s0-9][^\s.]*\.[^\s]*\.[0-9]*$')
+                    if function_part_matcher.match(funct.asm_name):
+                        optimized_functs_children.append(funct)
+                    else:
+                        eprint("error: no type found for function '{}' from file '{}'"
+                                .format(funct.asm_name, funct.asm_filename))
+                        exit(1)
             elif state == 'parsing fptypes':
                 if line == '\n':
                     state = 'normal'
                     continue
                 if options['--verbose']:
                     print line [2:-1] # don't print newline or '#'
-                loc, type_str = line.split()[1], line.split()[2]
+
+                loc, type_sig = line.split()[1], line.split()[2]
                 loc_list = loc.split(':')
 
-                fp_type = funct_cfg.FunctionType(type_str)
-                fp_type.src_filename = loc_list[0]
-                fp_type.src_line_num = int(loc_list[1])
-                fp_type.enclosing_funct_name = loc_list[3]
+                src_line_num = int(loc_list[1])
+                enclosing_funct_name = loc_list[3]
+                fptr_call = funct_cfg.FptrCall(type_sig, src_line_num)
 
-                key = asm_descr.filename + '.' + fp_type.enclosing_funct_name
-                if key in fptr_types:
-                    fptr_types[key].append(fp_type)
-                else:
-                    fptr_types[key] = [fp_type]
+                uniq_label = asm_descr.filename + '.' + enclosing_funct_name
+                cfg.funct(uniq_label).fptr_calls.append(fptr_call)
                 if options['--verbose']:
                     print 'In ' + fp_type.enclosing_funct_name + ': ' + str(fp_type)
+
+    # the following is code attempted to deal with tricky gcc optimizations
+    # it's commented out for now because shared libraries / the verifier are
+    # top priority and the code's correctness is questionable/incompatible with
+    # some necessary refactoring
+
+    # grab type information from the unoptimized version
+    #for funct in optimized_functs_children:
+    #    try:
+    #        parent_funct_asm_name = funct.asm_name.split('.')[0]
+    #        optimization_name = funct.asm_name.split('.')[1]
+
+    #        # part      -> function splitting optimization
+    #        # isra      -> scalar replacement of Aggregates
+    #        # constprop -> function cloning
+    #        if optimization_name not in ['part', 'isra', 'constprop']:
+    #            eprint("warning: unknown optimization '{}' on function "
+    #                    "'{}' in file '{}'".format(optimization_name, 
+    #                        funct.asm_name, funct.asm_filename))
+
+    #        # we use funct_types and not cfg.funct(...) below since it's possible 
+    #        # to have only the optimized version available. In that case, the 
+    #        # original function wouldn't be in the cfg
+
+    #        # deepcopy just in case (future additions could make it necessary)
+    #        funct.ftype = copy.deepcopy(funct_types[funct.asm_filename + '.' 
+    #            + parent_funct_asm_name])
+    #        
+    #    except KeyError:
+    #        eprint("error: '{}' from file '{}' appears to be optimized from"
+    #                " a function named '{}', but no such function can be found"
+    #                .format(funct.asm_name, funct.asm_filename, parent_funct_asm_name))
+    #        exit(1)
 

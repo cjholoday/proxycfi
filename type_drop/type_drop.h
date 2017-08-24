@@ -46,9 +46,9 @@ FILE *cdi_ftype_file();
 
 /* Prints the the location and mangling of a function declaration 
  * Format:
- *      <filename>:<line #>:<col #>:<funct name> <mangling>
+ *      <filename>:<line #>:<col #>:<funct name> <function signature>>
  * 
- * See cdi_print_mangled_funct for details on mangling
+ * See cdi_print_funct_sig for details on mangling
  */
 void cdi_print_funct_decl_info(FILE *typefile, tree funct_tree, location_t loc);
 /*
@@ -61,16 +61,17 @@ void cdi_print_funct_decl_info(FILE *typefile, tree funct_tree, location_t loc);
 void cdi_print_fp_info(FILE *typefile, tree fp_tree, location_t loc);
 
 /*
- * Mangles a function or function declaration and then prints to typefile
+ * Mangles a function or function declaration and then prints to typefile 
+ * without the function name included
  * If funct_tree is a function decl then its source name is printed in the
  * mangling.
  *
- * Functions are mangled according to the gnu c++ convention, except that 
- * there is an extra CDI prefix at the beginning. Format:
+ * Functions are mangled according to the gnu c++ convention except that
+ * the return type is prefixes the C++ mangling. Format:
  *
- *      _CDI<return_type>_<GNU C++ mangling>
+ *      <return_type>_<GNU C++ mangling>
  */
-void cdi_print_mangled_funct(FILE *typefile, tree funct_tree, location_t loc);
+void cdi_print_funct_sig(FILE *typefile, tree funct_tree, location_t loc);
 
 /*
  * print <filename>:<line #>:<col #>
