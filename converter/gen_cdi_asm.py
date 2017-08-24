@@ -17,19 +17,19 @@ from common.eprint import eprint
 # are also used to designate SLT entries, RLT entries, and even relocations. What
 # follows is a general format for CDI labels. '||' is the concatenation symbol
 #
-#   _CDI || [deletable] || _ || [type] || _ || [type dependent data or tdd for short]
+#   _CDI || [deletable] || _ || [type] || _ || [type dependent data (tdd)]
 #
 # The second field [deletable] is filled with an 'X' if the symbol is unneeded
 # at load time. [type] specifies what purpose the label is used for.
 #
 #  Type    | Label purpose
 #  --------+------------
-#  RET     | Used to coordinate return sleds and indirect call sleds. A sled label's
+#  FROM    | Used to coordinate return sleds and indirect call sleds. A sled label's
 #          | multiplicity is used to differentiate between other call/returns from the 
 #          | same two functions. Calls with higher VMAs have higher multiplicities
 #          | [tdd] := [called funct's uniq_label] || _TO_ || [return funct's uniq_label] || _ || [multiplicity]
 #          |
-#  PLT     | Like RET but it's used to coordinate RLT sleds and how they return to
+#  PLT     | Like FROM but it's used to coordinate RLT sleds and how they return to
 #          | after calls into the PLT.
 #          | [tdd] := [PLT symbol] || _TO_ || [return funct's uniq_label] || _ || [multiplicity]
 #          |
@@ -37,7 +37,7 @@ from common.eprint import eprint
 #          | [tdd] := [function's uniq_label]
 #          |
 #  RLT     | Marks an RLT entry. These labels are needed for the CDI loader
-#          | [tdd] := [the associated shared library symbol]
+#          | [tdd] := [the associated shared library symbol] at return sites
 #          |
 #  RREL32  | A relocation request to fill the 4 bytes before this symbol with a
 #          | 32 bit signed offset from this symbol to the symbol in [tdd]. This
@@ -54,6 +54,20 @@ from common.eprint import eprint
 #          |
 #  SLED    | Used to store sled specific debug information. 
 #          | [tdd] := [a unique sled id]
+#          |
+#  RET     | Placed right before the  jmp to _CDI_abort in a return sled
+#          | The jmp will be overwritten  to a point to an inter-shared-library 
+#          | function pointer return sled if there are fptrs with a matching type
+#          | The multiplicity starts at 0 and is incremented for each return from
+#          | the enclosing function
+#          | [tdd] := [the enclosing funct's uniq_label] || _ || [multiplicity]
+#          |
+#  FPTR    | Placed right before the  jmp to _CDI_abort in an indirect call site
+#          | The jmp will be overwritten  to a point to an inter-shared-library 
+#          | function pointer call sled if there are fptrs with a matching type
+#          | The multiplicity starts at 0 and is incremented for each indirect 
+#          | call in the enclosing function
+#          | [tdd] := [the enclosing funct's uniq_label] || _ || [multiplicity]
 #  --------+------------
 #
 # Special labels:
@@ -192,7 +206,7 @@ def convert_call_site(site, funct, asm_line, asm_dest,
         assert len(site.targets) == 1
         target_name = fix_label(site.targets[0].uniq_label)
         times_fixed = increment_dict(funct.label_fixed_count, target_name)
-        label = '"_CDIX_RET_{}_TO_{}_{}"'.format(
+        label = '"_CDIX_FROM_{}_TO_{}_{}"'.format(
                 target_name, fix_label(funct.uniq_label), str(times_fixed))
 
         # only make the label global if the target is from a different unit
@@ -221,7 +235,7 @@ def convert_call_site(site, funct, asm_line, asm_dest,
         return_target = fix_label(funct.uniq_label)
         times_fixed = increment_dict(funct.label_fixed_count, target_name)
 
-        return_label = '_CDIX_RET_{}_TO_{}_{}'.format(target_name, return_target,
+        return_label = '_CDIX_FROM_{}_TO_{}_{}'.format(target_name, return_target,
                 str(times_fixed))
 
         globl_decl = ''
@@ -243,8 +257,10 @@ def convert_call_site(site, funct, asm_line, asm_dest,
     # put the unsafe target address in %rax so that cdi_abort prints it out
     if call_operand != '%rax':
         call_sled += '\tmovq\t{}, %rax\n'.format(call_operand)
-    code, data =cdi_abort(sled_id_faucet(), funct.asm_filename, 
+    code, data = cdi_abort(sled_id_faucet(), funct.asm_filename, 
             dwarf_loc, False, options)
+    call_sled += '"_CDIX_FPTR_{}_{}":\n'.format(
+            fix_label(funct.uniq_label), site.indir_call_id)
     call_sled += code
     abort_data.append(data)
     call_sled += '2:\n'
@@ -274,17 +290,22 @@ def convert_return_site(site, funct, asm_line, asm_dest, cfg,
     for target_label, multiplicity in site.targets.iteritems():
         i = 1
         while i <= multiplicity:
-            sled_label = '_CDIX_RET_{}_TO_{}_{}'.format(fix_label(funct.uniq_label),
+            sled_label = '_CDIX_FROM_{}_TO_{}_{}'.format(fix_label(funct.uniq_label),
                     fix_label(target_label), str(i))
             if options['--shared-library']:
-                ret_sled += '\tnop\n' * 7
-                ret_sled += '"_CDIX_RREL32P_{}_{}_{}":\n'.format(
-                        '4c8d1d', '0', sled_label)
+                ret_sled += '\t.byte 0x4c\n'
+                ret_sled += '\t.byte 0x8d\n'
+                ret_sled += '\t.byte 0x1d\n'
+                ret_sled += '\t.long 0x00\n'
+                ret_sled += '"_CDIX_RREL32_{}_{}":\n'.format(
+                        '0', sled_label)
                 ret_sled += '\tcmpq\t%r11, -8(%rsp)\n'
 
-                ret_sled += '\tnop\n' * 6
-                ret_sled += '"_CDIX_RREL32P_{}_{}_{}":\n'.format(
-                        '0f84', '1', sled_label)
+                ret_sled += '\t.byte 0x0f\n'
+                ret_sled += '\t.byte 0x84\n'
+                ret_sled += '\t.long 0x00\n'
+                ret_sled += '"_CDIX_RREL32_{}_{}":\n'.format(
+                        '1', sled_label)
             else:
                 ret_sled += '\tcmpq\t$"' + sled_label + '", -8(%rsp)\n'
                 ret_sled += '\tje\t"' + sled_label + '"\n'
@@ -308,11 +329,14 @@ def convert_return_site(site, funct, asm_line, asm_dest, cfg,
 
 
         # The jmp will be relocated to jmp to an SLT trampoline entry
-        ret_sled += '\tnop\n' * 5
-        ret_sled += '_CDIX_RREL32P_{}_{}__CDI_SLT_tramptab_{}:\n'.format(
-                'e9', funct.rel_id_faucet, fix_label(funct.uniq_label))
+        ret_sled += '\t.byte 0xe9\n'
+        ret_sled += '\t.long 0x00\n'
+        ret_sled += '_CDIX_RREL32_{}__CDI_SLT_tramptab_{}:\n'.format(
+                funct.rel_id_faucet, fix_label(funct.uniq_label))
         funct.rel_id_faucet += 1
     else:
+        ret_sled += '"_CDIX_RET_{}_{}":\n'.format(
+                fix_label(funct.uniq_label), site.ret_id)
         ret_sled += code
 
     abort_data.append(data)
@@ -336,20 +360,25 @@ def cdi_abort(sled_id, asm_filename, dwarf_loc, try_callback_sled, options):
     cdi_abort_code = cdi_abort_data = ''
     if options['--shared-library']:
         # prepare %rsi with sled info (this is lea)
-        cdi_abort_code += '\tnop\n' * 7
-        cdi_abort_code += '"_CDIX_RREL32P_{}_{}_{}":\n'.format(
-                '4c8d1d', str(sled_id), '_CDIX_SLED_' + str(sled_id))
+        cdi_abort_code += '\t.byte 0x4c\n'
+        cdi_abort_code += '\t.byte 0x8d\n'
+        cdi_abort_code += '\t.byte 0x1d\n'
+        cdi_abort_code += '\t.long 0x00\n'
+        cdi_abort_code += '"_CDIX_RREL32_{}_{}":\n'.format(
+                str(sled_id), '_CDIX_SLED_' + str(sled_id))
 
-        # jump to _CDI_abort
-        cdi_abort_code += '\tnop\n' * 5
-        cdi_abort_code += '"_CDIX_RREL32P_{}_{}_{}":\n'.format(
-                'e9', str(sled_id), '_CDI_abort')
-    elif options['--sl-fptr-addrs'] and try_callback_sled:
-        cdi_abort_code += '\tmovq\t $_CDIX_SLED_' + str(sled_id) + ', %r11\n'
-        cdi_abort_code += '\tjmp\t_CDI_callback_sled\n'
+        # TODO: jump to .cdi_fptrtab instead of _CDI_abort
     else:
-        cdi_abort_code += '\tmovq\t $_CDIX_SLED_' + str(sled_id) + ', %rsi\n'
-        cdi_abort_code += '\tcall\t_CDI_abort\n'
+        cdi_abort_code += '\tmovq\t $_CDIX_SLED_' + str(sled_id) + ', %r11\n'
+
+    # jmp to _CDI_abort. We need to reserve exactly 13 bytes in total because
+    # it may be overwritten with a jmp to a function pointer sled. We do the 
+    # relocation ourselves because 'as' may optimize the jmp to _CDI_abort into
+    # less than 5 bytes
+    cdi_abort_code += '\t.byte 0xe9\n'
+    cdi_abort_code += '\t.long 0x0\n'
+    cdi_abort_code += '_CDIX_RREL32_{}_{}:\n'.format(sled_id, '_CDI_abort')
+    cdi_abort_code += '\tnop\n' * (13 - 5)
 
     cdi_abort_msg = loc_str + ' id=' + str(sled_id)
     cdi_abort_data += '_CDIX_SLED_' + str(sled_id) + ':\n'
@@ -399,20 +428,6 @@ def write_rlt(cfg, plt_sites, asm_dest, sled_id_faucet, options):
         except KeyError:
             multiplicity[call_return_pair] = 1
 
-
-    # An RLT trampoline table is unnecessary. Leave it here just in case we 
-    # need it later
-    #
-    # create the RLT trampoline table
-    #rlt_jump_table = '\t.type\t_CDI_RLT_JUMP_TABLE, @function\n'
-    #rlt_jump_table += '_CDI_RLT_JUMP_TABLE:\n'
-    #for sl_funct_uniq_label in rlt_return_targets.keys():
-    #    entry_label = '"_CDI_RLT_{}"'.format(fix_label(sl_funct_uniq_label))
-    #    rlt_jump_table += '\tjmp {}\n'.format(entry_label)
-    #rlt_jump_table += '\t.size\t_CDI_RLT_JUMP_TABLE, .-_CDI_RLT_JUMP_TABLE\n'
-    #
-    #asm_dest.write(rlt_jump_table)
-
     # create an RLT entry for each shared library function
 
     asm_dest.write('\t.section .cdi_rlt, "ax", @progbits\n')
@@ -441,18 +456,23 @@ def write_rlt(cfg, plt_sites, asm_dest, sled_id_faucet, options):
                     # we must do this because putting the 'lea' here will require
                     # a relocation if the symbol is outside this assembly file, 
                     # which the linker will complain about. Instead, we do the 
-                    # relocation ourselves in cdi-ld. Point the lea at a dummy
-                    # target for now
-                    rlt_entry += '\tnop\n' * 7
-                    rlt_entry += '"_CDIX_RREL32P_{}_{}_{}:\n'.format(
-                            '4c8d1d', str(rlt_relocation_id_faucet), sled_label[1:])
+                    # relocation ourselves in cdi-ld. 
+                    
+                    rlt_entry += '\t.byte 0x4c\n'
+                    rlt_entry += '\t.byte 0x8d\n'
+                    rlt_entry += '\t.byte 0x1d\n'
+                    rlt_entry += '\t.long 0x00\n'
+                    rlt_entry += '"_CDIX_RREL32_{}_{}:\n'.format(
+                            str(rlt_relocation_id_faucet), sled_label[1:])
                     rlt_entry += '\tcmpq\t%r11, -8(%rsp)\n'
                     rlt_relocation_id_faucet += 1
 
                     # we must do this relocation ourselves too
-                    rlt_entry += '\tnop\n' * 6
-                    rlt_entry += '"_CDIX_RREL32P_{}_{}_{}:\n'.format(
-                            '0f84', str(rlt_relocation_id_faucet), sled_label[1:])
+                    rlt_entry += '\t.byte 0x0f\n'
+                    rlt_entry += '\t.byte 0x84\n'
+                    rlt_entry += '\t.long 0x00\n'
+                    rlt_entry += '"_CDIX_RREL32_{}_{}:\n'.format(
+                            str(rlt_relocation_id_faucet), sled_label[1:])
                     rlt_relocation_id_faucet += 1
                 else:
                     rlt_entry += '\tcmpq\t$' + sled_label + ', -8(%rsp)\n'

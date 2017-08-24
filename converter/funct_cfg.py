@@ -62,6 +62,22 @@ class Function:
         self.ret_dict = dict()
         self.is_global = True
 
+        # differentiate between returns using an id. This is used to generate
+        # labels at the end of each return site so that the loader can patch
+        # the last jmp in the sled to go to an inter-shared-library
+        # function pointer return sled
+        #
+        # we do the same for indirect calls
+        self.num_rets = 0
+        self.num_indir_calls = 0
+        for site in self.sites:
+            if site.group == Site.RETURN_SITE:
+                site.ret_id = self.num_rets
+                self.num_rets += 1
+            elif site.group == Site.CALL_SITE and len(site.targets) != 1:
+                site.indir_call_id = self.num_indir_calls
+                self.num_indir_calls += 1
+
 class FunctionType:
     """A function signature type. May be associated with a particular function"""
 

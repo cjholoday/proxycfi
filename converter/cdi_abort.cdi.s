@@ -45,3 +45,4 @@ _CDI_abort:
 	.cfi_endproc
 .LFE0:
 	.size	_CDI_abort, .-_CDI_abort
+        .long . - .abort
