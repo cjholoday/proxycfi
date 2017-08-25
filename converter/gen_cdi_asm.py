@@ -84,7 +84,7 @@ def gen_cdi_asm(cfg, asm_file_descrs, plt_sites, options):
     write_rlt.done = False
     write_slt_tramptab.done = False
     write_callback_sled.done = False
-    write_type_tables.done = False
+    write_typetabs.done = False
     
     for descr in asm_file_descrs:
         asm_parsing.DwarfSourceLoc.wipe_filename_mapping()
@@ -152,9 +152,9 @@ def gen_cdi_asm(cfg, asm_file_descrs, plt_sites, options):
             write_slt_tramptab(asm_dest, cfg, options)
             write_slt_tramptab.done = True
 
-        if not write_type_tables.done:
-            write_type_tables(cfg, asm_dest)
-            write_type_tables.done = True
+        if not write_typetabs.done:
+            write_typetabs(cfg, asm_dest)
+            write_typetabs.done = True
         
         asm_dest.write(stack_section_decl)
         asm_src.close()
@@ -606,6 +606,10 @@ class FloctabEntry:
         self.num_f_reloffs = 0
         self.num_fret_reloffs = 0
 
+class FploctabEntry:
+    def __init__(self):
+        self.site_reloffs = ''
+        self.num_site_reloffs = 0
 
 def write_typetabs(cfg, asm_dest):
     functs = cfg.functs()
@@ -614,12 +618,12 @@ def write_typetabs(cfg, asm_dest):
     def on_type_match(funct, loctab_entry = curr_loctab_entry):
         # store the relative offset to the function and its return sites
         # use RREL32 relocations to set the offsets 
-        loctab_entry.f_reloffs += ('\t.long 0x0\n_CDIX_RREL32_0__CDIX_F_{}:\n'
+        loctab_entry.f_reloffs += ('\t.long 0x0\n"_CDIX_RREL32_0__CDIX_F_{}":\n'
                 .format(funct.uniq_label))
         loctab_entry.num_f_reloffs += 1
 
         for ret_id in xrange(funct.num_rets):
-            loctab_entry.fret_reloffs += ('\t.long 0x0\n_CDIX_RREL32_0__CDIX_RET_{}_{}:\n'
+            loctab_entry.fret_reloffs += ('\t.long 0x0\n"_CDIX_RREL32_0__CDIX_RET_{}_{}":\n'
                     .format(funct.uniq_label, ret_id))
         loctab_entry.num_fret_reloffs += funct.num_rets
 
@@ -632,8 +636,6 @@ def write_typetabs(cfg, asm_dest):
         floctab.append(loctab_entry.fret_reloffs)
         loctab_entry.f_reloffs = loctab_entry.fret_reloffs = ''
         loctab_entry.num_f_reloffs = loctab_entry.num_fret_reloffs = 0
-
-
     
     asm_dest.write('\t.section .cdi_ftypetab, "a", @progbits\n')
     write_typetab(asm_dest, functs, 'ftype', on_type_match, on_type_end)
@@ -644,11 +646,33 @@ def write_typetabs(cfg, asm_dest):
 
     fptr_sites = []
     for funct in functs:
+        fptr_site_mult = 0
         for site in funct.sites:
             if site.fptype != None:
                 fptr_sites.append(site)
+                site.fptr_id = fptr_site_mult
+                fptr_site_mult += 1
+
+    curr_loctab_entry = FploctabEntry()
+    def on_type_match(fptr_site, loctab_entry = curr_loctab_entry):
+        loctab_entry.site_reloffs += ('\t.long 0x0\n"_CDIX_RREL32_0__CDIX_FPTR_{}_{}":\n'
+                .format(fptr_site.enclosing_funct_uniq_label, fptr_site.fptr_id))
+        loctab_entry.num_site_reloffs += 1
+
+    fploctab = []
+    def on_type_end(fploctab = fploctab, loctab_entry = curr_loctab_entry):
+        fploctab.append('\t.long {}\n'.format(hex(loctab_entry.num_site_reloffs)))
+        fploctab.append(loctab_entry.site_reloffs)
+
+        loctab_entry.site_reloffs = ''
+        loctab_entry.num_site_reloffs = 0
 
     asm_dest.write('\t.section .fptypetab, "a", @progbits\n')
+    write_typetab(asm_dest, fptr_sites, 'fptype', on_type_match, on_type_end)
+    
+    asm_dest.write('\t.section .cdi_fploctab, "a", @progbits\n')
+    for text in fploctab:
+        asm_dest.write(text)
 
 def write_typetab(asm_dest, type_objs, type_attr, on_type_match, on_type_end):
     # prioritize typestring size when sorting
@@ -695,6 +719,7 @@ def write_typetab(asm_dest, type_objs, type_attr, on_type_match, on_type_end):
             asm_dest.write('\t.byte {}\n'.format(byte_hex))
             asm_dest.write('\t.string "{}"\n'.format(curr_type))
         on_type_match(type_obj)
+    on_type_end()
 
 def fix_label(label):
     return label.replace('@PLT', '').replace('/', '__').replace('.fake.o', '.cdi.s')
