@@ -615,7 +615,7 @@ def write_typetabs(cfg, asm_dest):
     functs = cfg.functs()
 
     curr_loctab_entry = FloctabEntry()
-    def on_type_match(funct, loctab_entry = curr_loctab_entry):
+    def on_type_used(funct, loctab_entry = curr_loctab_entry):
         # store the relative offset to the function and its return sites
         # use RREL32 relocations to set the offsets 
         loctab_entry.f_reloffs += ('\t.long 0x0\n"_CDIX_RREL32_0__CDIX_F_{}":\n'
@@ -628,7 +628,7 @@ def write_typetabs(cfg, asm_dest):
         loctab_entry.num_fret_reloffs += funct.num_rets
 
     floctab = []
-    def on_type_end(floctab = floctab, loctab_entry = curr_loctab_entry):
+    def on_type_exhausted(floctab = floctab, loctab_entry = curr_loctab_entry):
         # flush reloff data into .cdi_floctab
         floctab.append('\t.long {}\n'.format(hex(loctab_entry.num_f_reloffs)))
         floctab.append('\t.long {}\n'.format(hex(loctab_entry.num_fret_reloffs)))
@@ -638,7 +638,7 @@ def write_typetabs(cfg, asm_dest):
         loctab_entry.num_f_reloffs = loctab_entry.num_fret_reloffs = 0
     
     asm_dest.write('\t.section .cdi_ftypetab, "a", @progbits\n')
-    write_typetab(asm_dest, functs, 'ftype', on_type_match, on_type_end)
+    write_typetab(asm_dest, functs, 'ftype', on_type_used, on_type_exhausted)
     
     asm_dest.write('\t.section .cdi_floctab, "a", @progbits\n')
     for text in floctab:
@@ -654,27 +654,41 @@ def write_typetabs(cfg, asm_dest):
                 fptr_site_mult += 1
 
     curr_loctab_entry = FploctabEntry()
-    def on_type_match(fptr_site, loctab_entry = curr_loctab_entry):
+    def on_type_used(fptr_site, loctab_entry = curr_loctab_entry):
         loctab_entry.site_reloffs += ('\t.long 0x0\n"_CDIX_RREL32_0__CDIX_FPTR_{}_{}":\n'
                 .format(fptr_site.enclosing_funct_uniq_label, fptr_site.fptr_id))
         loctab_entry.num_site_reloffs += 1
 
     fploctab = []
-    def on_type_end(fploctab = fploctab, loctab_entry = curr_loctab_entry):
+    def on_type_exhausted(fploctab = fploctab, loctab_entry = curr_loctab_entry):
         fploctab.append('\t.long {}\n'.format(hex(loctab_entry.num_site_reloffs)))
         fploctab.append(loctab_entry.site_reloffs)
 
         loctab_entry.site_reloffs = ''
         loctab_entry.num_site_reloffs = 0
 
-    asm_dest.write('\t.section .fptypetab, "a", @progbits\n')
-    write_typetab(asm_dest, fptr_sites, 'fptype', on_type_match, on_type_end)
+    asm_dest.write('\t.section .cdi_fptypetab, "a", @progbits\n')
+    write_typetab(asm_dest, fptr_sites, 'fptype', on_type_used, on_type_exhausted)
     
     asm_dest.write('\t.section .cdi_fploctab, "a", @progbits\n')
     for text in fploctab:
         asm_dest.write(text)
 
-def write_typetab(asm_dest, type_objs, type_attr, on_type_match, on_type_end):
+def write_typetab(asm_dest, type_objs, type_attr, on_type_used, on_type_exhausted):
+    """Writes a type table to asm_dest
+
+    type_objs is a list of objects that have function types attached at an
+    attribute with name type_attr.
+
+    on_type_used is called with a type_obj every time a type_obj's type is 
+    added to the table or matches with another type in the table
+
+    on_type_exhausted is called every time all type_objs's with a type have been 
+    added to the table. Once a type has been added to the table, all type_objs
+    that have a matching type must be examined before adding the next type. This
+    means that at any give time, only one type is under examination
+    """
+
     # prioritize typestring size when sorting
     def type_compare(type1, type2):
         if len(type1) != len(type2):
@@ -705,7 +719,7 @@ def write_typetab(asm_dest, type_objs, type_attr, on_type_match, on_type_end):
 
     for type_obj in type_objs:
         if curr_type != getattr(type_obj, type_attr):
-            on_type_end()
+            on_type_exhausted()
 
             curr_type = getattr(type_obj, type_attr)
             len_diff = len(curr_type) - len_acc
@@ -718,8 +732,8 @@ def write_typetab(asm_dest, type_objs, type_attr, on_type_match, on_type_end):
                 byte_hex = '0xff'
             asm_dest.write('\t.byte {}\n'.format(byte_hex))
             asm_dest.write('\t.string "{}"\n'.format(curr_type))
-        on_type_match(type_obj)
-    on_type_end()
+        on_type_used(type_obj)
+    on_type_exhausted()
 
 def fix_label(label):
     return label.replace('@PLT', '').replace('/', '__').replace('.fake.o', '.cdi.s')
