@@ -84,7 +84,7 @@ class Function:
         self.is_global = True
 
         # filled with FptrCall's from metadata
-        self.fptr_calls = [] 
+        self.fptr_calls = []
 
         # format: [return_type] || _ || [C++ mangling after fn name]
         self.ftype = None

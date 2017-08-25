@@ -153,7 +153,7 @@ def gen_cdi_asm(cfg, asm_file_descrs, plt_sites, options):
             write_slt_tramptab.done = True
 
         if not write_type_tables.done:
-            write_type_tables(cfg)
+            write_type_tables(cfg, asm_dest)
             write_type_tables.done = True
         
         asm_dest.write(stack_section_decl)
@@ -598,15 +598,59 @@ def write_callback_sled(asm_dest, options):
     callback_sled += '\tjmp _CDI_abort\n'
     asm_dest.write(callback_sled)
 
-def write_type_tables(cfg):
-    functs = copy.deepcopy(cfg.functs())
+class FloctabEntry:
+    def __init__(self):
+        self.f_reloffs = ''
+        self.fret_reloffs = ''
+
+        self.num_f_reloffs = 0
+        self.num_fret_reloffs = 0
+
+
+def write_typetabs(cfg, asm_dest):
+    functs = cfg.functs()
+
+    curr_loctab_entry = FloctabEntry()
+    def on_type_match(funct, loctab_entry = curr_loctab_entry):
+        # store the relative offset to the function and its return sites
+        # use RREL32 relocations to set the offsets 
+        loctab_entry.f_reloffs += ('\t.long 0x0\n_CDIX_RREL32_0__CDIX_F_{}:\n'
+                .format(funct.uniq_label))
+        loctab_entry.num_f_reloffs += 1
+
+        for ret_id in xrange(funct.num_rets):
+            loctab_entry.fret_reloffs += ('\t.long 0x0\n_CDIX_RREL32_0__CDIX_RET_{}_{}:\n'
+                    .format(funct.uniq_label, ret_id))
+        loctab_entry.num_fret_reloffs += funct.num_rets
+
+    floctab = []
+    def on_type_end(floctab = floctab, loctab_entry = curr_loctab_entry):
+        # flush reloff data into .cdi_floctab
+        floctab.append('\t.long {}\n'.format(hex(loctab_entry.num_f_reloffs)))
+        floctab.append('\t.long {}\n'.format(hex(loctab_entry.num_fret_reloffs)))
+        floctab.append(loctab_entry.f_reloffs)
+        floctab.append(loctab_entry.fret_reloffs)
+        loctab_entry.f_reloffs = loctab_entry.fret_reloffs = ''
+        loctab_entry.num_f_reloffs = loctab_entry.num_fret_reloffs = 0
+
+
+    
+    asm_dest.write('\t.section .cdi_ftypetab, "a", @progbits\n')
+    write_typetab(asm_dest, functs, 'ftype', on_type_match, on_type_end)
+    
+    asm_dest.write('\t.section .cdi_floctab, "a", @progbits\n')
+    for text in floctab:
+        asm_dest.write(text)
 
     fptr_sites = []
     for funct in functs:
         for site in funct.sites:
-            if hasattr(site, 'fptype'):
+            if site.fptype != None:
                 fptr_sites.append(site)
-    
+
+    asm_dest.write('\t.section .fptypetab, "a", @progbits\n')
+
+def write_typetab(asm_dest, type_objs, type_attr, on_type_match, on_type_end):
     # prioritize typestring size when sorting
     def type_compare(type1, type2):
         if len(type1) != len(type2):
@@ -614,11 +658,43 @@ def write_type_tables(cfg):
         else:
             return cmp(type1, type2)
 
-    functs.sort(key=operator.attrgetter('ftype'), cmp=type_compare)
-    # fptr_sites.sort(key=operator.attrgetter('fptype'), cmp=type_compare)
+    type_objs.sort(key=operator.attrgetter(type_attr), cmp=type_compare)
 
-    for funct in functs:
-        print '{}: \t\t{}'.format(funct.asm_name, funct.ftype)
+    # Strings are written with increasing size. This is the 
+    # length accumulated so far. 
+    len_acc = 0
+
+    # handle the first specially
+    curr_type = ''
+    if type_objs:
+        curr_type = getattr(type_objs[0], type_attr)
+        len_acc = len(curr_type)
+
+        # the len must be stored in a single byte
+        byte_hex = ''
+        if len_acc < 255:
+            byte_hex = hex(len_acc)
+        else:
+            byte_hex = '0xff'
+        asm_dest.write('\t.byte {}\n'.format(byte_hex))
+        asm_dest.write('\t.string "{}"\n'.format(curr_type))
+
+    for type_obj in type_objs:
+        if curr_type != getattr(type_obj, type_attr):
+            on_type_end()
+
+            curr_type = getattr(type_obj, type_attr)
+            len_diff = len(curr_type) - len_acc
+            len_acc = len(curr_type)
+
+            # we only store one byte's worth of length difference
+            if len_diff < 255:
+                byte_hex = hex(len_diff)
+            else:
+                byte_hex = '0xff'
+            asm_dest.write('\t.byte {}\n'.format(byte_hex))
+            asm_dest.write('\t.string "{}"\n'.format(curr_type))
+        on_type_match(type_obj)
 
 def fix_label(label):
     return label.replace('@PLT', '').replace('/', '__').replace('.fake.o', '.cdi.s')
