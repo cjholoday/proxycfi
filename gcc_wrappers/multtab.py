@@ -41,7 +41,6 @@ def build_multtab(target_elf, lspec, globl_funct_mults, write_dir):
 
         num_cdi_deps = 0
         for elf in elf_deps:
-            print elf.path
             try:
                 slt_tramtab_sh = elf.find_section('.cdi_tramtab')
                 elf.init_strtab('.cdi_strtab')
@@ -70,7 +69,6 @@ def build_multtab(target_elf, lspec, globl_funct_mults, write_dir):
                 if cdi_strtab_idx == 0:
                     continue
 
-                print cdi_strtab_idx
                 sym_str = strtab_grab(elf.cdi_strtab, cdi_strtab_idx)
                 num_globals += 1
 

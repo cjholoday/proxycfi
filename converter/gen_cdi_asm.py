@@ -256,7 +256,24 @@ def convert_call_site(site, funct, asm_line, asm_dest,
 
         call_sled += '1:\n'
         if options['--shared-library']:
-            call_sled += '\tcmpq\t$"{}(%rip)", {}\n'.format(target_name, call_operand)
+            if not hasattr(target, 'rel_id_faucet'):
+                target.rel_id_faucet = 0
+            call_sled += '\t.byte 0x4c\n'
+            call_sled += '\t.byte 0x8d\n'
+            call_sled += '\t.byte 0x1d\n'
+            call_sled += '\t.long 0x00\n'
+            call_sled += '"_CDIX_RREL32_{}__CDIX_F_{}":\n'.format(
+                    target.rel_id_faucet, target_name)
+            target.rel_id_faucet += 1
+
+            call_sled += '\tcmpq\t%r11, -8(%rsp)\n'
+
+            call_sled += '\t.byte 0x0f\n'
+            call_sled += '\t.byte 0x84\n'
+            call_sled += '\t.long 0x00\n'
+            call_sled += '"_CDIX_RREL32_{}__CDIX_F_{}":\n'.format(
+                    target.rel_id_faucet, target_name)
+            target.rel_id_faucet += 1
         else:
             call_sled += '\tcmpq\t$"_CDIX_F_{}", {}\n'.format(target_name, call_operand)
             call_sled += '\tjne\t1f\n'
