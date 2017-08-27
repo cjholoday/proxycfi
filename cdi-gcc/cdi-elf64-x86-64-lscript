@@ -77,13 +77,8 @@ SECTIONS
   .cdi_rlt : {
     *(.cdi_rlt)
   }
-  .cdi_slt_tramptab : {
-    *(.cdi_slt_tramptab)
-  }
-  .cdi_fp_tramptab : {
-    *(.cdi_fp_tramptab)
-  }
-  
+  .cdi_tramtabs : {
+    *(.cdi_tramtabs)
 
   .rodata         : { *(.rodata .rodata.* .gnu.linkonce.r.*) }
   .rodata1        : { *(.rodata1) }
