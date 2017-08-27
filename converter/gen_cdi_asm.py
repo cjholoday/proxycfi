@@ -74,12 +74,13 @@ from cdi_abort import cdi_abort
 #          | [tdd] := [the enclosing funct's uniq_label] || _ || [multiplicity]
 #          |
 #  TRAM    | Marks an entry in the trampoline table
-#          | [tdd] := [uniq_label of funct] || _ || [ith trampoline for funct]
+#          | [tdd for return tram] := R_ || [uniq_label of funct]
+#          | [tdd for call   tram] := C_ || [fptype]
 #          | 
 #  --------+------------
 #
 # Special labels:
-#   _CDI_tramtabs: specifies the beginning of the trampoline tables. The SLT
+#   _CDI_tramtab: specifies the beginning of the trampoline tables. The SLT
 #                  tramtab comes first, then the function pointer tramtab
 #   _CDI_callback_sled: specifies the beginning of the shared library callback sled
 #   _CDI_abort: points to a function that prints out sled debug info and exits
@@ -232,9 +233,6 @@ def convert_call_site(site, funct, asm_line, asm_dest,
 
         asm_dest.write(asm_line + globl_decl + label + ':\n')
         return
-    elif options['--shared-library']:
-        eprint('gen_cdi: error: function pointers are currently forbidden from CDI shared libraries')
-        sys.exit(1)
 
     call_sled = ''
     assert len(arg_str.split()) == 1
@@ -268,17 +266,32 @@ def convert_call_site(site, funct, asm_line, asm_dest,
         call_sled += '\tjmp\t2f\n'
 
     call_sled += '1:\n'
-    # put the unsafe target address in %rax so that cdi_abort prints it out
-    if call_operand != '%rax':
-        call_sled += '\tmovq\t{}, %rax\n'.format(call_operand)
+
+    # put the call address in temporary register %r10
+    if call_operand != '%r10':
+        call_sled += '\tmovq\t{}, %r10\n'.format(call_operand)
+
     code, data = cdi_abort(sled_id_faucet(), funct.asm_filename, 
             dwarf_loc, False, options)
     call_sled += '"_CDIX_FPTR_{}_{}":\n'.format(
             fix_label(funct.uniq_label), site.indir_call_id)
     call_sled += code
-    abort_data.append(data)
+
+    if options['--shared-library']:
+        # make sure each relocation symbol is unique
+        if not hasattr(convert_call_site, 'fptr_id_faucet'):
+            convert_call_site.fptr_id_faucet = 0
+
+        # The jmp will be relocated to point at a return trampoline
+        call_sled += '\t.byte 0xe9\n'
+        call_sled += '\t.long 0x00\n'
+        call_sled += '_CDIX_RREL32_{}__CDIX_TRAM_C_{}:\n'.format(
+                convert_call_site.fptr_id_faucet, site.fptype)
+        convert_call_site.fptr_id_faucet += 1
+
     call_sled += '2:\n'
     asm_dest.write(call_sled)
+    abort_data.append(data)
 
         
 cpp_whitelist = ['_Z41__static_initialization_and_destruction_0ii',
@@ -325,33 +338,29 @@ def convert_return_site(site, funct, asm_line, asm_dest, cfg,
                 ret_sled += '\tje\t"' + sled_label + '"\n'
             i += 1
 
-
-    code, data = cdi_abort(sled_id_faucet(), funct.asm_filename,
-            dwarf_loc, True, options)
-    if options['--shared-library'] and funct.is_global:
+    if options['--shared-library']:
         # subtract another 8 bytes off the stack pointer since we'll be 
         # using two return address on the way back: one to get from the SLT
         # to the RLT and another to get from the RLT to the executable code
         ret_sled += '\taddq $8, %rsp\n'
 
-        # only fill %r11 with data. Do not add a jump to _CDI_abort
-        ret_sled += code[:code.find('\n', code.find('_CDIX_SLED_')) + 1]
+    code, data = cdi_abort(sled_id_faucet(), funct.asm_filename,
+            dwarf_loc, True, options)
+    ret_sled += '"_CDIX_RET_{}_{}":\n'.format(
+            fix_label(funct.uniq_label), site.ret_id)
+    ret_sled += code
 
+    if options['--shared-library']:
         # make sure each relocation symbol is unique
         if not hasattr(funct, 'rel_id_faucet'):
             funct.rel_id_faucet = 0
 
-
-        # The jmp will be relocated to jmp to an SLT trampoline entry
+        # The jmp will be relocated to point at a return trampoline
         ret_sled += '\t.byte 0xe9\n'
         ret_sled += '\t.long 0x00\n'
-        ret_sled += '_CDIX_RREL32_{}__CDI_TRAM_{}_0:\n'.format(
+        ret_sled += '_CDIX_RREL32_{}__CDIX_TRAM_R_{}:\n'.format(
                 funct.rel_id_faucet, fix_label(funct.uniq_label))
         funct.rel_id_faucet += 1
-    else:
-        ret_sled += '"_CDIX_RET_{}_{}":\n'.format(
-                fix_label(funct.uniq_label), site.ret_id)
-        ret_sled += code
 
     abort_data.append(data)
     asm_dest.write(ret_sled)

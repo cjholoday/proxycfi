@@ -64,12 +64,15 @@ typedef struct {
 } CDI_Multtab_Block;
 
 typedef struct {
-    /* bytes for a jmp to an SLT sled */
-    unsigned char jmp_bytes[5]; 
+    /* bytes for a trampoline jump. We don't know whether it will be relative
+     * to the SLT or an absolute jmp to a fptr return sled. 13 bytes are 
+     * reserved so that we can handle either case
+     */
+    unsigned char jmp_bytes[13]; 
 
     /* a 3 byte integer index into .cdi_strtab. the integer is little endian */
     unsigned char symtab_idx_bytes[3];
-} SLT_Trampoline;
+} CDI_Trampoline;
 
 /*
  * Type Table Format:
@@ -105,7 +108,7 @@ typedef struct CDI_Linkage_Block {
     Elf64_Word slt_size;
     Elf64_Addr slt;
 
-    SLT_Trampoline *slt_tramptab;
+    CDI_Trampoline *tramtab;
 
     char *soname;
     CDI_Metadata_Sections mdata;
@@ -168,7 +171,7 @@ void _cdi_build_slt(CLB *clb, struct link_map *main_map);
  * Writes an SLT sled and returns a pointer to the next available address in
  * the SLT. This function doen't modify the SLT trampoline table
  */
-char *_cdi_write_slt_sled(char *sled_addr, SLT_Trampoline *tramp, 
+char *_cdi_write_slt_sled(char *sled_addr,  CDI_Trampoline *tram, 
         ElfW(Word) mult, CLB *clb, struct link_map *main_map,  ElfW(Addr) abort_addr);
 
 /*

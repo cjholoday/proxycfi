@@ -71,14 +71,14 @@ SECTIONS
   .dynsym         : { *(.dynsym) }
   .dynstr         : { *(.dynstr) }
 
-  /* CDI: Create sections for the RLT and SLT, so that we can find them in elf
-   *      binaries that we create
-   */
+  /* Put .cdi_tramptab first so that we can ensure it is put all on its own
+     pages by also aligning .cdi_rlt to the page size */
+  .cdi_tramtab : {
+    *(.cdi_tramtab)
+  }
   .cdi_rlt : {
     *(.cdi_rlt)
   }
-  .cdi_tramtabs : {
-    *(.cdi_tramtabs)
 
   .rodata         : { *(.rodata .rodata.* .gnu.linkonce.r.*) }
   .rodata1        : { *(.rodata1) }

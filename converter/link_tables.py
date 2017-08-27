@@ -15,6 +15,12 @@ from common.eprint import eprint
 from cdi_abort import cdi_abort
 
 def write_linkage_tables(asm_dest, cfg, sled_id_faucet, plt_sites, options):
+    fptr_sites = []
+    for funct in cfg:
+        for site in funct.sites:
+            if site.fptype != None:
+                fptr_sites.append(site)
+
     asm_dest.write('\t.text\n')
 
     if options['--sl-fptr-addrs']:
@@ -28,25 +34,23 @@ def write_linkage_tables(asm_dest, cfg, sled_id_faucet, plt_sites, options):
         # the trampolines must be on their own page, so that the rest of 
         # the shared library code/data is shared
         asm_dest.write('\t.align {}\n'.format(page_size))
-        asm_dest.write('\t.globl _CDI_tramtabs\n')
-        asm_dest.write('_CDI_tramtabs:\n')
-        asm_dest.write('\t.section .cdi_tramtabs, "ax", @progbits\n')
+        asm_dest.write('\t.section .cdi_tramtab, "ax", @progbits\n')
+        asm_dest.write('\t.globl _CDI_tramtab\n')
+        asm_dest.write('_CDI_tramtab:\n')
 
-        num_fptr_sleds = 0
-        for funct in cfg:
-            num_fptr_sleds += funct.num_indir_calls
+        num_fptr_sleds = len(fptr_sites)
 
         # Consume one trampoline to specify the number of return/call sleds
         asm_dest.write('\t.quad {}\n'.format(cfg.size())) # num return sleds
         asm_dest.write('\t.quad {}\n'.format(num_fptr_sleds)) # num call sleds
 
         cdi_strtab = write_ret_trams(asm_dest, cfg, options)
-        write_call_trams(asm_dest, cfg, options)
+        write_call_trams(asm_dest, fptr_sites, options)
         asm_dest.write('\t.align {}\n'.format(page_size))
 
         asm_dest.write('\t.section .cdi_strtab, "a", @progbits\n')
         write_strtab(asm_dest, cdi_strtab)
-    write_typetabs(asm_dest, cfg)
+    write_typetabs(asm_dest, cfg, fptr_sites)
 
 def write_rlt(cfg, plt_sites, asm_dest, sled_id_faucet, options):
     """Write the RLT to asm_dest"""
@@ -136,7 +140,7 @@ def write_ret_trams(asm_dest, cfg, options):
     cdi_strtab = '\x00_CDI_RLT_\x00'
     for funct in cfg:
         # reserve 0 for return trampolines
-        label = '"_CDI_TRAM_{}_0"'.format(fix_label(funct.uniq_label))
+        label = '"_CDIX_TRAM_R_{}"'.format(fix_label(funct.uniq_label))
         asm_dest.write('\t.globl {}\n'.format(label))
         asm_dest.write(label + ':\n')
 
@@ -160,22 +164,28 @@ def write_ret_trams(asm_dest, cfg, options):
             for byte in struct.pack('<I', len(cdi_strtab))[:-1]:
                 asm_dest.write('\t.byte {}\n'.format(hex(struct.unpack('B', byte)[0])))
             cdi_strtab += funct.asm_name + '\x00'
+        else:
+            asm_dest.write('\t.byte 0x0\n' * 3)
+
 
     return cdi_strtab
 
-def write_call_trams(asm_dest, cfg, options):
-    for funct in cfg:
-        # return trampoline labels end with 0. Skip 0 for call trampolines
-        for fptr_id in xrange(1, funct.num_indir_calls + 1):
-            label = '"_CDI_TRAM_{}_{}"'.format(
-                    fix_label(funct.uniq_label), fptr_id)
-            asm_dest.write('\t.globl {}\n'.format(label))
-            asm_dest.write(label + ':\n')
+def write_call_trams(asm_dest, fptr_sites, options):
+    types_handled = set()
+    for site in fptr_sites:
+        # only create one trampoline for each function pointer type
+        if site.fptype in types_handled:
+            continue
+        types_handled.add(site.fptype)
 
-            # save space for a movabs <jmp addr>, %r10; jmp *%r10
-            asm_dest.write('\t.quad 0x0\n')
-            asm_dest.write('\t.long 0x0\n')
-            asm_dest.write('\t.byte 0x0\n')
+        label = '"_CDIX_TRAM_C_{}"'.format(site.fptype)
+        asm_dest.write('\t.globl {}\n'.format(label))
+        asm_dest.write(label + ':\n')
+
+        # save space for a movabs <jmp addr>, %r10; jmp *%r10
+        # we keep the code aligned to 16 bytes for speed and simplicity
+        asm_dest.write('\t.quad 0x0\n')
+        asm_dest.write('\t.quad 0x0\n')
 
 
 def write_strtab(asm_dest, strtab):
@@ -255,7 +265,7 @@ class FploctabEntry:
         self.site_reloffs = ''
         self.num_site_reloffs = 0
 
-def write_typetabs(asm_dest, cfg):
+def write_typetabs(asm_dest, cfg, fptr_sites):
     functs = cfg.functs()
 
     curr_loctab_entry = FloctabEntry()
@@ -289,19 +299,11 @@ def write_typetabs(asm_dest, cfg):
     for text in floctab:
         asm_dest.write(text)
 
-    fptr_sites = []
-    for funct in functs:
-        fptr_site_mult = 0
-        for site in funct.sites:
-            if site.fptype != None:
-                fptr_sites.append(site)
-                site.fptr_id = fptr_site_mult
-                fptr_site_mult += 1
 
     curr_loctab_entry = FploctabEntry()
     def on_type_used(fptr_site, loctab_entry = curr_loctab_entry):
         loctab_entry.site_reloffs += ('\t.long 0x0\n"_CDIX_RREL32_0__CDIX_FPTR_{}_{}":\n'
-                .format(fptr_site.enclosing_funct_uniq_label, fptr_site.fptr_id))
+                .format(fptr_site.enclosing_funct_uniq_label, fptr_site.indir_call_id))
         loctab_entry.num_site_reloffs += 1
 
     fploctab = []

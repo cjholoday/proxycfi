@@ -2180,8 +2180,8 @@ ERROR: ld.so: object '%s' cannot be loaded as audit interface: %s; ignored.\n",
 
   /* get the address of each SLT trampoline table */
   for (int i = 0; i < _clb_tablen; i++) {
-      _clb_table[i].slt_tramptab = (SLT_Trampoline *) _cdi_lookup(
-              "_CDI_SLT_tramptab", _clb_table[i].l);
+      _clb_table[i].tramtab = (CDI_Trampoline *) _cdi_lookup(
+              "_CDI_tramtab", _clb_table[i].l);
   }
   _cdi_print_clbs();
 

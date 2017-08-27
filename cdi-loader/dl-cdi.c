@@ -79,7 +79,7 @@ void _cdi_init(CDI_Header *cdi_header) {
 
 void _cdi_build_slt(CLB *clb, struct link_map *main_map) {
     void *slt_used_tail = (char*)clb->slt;
-    ElfW(Xword) num_slt_tramps = *((ElfW(Xword)*) clb->slt_tramptab);
+    ElfW(Xword) num_slt_tramps = *((ElfW(Xword)*) clb->tramtab);
     _cdi_print_link_map(clb->l);
 
     ElfW(Addr) cdi_abort_addr = _cdi_lookup("_CDI_abort", clb->l);
@@ -109,17 +109,18 @@ void _cdi_build_slt(CLB *clb, struct link_map *main_map) {
     
     /* enable writing into the SLT trampoline table so that we can patch it up 
        notice that the SLT trampoline table is guaranteed to be aligned */
-    ElfW(Xword) tramptab_size = (num_slt_tramps + 1) * sizeof(SLT_Trampoline);
-    mprotect(clb->slt_tramptab, tramptab_size, PROT_READ | PROT_WRITE);
+    ElfW(Xword) tramptab_size = (num_slt_tramps + 1) * sizeof(CDI_Trampoline);
+    mprotect(clb->tramtab, tramptab_size, PROT_READ | PROT_WRITE);
 
     /* Index with respect to the second entry so that we increment in 
        lockstep with the multtab block */
-    SLT_Trampoline *slt_tramptab = clb->slt_tramptab + 1;
+    CDI_Trampoline *slt_tramptab = clb->tramtab + 1;
     for (int i = 0; i < num_slt_tramps; i++) {
         /* make the SLT trampoline jump down to the SLT sled */
         ElfW(Sword) offset_to_sled = _cdi_signed_offset(
                 (ElfW(Addr))slt_tramptab[i].jmp_bytes + 5, (ElfW(Addr))slt_used_tail);
         memcpy(&slt_tramptab[i].jmp_bytes[1], &offset_to_sled, sizeof(offset_to_sled));
+        slt_tramptab[i].jmp_bytes[0] = 0xe9;
 
         slt_used_tail = _cdi_write_slt_sled(slt_used_tail, &slt_tramptab[i],
                 clb->multtab_block->mults[i], clb, main_map, cdi_abort_addr);
@@ -131,10 +132,10 @@ void _cdi_build_slt(CLB *clb, struct link_map *main_map) {
     ElfW(Addr) aligned_slt = (ElfW(Addr))clb->slt & ~(GLRO(dl_pagesize) - 1);
     mprotect((void*)aligned_slt, (ElfW(Addr))slt_used_tail - aligned_slt, 
             PROT_READ | PROT_EXEC);
-    mprotect(clb->slt_tramptab, tramptab_size, PROT_READ | PROT_EXEC);
+    mprotect(clb->tramtab, tramptab_size, PROT_READ | PROT_EXEC);
 }
 
-char *_cdi_write_slt_sled(char *sled_addr, SLT_Trampoline *tramp, 
+char *_cdi_write_slt_sled(char *sled_addr, CDI_Trampoline *tramp, 
         ElfW(Word) mult, CLB *clb, struct link_map *main_map, ElfW(Addr) abort_addr) {
     if (mult == 0) {
         return sled_addr;
@@ -384,7 +385,7 @@ void _cdi_print_clb(const CLB *clb) {
     _dl_debug_printf_c("--------------------+------------------\n");
     _dl_debug_printf_c("    slt             | %lx\n", (uintptr_t)clb->slt);
     _dl_debug_printf_c("    slt_size        | %u\n", clb->slt_size);
-    _dl_debug_printf_c("    slt_tramptab    | %lx\n", (uintptr_t)clb->slt_tramptab);
+    _dl_debug_printf_c("    tramtab         | %lx\n", (uintptr_t)clb->tramtab);
     _dl_debug_printf_c("                    | \n");
     _dl_debug_printf_c("    multtab_block   | %lx\n", (uintptr_t)clb->multtab_block);
     _dl_debug_printf_c("    total mult      | %u\n", clb->multtab_block->total_mult);

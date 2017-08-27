@@ -41,26 +41,38 @@ def build_multtab(target_elf, lspec, globl_funct_mults, write_dir):
 
         num_cdi_deps = 0
         for elf in elf_deps:
+            print elf.path
             try:
-                slt_tramptab_sh = elf.find_section('.cdi_slt_tramptab')
+                slt_tramtab_sh = elf.find_section('.cdi_tramtab')
                 elf.init_strtab('.cdi_strtab')
+                print elf.cdi_strtab
                 num_cdi_deps += 1
             except common.elf.Elf64.MissingSection:
                 continue # this file is not CDI
 
             elf_file = open(elf.path, 'r')
-            elf_file.seek(slt_tramptab_sh.sh_offset)
-            num_tramptab_entries = struct.unpack('<Q', elf_file.read(8))[0]
+            elf_file.seek(slt_tramtab_sh.sh_offset)
+            num_ret_trams = struct.unpack('<Q', elf_file.read(8))[0]
+
+            # skip the number of call trams
+            elf_file.seek(8, 1)
 
             total_mult = 0
             mult_bytes = ''
             num_used_globals = 0
-            for idx in xrange(num_tramptab_entries):
-                cdi_strtab_idx_pieces = struct.unpack('<xxxxxBBB', elf_file.read(8))
+            num_globals = 0
+            for idx in xrange(num_ret_trams):
+                cdi_strtab_idx_pieces = struct.unpack('<QIBBBB', elf_file.read(16))[-3:]
                 cdi_strtab_idx = (cdi_strtab_idx_pieces[0] 
                         + (cdi_strtab_idx_pieces[1] << 8)
                         + (cdi_strtab_idx_pieces[2] << 16))
+                # skip trampolines that are not for global functions
+                if cdi_strtab_idx == 0:
+                    continue
+
+                print cdi_strtab_idx
                 sym_str = strtab_grab(elf.cdi_strtab, cdi_strtab_idx)
+                num_globals += 1
 
                 try:
                     globl_sym = globl_funct_mults[sym_str]
@@ -76,7 +88,7 @@ def build_multtab(target_elf, lspec, globl_funct_mults, write_dir):
             libstrtab += common.elf.get_soname(elf.path) + '\x00'
 
             multtab.write(struct.pack('<I', total_mult))
-            multtab.write(struct.pack('<I', num_tramptab_entries))
+            multtab.write(struct.pack('<I', num_globals))
             multtab.write(struct.pack('<I', num_used_globals))
             multtab.write(mult_bytes)
             elf_file.close()
