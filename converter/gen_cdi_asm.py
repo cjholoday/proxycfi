@@ -267,9 +267,9 @@ def convert_call_site(site, funct, asm_line, asm_dest,
             target.rel_id_faucet += 1
 
             call_sled += '\tcmpq\t%r11, -8(%rsp)\n'
+            call_sled += '\tjne\t1f\n'
 
-            call_sled += '\t.byte 0x0f\n'
-            call_sled += '\t.byte 0x84\n'
+            call_sled += '\t.byte 0xe8\n'
             call_sled += '\t.long 0x00\n'
             call_sled += '"_CDIX_RREL32_{}__CDIX_F_{}":\n'.format(
                     target.rel_id_faucet, target_name)
