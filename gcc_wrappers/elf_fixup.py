@@ -26,26 +26,38 @@ def cdi_fixup_elf(lspec):
     if '_CDI_abort' in globl_funct_mults:
         del globl_funct_mults['_CDI_abort']
 
+    ftypetab_size = target_elf.find_section('.cdi_ftypetab').sh_size
+    fptypetab_size = target_elf.find_section('.cdi_fptypetab').sh_size
+    floctab_size = target_elf.find_section('.cdi_floctab').sh_size
+    fploctab_size = target_elf.find_section('.cdi_fploctab').sh_size
+
+    # put the floctab and fploctab sections first to mirror the linker script
+    type_sect_strs  = ['.cdi_floctab', '.cdi_fploctab', '.cdi_ftypetab', '.cdi_fptypetab']
+    type_sect_sizes = [floctab_size, fploctab_size, ftypetab_size, fptypetab_size]
 
     rrel32_fixups = get_rrel32_fixups(target_elf)
     rlt_fixups    = get_rlt_fixups(target_elf, plt_sym_strs)
     plt_fixups    = get_plt_fixups(target_elf, globl_funct_mults, plt_sym_strs)
 
     target_elf.fixup(rrel32_fixups + rlt_fixups + plt_fixups)
-
+    
     objcopy_opts = []
     if lspec.target_is_shared:
         target_elf.init_strtab('.cdi_strtab')
-        write_cdi_header(['.cdi_strtab', '.cdi_seg_end'], [len(target_elf.cdi_strtab), 8])
+        
+        write_cdi_header(type_sect_strs + ['.cdi_strtab', '.cdi_seg_end'],
+                type_sect_sizes + [len(target_elf.cdi_strtab), 8])
+
         objcopy_opts.extend(['--update-section', '.cdi_header=.cdi/cdi_header'])
         objcopy_opts.extend(['--remove-section', '.cdi_multtab'])
         objcopy_opts.extend(['--remove-section', '.cdi_libstrtab'])
     else:
         multtab.build_multtab(target_elf, lspec, globl_funct_mults, '.cdi')
 
-        added_sects = ['.cdi_multtab', '.cdi_libstrtab', '.cdi_seg_end']
-        write_cdi_header(added_sects, get_sect_sizes(added_sects[:-1]) + [8])
-        
+        updated_sects = ['.cdi_multtab', '.cdi_libstrtab']
+        updated_sizes = get_sect_sizes(updated_sects)
+        write_cdi_header(updated_sects[:1] + type_sect_strs + updated_sects[-1:] + ['.cdi_seg_end'],
+                updated_sizes[:1] + type_sect_sizes + updated_sizes[-1:] + [8])
         objcopy_opts.extend(['--update-section', '.cdi_multtab=.cdi/cdi_multtab'])
         objcopy_opts.extend(['--update-section', '.cdi_libstrtab=.cdi/cdi_libstrtab'])
         objcopy_opts.extend(['--update-section', '.cdi_header=.cdi/cdi_header'])
@@ -60,7 +72,10 @@ def cdi_fixup_elf(lspec):
         error.fatal_error("couldn't update symbols and/or sections of target '{}'".format(lspec.target))
 
 def write_cdi_header(sect_strs, sect_sizes):
-    """Writes .cdi_header, which tells where CDI metadata can be found"""
+    """Writes .cdi_header, which tells where CDI metadata can be found
+    
+    The sections MUST be passed in the order specified in the linker script
+    """
 
     # 12 bytes for num_entris and CDI magic. Then 8 bytes for each header entry
     cdi_header_size = 12 + 8 * len(sect_strs)
@@ -88,6 +103,14 @@ def write_cdi_header(sect_strs, sect_sizes):
                 sect_id = 1
             elif sect_strs[sect_idx - 1] == '.cdi_libstrtab':
                 sect_id = 2
+            elif sect_strs[sect_idx - 1] == '.cdi_ftypetab':
+                sect_id = 3
+            elif sect_strs[sect_idx - 1] == '.cdi_fptypetab':
+                sect_id = 4
+            elif sect_strs[sect_idx - 1] == '.cdi_floctab':
+                sect_id = 5
+            elif sect_strs[sect_idx - 1] == '.cdi_fploctab':
+                sect_id = 6
             elif sect_strs[sect_idx - 1] == '.cdi_seg_end':
                 sect_id = 100
             else:

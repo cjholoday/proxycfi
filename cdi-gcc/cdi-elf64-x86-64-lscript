@@ -80,6 +80,10 @@ SECTIONS
   .cdi_slt_tramptab : {
     *(.cdi_slt_tramptab)
   }
+  .cdi_fp_tramptab : {
+    *(.cdi_fp_tramptab)
+  }
+  
 
   .rodata         : { *(.rodata .rodata.* .gnu.linkonce.r.*) }
   .rodata1        : { *(.rodata1) }
@@ -243,17 +247,39 @@ SECTIONS
   /* CDI: add load time metadata sections */
   . = SEGMENT_START("cdi", cdi_segment_start);
   . = ALIGN(64 / 8);
+
   .cdi_header : {
     *(.cdi_header)
   }
-  .cdi_strtab : {
-    *(.cdi_strtab)
-  }
+
+  /* put all the sections that need a 4 byte alignment first so that alignment
+     issues do not add to the distance between sections. This makes it easier
+     to write the cdi-section offsets into .cdi_header */
   .cdi_multtab : {
     *(.cdi_multtab)
   }
+  .cdi_floctab : {
+    *(.cdi_floctab)
+  }
+  .cdi_fploctab : {
+    *(.cdi_fploctab)
+  }
+
+  /* The remaining sections do not require any alignment */
+  .cdi_ftypetab : {
+    *(.cdi_ftypetab)
+  }
+  .cdi_fptypetab : {
+    *(.cdi_fptypetab)
+  }
   .cdi_libstrtab : {
     *(.cdi_libstrtab)
+  }
+
+  /* warning: _cdi_build_slt in the loader makes all code up to .cdi_seg_end
+     unshared. Do not move .cdi_strtab from this position */
+  .cdi_strtab : {
+    *(.cdi_strtab)
   }
   .cdi_seg_end : {
     *(.cdi_seg_end)

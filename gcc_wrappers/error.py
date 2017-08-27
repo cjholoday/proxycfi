@@ -1,6 +1,7 @@
 import __init__
 from common.eprint import eprint
 import sys
+import subprocess
 
 restore_original_objects_fptr = None
 raw_ld_spec = None

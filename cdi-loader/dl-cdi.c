@@ -285,6 +285,22 @@ void _cdi_find_mdata(CDI_Header *cdi_header, CDI_Metadata_Sections *mdata) {
                 mdata->libstrtab = ((char*)cdi_header) 
                     + cdi_header->entries[i].hdr_off;
                 break;
+            case 3:
+                mdata->ftypetab = ((unsigned char*)cdi_header) 
+                    + cdi_header->entries[i].hdr_off;
+                break;
+            case 4:
+                mdata->fptypetab = ((unsigned char*)cdi_header) 
+                    + cdi_header->entries[i].hdr_off;
+                break;
+            case 5:
+                mdata->floctab = (ElfW(Word) *)(((char*)cdi_header) 
+                    + cdi_header->entries[i].hdr_off);
+                break;
+            case 6:
+                mdata->fploctab = (ElfW(Word) *)(((char*)cdi_header) 
+                    + cdi_header->entries[i].hdr_off);
+                break;
             case 100:
                 mdata->mdata_end = ((char*)cdi_header) 
                     + cdi_header->entries[i].hdr_off;
@@ -377,9 +393,13 @@ void _cdi_print_clb(const CLB *clb) {
     _dl_debug_printf_c("    mblock soname   | %s\n", clb->multtab_block->soname_idx + _cdi_mdata->libstrtab);
     _dl_debug_printf_c("                    | \n");
     _dl_debug_printf_c("    cdi_header      | %lx\n", (uintptr_t)clb->mdata.header);
-    _dl_debug_printf_c("    cdi_strtab      | %lx\n", (uintptr_t)clb->mdata.strtab);
     _dl_debug_printf_c("    cdi_multtab     | %lx\n", (uintptr_t)clb->mdata.multtab);
+    _dl_debug_printf_c("    cdi_floctab     | %lx\n", (uintptr_t)clb->mdata.floctab);
+    _dl_debug_printf_c("    cdi_fploctab    | %lx\n", (uintptr_t)clb->mdata.fploctab);
+    _dl_debug_printf_c("    cdi_ftypetab    | %lx\n", (uintptr_t)clb->mdata.ftypetab);
+    _dl_debug_printf_c("    cdi_fptypetab   | %lx\n", (uintptr_t)clb->mdata.fptypetab);
     _dl_debug_printf_c("    cdi_libstrtab   | %lx\n", (uintptr_t)clb->mdata.libstrtab);
+    _dl_debug_printf_c("    cdi_strtab      | %lx\n", (uintptr_t)clb->mdata.strtab);
     _dl_debug_printf_c("    mdata_end       | %lx\n", (uintptr_t)clb->mdata.mdata_end);
     _dl_debug_printf_c("--------------------+------------------\n");
     _dl_debug_printf_c("\n");

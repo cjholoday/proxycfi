@@ -43,6 +43,10 @@ typedef struct {
    0             | .cdi_strtab                                                     
    1             | .cdi_multtab                                                    
    2             | .cdi_libstrtab                                                  
+   3             | .cdi_ftypetab   
+   4             | .cdi_fptypetab
+   5             | .cdi_floctab
+   6             | .cdi_fploctab
    100           | .cdi_seg_end
    all others    | undefined                    
 */
@@ -67,9 +71,24 @@ typedef struct {
     unsigned char symtab_idx_bytes[3];
 } SLT_Trampoline;
 
+/*
+ * Type Table Format:
+ *
+ * Each entry in the table is of the form: 
+ *      [len increase][cstring mangling], where the 
+ * cstring represents a 
+ *
+ */
+
 /* CDI metadata section pointers */
 typedef struct {
     CDI_Header *header;
+
+    unsigned char *ftypetab;
+    unsigned char *fptypetab;
+    ElfW(Word) *floctab;
+    ElfW(Word) *fploctab;
+
     char *strtab;
     char *libstrtab;
     void *multtab;

@@ -41,6 +41,9 @@ class FunctControlFlowGraph:
     def functs(self):
         return self._funct_vertices.values()
 
+    def size(self):
+        return len(self._funct_vertices) 
+
 class FunctControlFlowGraphIterator:
     def __init__(self, cfg):
         self.cfg_iter = iter(cfg._funct_vertices.values())

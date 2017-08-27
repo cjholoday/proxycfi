@@ -1,6 +1,8 @@
 import __init__
 
 import funct_cfg
+import link_tables
+
 import copy
 import operator
 import asm_parsing
@@ -11,6 +13,7 @@ import os
 import struct
 
 from common.eprint import eprint
+from cdi_abort import cdi_abort
 
 # CDI Label Conventions
 ###########################
@@ -69,10 +72,15 @@ from common.eprint import eprint
 #          | The multiplicity starts at 0 and is incremented for each indirect 
 #          | call in the enclosing function
 #          | [tdd] := [the enclosing funct's uniq_label] || _ || [multiplicity]
+#          |
+#  TRAM    | Marks an entry in the trampoline table
+#          | [tdd] := [uniq_label of funct] || _ || [ith trampoline for funct]
+#          | 
 #  --------+------------
 #
 # Special labels:
-#   _CDI_SLT_tramptab: specifies the beginning of the SLT trampoline table
+#   _CDI_tramtabs: specifies the beginning of the trampoline tables. The SLT
+#                  tramtab comes first, then the function pointer tramtab
 #   _CDI_callback_sled: specifies the beginning of the shared library callback sled
 #   _CDI_abort: points to a function that prints out sled debug info and exits
 
@@ -80,12 +88,8 @@ def gen_cdi_asm(cfg, asm_file_descrs, plt_sites, options):
     """Writes cdi compliant assembly from cfg and assembly file descriptions"""
 
     sled_id_faucet = funct_cfg.SledIdFaucet()
+    link_tables.write_linkage_tables.done = False
 
-    write_rlt.done = False
-    write_slt_tramptab.done = False
-    write_callback_sled.done = False
-    write_typetabs.done = False
-    
     for descr in asm_file_descrs:
         asm_parsing.DwarfSourceLoc.wipe_filename_mapping()
         dwarf_loc = asm_parsing.DwarfSourceLoc()
@@ -122,43 +126,49 @@ def gen_cdi_asm(cfg, asm_file_descrs, plt_sites, options):
                 convert_to_cdi(site, funct, line_to_fix, asm_dest, cfg,
                         sled_id_faucet, abort_data, dwarf_loc, options)
 
-        debug_section_matcher = re.compile(r'^\t\.section\t\.debug_info.+')
-        debug_section_found = False
-
-
-        if not write_callback_sled.done and options['--sl-fptr-addrs']:
-            write_callback_sled(asm_dest, options)
-            write_callback_sled.done = True
-
-        # write the rest of the normal asm lines over
-        src_line = asm_src.readline()
-        stack_section_decl = ''
+        # write the rest of the normal asm lines over, including the linkage
+        # tables but only once. Write sled abort info in the debug section
         stack_section_decl_matcher = re.compile(r'^\s*\.section\s+\.note\.GNU-stack,')
+        debug_section_matcher = re.compile(r'^\t\.section\t\.debug_info.+')
+
+        stack_section_decl = ''
+        src_line = asm_src.readline()
         while src_line:
-            if not debug_section_found and debug_section_matcher.match(src_line):
+            if debug_section_matcher.match(src_line):
+                # while we're at it, write cdi_abort info in the debug section
                 asm_dest.write(''.join(abort_data))
+                if link_tables.write_linkage_tables.done:
+                    asm_dest.write(src_line)
+                    asm_dest.write(''.join(asm_src.readlines()))
+                    break
             if stack_section_decl_matcher.match(src_line):
                 stack_section_decl = src_line
             else:
                 asm_dest.write(src_line)
             src_line = asm_src.readline()
-
-        if not write_rlt.done:
-            asm_dest.write('\t.text\n')
-            write_rlt(cfg, plt_sites, asm_dest, sled_id_faucet, options)
-            write_rlt.done = True
-
-        if not write_slt_tramptab.done and options['--shared-library']:
-            write_slt_tramptab(asm_dest, cfg, options)
-            write_slt_tramptab.done = True
-
-        if not write_typetabs.done:
-            write_typetabs(cfg, asm_dest)
-            write_typetabs.done = True
-        
+        if not link_tables.write_linkage_tables.done:
+            link_tables.write_linkage_tables(asm_dest, cfg, 
+                    sled_id_faucet, plt_sites, options)
+            link_tables.write_linkage_tables.done = True
         asm_dest.write(stack_section_decl)
+
         asm_src.close()
         asm_dest.close()
+
+        ## write the rest of the normal asm lines over
+        #src_line = asm_src.readline()
+        #stack_section_decl = ''
+        #stack_section_decl_matcher = re.compile(r'^\s*\.section\s+\.note\.GNU-stack,')
+        #while src_line:
+        #    if not debug_section_found and debug_section_matcher.match(src_line):
+        #        asm_dest.write(''.join(abort_data))
+        #    if stack_section_decl_matcher.match(src_line):
+        #        stack_section_decl = src_line
+        #    else:
+        #        asm_dest.write(src_line)
+        #    src_line = asm_src.readline()
+
+        #asm_dest.write(stack_section_decl)
             
 def cdi_asm_name(asm_name):
     if asm_name.endswith('.fake.o'):
@@ -335,7 +345,7 @@ def convert_return_site(site, funct, asm_line, asm_dest, cfg,
         # The jmp will be relocated to jmp to an SLT trampoline entry
         ret_sled += '\t.byte 0xe9\n'
         ret_sled += '\t.long 0x00\n'
-        ret_sled += '_CDIX_RREL32_{}__CDI_SLT_tramptab_{}:\n'.format(
+        ret_sled += '_CDIX_RREL32_{}__CDI_TRAM_{}_0:\n'.format(
                 funct.rel_id_faucet, fix_label(funct.uniq_label))
         funct.rel_id_faucet += 1
     else:
@@ -348,48 +358,6 @@ def convert_return_site(site, funct, asm_line, asm_dest, cfg,
 
 def convert_indir_jmp_site(site, funct, asm_line, asm_dest):
     pass
-
-def cdi_abort(sled_id, asm_filename, dwarf_loc, try_callback_sled, options):
-    """Return (code, data) that allows for aborting with sled-specific info.
-    
-    Code should be placed at the end of a return/call sled. data should be 
-    placed away from code so that the verifier works correctly.
-    """
-
-
-    loc_str = asm_filename.replace('.fake.o', '.cdi.s')
-    if dwarf_loc.valid():
-        loc_str = '{}:{}/{}'.format(str(dwarf_loc), os.path.basename(os.getcwd()), loc_str)
-
-    cdi_abort_code = cdi_abort_data = ''
-    if options['--shared-library']:
-        # prepare %rsi with sled info (this is lea)
-        cdi_abort_code += '\t.byte 0x4c\n'
-        cdi_abort_code += '\t.byte 0x8d\n'
-        cdi_abort_code += '\t.byte 0x1d\n'
-        cdi_abort_code += '\t.long 0x00\n'
-        cdi_abort_code += '"_CDIX_RREL32_{}_{}":\n'.format(
-                str(sled_id), '_CDIX_SLED_' + str(sled_id))
-
-        # TODO: jump to .cdi_fptrtab instead of _CDI_abort
-    else:
-        cdi_abort_code += '\tmovq\t $_CDIX_SLED_' + str(sled_id) + ', %r11\n'
-
-    # jmp to _CDI_abort. We need to reserve exactly 13 bytes in total because
-    # it may be overwritten with a jmp to a function pointer sled. We do the 
-    # relocation ourselves because 'as' may optimize the jmp to _CDI_abort into
-    # less than 5 bytes
-    cdi_abort_code += '\t.byte 0xe9\n'
-    cdi_abort_code += '\t.long 0x0\n'
-    cdi_abort_code += '_CDIX_RREL32_{}_{}:\n'.format(sled_id, '_CDI_abort')
-    cdi_abort_code += '\tnop\n' * (13 - 5)
-
-    cdi_abort_msg = loc_str + ' id=' + str(sled_id)
-    cdi_abort_data += '_CDIX_SLED_' + str(sled_id) + ':\n'
-    cdi_abort_data += '\t.quad\t' + str(len(cdi_abort_msg)) + '\n'
-    cdi_abort_data += '\t.string\t"' + cdi_abort_msg + '"\n'
-
-    return (cdi_abort_code, cdi_abort_data)
 
 def convert_plt_site(site, asm_line, funct, asm_dest, options):
     if not hasattr(funct, 'plt_call_multiplicity'):
@@ -409,331 +377,6 @@ def convert_plt_site(site, asm_line, funct, asm_dest, options):
     if not options['--shared-library']:
         globl_decl = '.globl\t' + rlt_return_label + '\n'
     asm_dest.write(asm_line + globl_decl + rlt_return_label + ':\n') 
-
-def write_rlt(cfg, plt_sites, asm_dest, sled_id_faucet, options):
-    """Write the RLT to asm_dest"""
-
-    # maps (shared library uniq label, rlt return target) -> multiplicity
-    multiplicity = dict()
-
-    # maps shared library uniq label -> set of potential functions to which to return
-    rlt_return_targets = dict()
-
-    # populate the multiplicity and rlt_return_targets dicts
-    for plt_site in plt_sites:
-        call_return_pair = (plt_site.targets[0], plt_site.enclosing_funct_uniq_label)
-
-        if plt_site.targets[0] not in rlt_return_targets:
-            rlt_return_targets[plt_site.targets[0]] = set()
-        rlt_return_targets[call_return_pair[0]].add(call_return_pair[1])
-
-        try:
-            multiplicity[call_return_pair] += 1
-        except KeyError:
-            multiplicity[call_return_pair] = 1
-
-    # create an RLT entry for each shared library function
-
-    asm_dest.write('\t.section .cdi_rlt, "ax", @progbits\n')
-    
-    rlt_relocation_id_faucet = 0
-    cdi_abort_data = ''
-    for sl_funct_uniq_label, rlt_target_set in rlt_return_targets.iteritems():
-        rlt_entry = ''
-
-        entry_label = '"_CDI_RLT_{}"'.format(fix_label(sl_funct_uniq_label))
-
-        # reserve space for cdi-ld to store the associated PLT return address
-        asm_dest.write('\t.align 8\n') # make sure PLT ret addr is aligned
-        asm_dest.write('\t.quad 0xdeadbeefefbeadde\n')
-        asm_dest.write('\t.type {}, @function\n'.format(entry_label))
-        asm_dest.write('\t.globl {}\n'.format(entry_label))
-        asm_dest.write(entry_label + ':\n')
-
-        # Add sled entries for each RLT target
-        for rlt_target in rlt_target_set:
-            i = 1
-            while i <= multiplicity[(sl_funct_uniq_label, rlt_target)]:
-                sled_label = '"_CDIX_PLT_{}_TO_{}_{}"'.format(
-                        fix_label(sl_funct_uniq_label), fix_label(rlt_target) , str(i))
-                if options['--shared-library']:
-                    # we must do this because putting the 'lea' here will require
-                    # a relocation if the symbol is outside this assembly file, 
-                    # which the linker will complain about. Instead, we do the 
-                    # relocation ourselves in cdi-ld. 
-                    
-                    rlt_entry += '\t.byte 0x4c\n'
-                    rlt_entry += '\t.byte 0x8d\n'
-                    rlt_entry += '\t.byte 0x1d\n'
-                    rlt_entry += '\t.long 0x00\n'
-                    rlt_entry += '"_CDIX_RREL32_{}_{}:\n'.format(
-                            str(rlt_relocation_id_faucet), sled_label[1:])
-                    rlt_entry += '\tcmpq\t%r11, -8(%rsp)\n'
-                    rlt_relocation_id_faucet += 1
-
-                    # we must do this relocation ourselves too
-                    rlt_entry += '\t.byte 0x0f\n'
-                    rlt_entry += '\t.byte 0x84\n'
-                    rlt_entry += '\t.long 0x00\n'
-                    rlt_entry += '"_CDIX_RREL32_{}_{}:\n'.format(
-                            str(rlt_relocation_id_faucet), sled_label[1:])
-                    rlt_relocation_id_faucet += 1
-                else:
-                    rlt_entry += '\tcmpq\t$' + sled_label + ', -8(%rsp)\n'
-                    rlt_entry += '\tje\t' + sled_label + '\n'
-                i += 1
-
-        code, data = cdi_abort(sled_id_faucet(), '',
-            asm_parsing.DwarfSourceLoc(), False, options)
-        cdi_abort_data += data
-        rlt_entry += code
-        rlt_entry += '\t.size {}, .-{}\n'.format(entry_label, entry_label)
-        asm_dest.write(rlt_entry)
-    asm_dest.write(cdi_abort_data)
-
-def write_slt_tramptab(asm_dest, cfg, options):
-    page_size = subprocess.check_output(['getconf', 'PAGESIZE'])
-    asm_dest.write('\t.section .cdi_slt_tramptab, "ax", @progbits\n')
-    asm_dest.write('\t.align {}\n'.format(page_size))
-    asm_dest.write('\t.globl _CDI_SLT_tramptab\n')
-    asm_dest.write('_CDI_SLT_tramptab:\n')
-
-    global_functs = [funct for funct in cfg if funct.is_global]
-
-    # begin by writing the number of entries in the trampoline table
-    asm_dest.write('\t.quad {}\n'.format(len(global_functs)))
-
-    # make sure there is enough space to write _CDI_RLT_ before every string
-    # in the .cdi_strtab. 
-    cdi_strtab = '_CDI_RLT_\x00'
-    for funct in global_functs:
-        slt_entry_label = '"_CDI_SLT_tramptab_{}"'.format(fix_label(funct.uniq_label))
-        asm_dest.write('\t.globl {}\n'.format(slt_entry_label))
-        asm_dest.write(slt_entry_label + ':\n')
-
-        # Save space for a jump. This will be fixed up by the loader
-        asm_dest.write('\t.byte 0xe9\n')
-        asm_dest.write('\tnop\n' * 4)
-
-        # make sure the strtab index can bit in 3 bytes
-        if len(cdi_strtab) >= (1 << (8 * 3)):
-            eprint('gen_cdi: error: .cdi_strtab index cannot fit in 3 bytes')
-            sys.exit(1)
-
-        # write the .cdi_strtab index into the 3 bytes after the trampoline jmp
-        for byte in struct.pack('<I', len(cdi_strtab))[:-1]:
-            asm_dest.write('\t.byte {}\n'.format(hex(struct.unpack('B', byte)[0])))
-        cdi_strtab += funct.asm_name + '\x00'
-
-
-    asm_dest.write('\t.size _CDI_SLT_tramptab, .-_CDI_SLT_tramptab\n')
-    asm_dest.write('\t.align {}\n'.format(page_size))
-
-    asm_dest.write('\t.section .cdi_strtab, "a", @progbits\n')
-
-    # now translate the strtab into assembler
-    cdi_strtab = cdi_strtab.split('\x00')[:-1]
-    # asm_dest.write('\t.string ""')
-    hit = False
-    for string in cdi_strtab:
-        if not hit:
-            hit = True
-            asm_dest.write('\t.string "{}"'.format(string))
-        else:
-            asm_dest.write(', "{}"'.format(string))
-    asm_dest.write('\n')
-
-def write_callback_sled(asm_dest, options):
-    callback_sled = '.globl _CDI_callback_sled\n'
-    callback_sled += '_CDI_callback_sled:\n'
-
-    # the callback table is in the following format:
-    #
-    # "/path/to/library.so" load-addr: 0xADDRESS
-    # fptr address 1
-    # fptr address 2
-    # ...
-    #
-    # "/path/to/library2.so" load-addr: 0xADDRESS
-    # ...
-    #
-    #
-    # The end of a library is indicated by two consecutive newlines
-
-    # populated with pairs of (library metadata, list of fptrs)
-    fptr_table = []
-    with open(options['--sl-fptr-addrs'], 'r') as callback_table:
-        lines = iter(callback_table)
-        for lib_metadata in lines:
-            lib_fptrs = []
-            line = lines.next()
-            while line != '\n':
-                lib_fptrs.append(line.rstrip())
-                line = lines.next()
-            fptr_table.append((lib_metadata.rstrip(), lib_fptrs))
-
-    for lib_metadata, fptrs in fptr_table:
-        upper_to_lower_addrs = dict()
-        for addr in fptrs:
-            lower_addr = '0x' + addr[-8:]
-            upper_addr = addr[:-8]
-            try:
-                upper_to_lower_addrs[upper_addr].append(lower_addr)
-            except KeyError:
-                upper_to_lower_addrs[upper_addr] = [lower_addr]
-
-        callback_sled += '/* {} */\n'.format(lib_metadata)
-        for upper_addr, lower_addrs in upper_to_lower_addrs.iteritems():
-            callback_sled += '\tcmpl\t$'+upper_addr+', -4(%rsp)\n'
-            callback_sled += '\tjne\t1f\n'
-            for addr in lower_addrs:
-                callback_sled += '\tcmpl\t$'+addr+', -8(%rsp)\n'
-                callback_sled += '\tjne\t2f\n'
-                callback_sled += '\tmov\t$'+upper_addr+addr[2:]+', %r11\n'
-                callback_sled += '\tjmp\t*%r11\n'
-                callback_sled += '2:\n'
-            callback_sled += '1:\n'
-    callback_sled += '\tmovq\t-8(%rsp), %rax\n'
-    callback_sled += '\tmovq\t%r11, %rsi\n'
-    callback_sled += '\tjmp _CDI_abort\n'
-    asm_dest.write(callback_sled)
-
-class FloctabEntry:
-    def __init__(self):
-        self.f_reloffs = ''
-        self.fret_reloffs = ''
-
-        self.num_f_reloffs = 0
-        self.num_fret_reloffs = 0
-
-class FploctabEntry:
-    def __init__(self):
-        self.site_reloffs = ''
-        self.num_site_reloffs = 0
-
-def write_typetabs(cfg, asm_dest):
-    functs = cfg.functs()
-
-    curr_loctab_entry = FloctabEntry()
-    def on_type_used(funct, loctab_entry = curr_loctab_entry):
-        # store the relative offset to the function and its return sites
-        # use RREL32 relocations to set the offsets 
-        loctab_entry.f_reloffs += ('\t.long 0x0\n"_CDIX_RREL32_0__CDIX_F_{}":\n'
-                .format(funct.uniq_label))
-        loctab_entry.num_f_reloffs += 1
-
-        for ret_id in xrange(funct.num_rets):
-            loctab_entry.fret_reloffs += ('\t.long 0x0\n"_CDIX_RREL32_0__CDIX_RET_{}_{}":\n'
-                    .format(funct.uniq_label, ret_id))
-        loctab_entry.num_fret_reloffs += funct.num_rets
-
-    floctab = []
-    def on_type_exhausted(floctab = floctab, loctab_entry = curr_loctab_entry):
-        # flush reloff data into .cdi_floctab
-        floctab.append('\t.long {}\n'.format(hex(loctab_entry.num_f_reloffs)))
-        floctab.append('\t.long {}\n'.format(hex(loctab_entry.num_fret_reloffs)))
-        floctab.append(loctab_entry.f_reloffs)
-        floctab.append(loctab_entry.fret_reloffs)
-        loctab_entry.f_reloffs = loctab_entry.fret_reloffs = ''
-        loctab_entry.num_f_reloffs = loctab_entry.num_fret_reloffs = 0
-    
-    asm_dest.write('\t.section .cdi_ftypetab, "a", @progbits\n')
-    write_typetab(asm_dest, functs, 'ftype', on_type_used, on_type_exhausted)
-    
-    asm_dest.write('\t.section .cdi_floctab, "a", @progbits\n')
-    for text in floctab:
-        asm_dest.write(text)
-
-    fptr_sites = []
-    for funct in functs:
-        fptr_site_mult = 0
-        for site in funct.sites:
-            if site.fptype != None:
-                fptr_sites.append(site)
-                site.fptr_id = fptr_site_mult
-                fptr_site_mult += 1
-
-    curr_loctab_entry = FploctabEntry()
-    def on_type_used(fptr_site, loctab_entry = curr_loctab_entry):
-        loctab_entry.site_reloffs += ('\t.long 0x0\n"_CDIX_RREL32_0__CDIX_FPTR_{}_{}":\n'
-                .format(fptr_site.enclosing_funct_uniq_label, fptr_site.fptr_id))
-        loctab_entry.num_site_reloffs += 1
-
-    fploctab = []
-    def on_type_exhausted(fploctab = fploctab, loctab_entry = curr_loctab_entry):
-        fploctab.append('\t.long {}\n'.format(hex(loctab_entry.num_site_reloffs)))
-        fploctab.append(loctab_entry.site_reloffs)
-
-        loctab_entry.site_reloffs = ''
-        loctab_entry.num_site_reloffs = 0
-
-    asm_dest.write('\t.section .cdi_fptypetab, "a", @progbits\n')
-    write_typetab(asm_dest, fptr_sites, 'fptype', on_type_used, on_type_exhausted)
-    
-    asm_dest.write('\t.section .cdi_fploctab, "a", @progbits\n')
-    for text in fploctab:
-        asm_dest.write(text)
-
-def write_typetab(asm_dest, type_objs, type_attr, on_type_used, on_type_exhausted):
-    """Writes a type table to asm_dest
-
-    type_objs is a list of objects that have function types attached at an
-    attribute with name type_attr.
-
-    on_type_used is called with a type_obj every time a type_obj's type is 
-    added to the table or matches with another type in the table
-
-    on_type_exhausted is called every time all type_objs's with a type have been 
-    added to the table. Once a type has been added to the table, all type_objs
-    that have a matching type must be examined before adding the next type. This
-    means that at any give time, only one type is under examination
-    """
-
-    # prioritize typestring size when sorting
-    def type_compare(type1, type2):
-        if len(type1) != len(type2):
-            return len(type1) - len(type2)
-        else:
-            return cmp(type1, type2)
-
-    type_objs.sort(key=operator.attrgetter(type_attr), cmp=type_compare)
-
-    # Strings are written with increasing size. This is the 
-    # length accumulated so far. 
-    len_acc = 0
-
-    # handle the first specially
-    curr_type = ''
-    if type_objs:
-        curr_type = getattr(type_objs[0], type_attr)
-        len_acc = len(curr_type)
-
-        # the len must be stored in a single byte
-        byte_hex = ''
-        if len_acc < 255:
-            byte_hex = hex(len_acc)
-        else:
-            byte_hex = '0xff'
-        asm_dest.write('\t.byte {}\n'.format(byte_hex))
-        asm_dest.write('\t.string "{}"\n'.format(curr_type))
-
-    for type_obj in type_objs:
-        if curr_type != getattr(type_obj, type_attr):
-            on_type_exhausted()
-
-            curr_type = getattr(type_obj, type_attr)
-            len_diff = len(curr_type) - len_acc
-            len_acc = len(curr_type)
-
-            # we only store one byte's worth of length difference
-            if len_diff < 255:
-                byte_hex = hex(len_diff)
-            else:
-                byte_hex = '0xff'
-            asm_dest.write('\t.byte {}\n'.format(byte_hex))
-            asm_dest.write('\t.string "{}"\n'.format(curr_type))
-        on_type_used(type_obj)
-    on_type_exhausted()
 
 def fix_label(label):
     return label.replace('@PLT', '').replace('/', '__').replace('.fake.o', '.cdi.s')

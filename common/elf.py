@@ -47,7 +47,7 @@ class Elf64:
         pass
 
     def find_section(self, wanted_sect):
-        """Returns a section header which as 'sect_name'
+        """Returns a section header with name 'wanted_sect'
         
         raises Elf64.MissingSection if the section cannot be found
         """

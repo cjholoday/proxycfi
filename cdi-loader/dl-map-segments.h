@@ -79,8 +79,6 @@ _dl_map_segments (struct link_map *l, int fd,
 
       l->l_contiguous = 1;
 
-      /* CDI debugging statements
-
       _dl_debug_printf_c("    loadcmd mapstart: %lx\n", c->mapstart);
       _dl_debug_printf_c("    actual mapstart: %lx\n", l->l_map_start);
       _dl_debug_printf_c("    l_addr: %lx\n", l->l_addr);
@@ -95,7 +93,6 @@ _dl_map_segments (struct link_map *l, int fd,
       }
       _dl_debug_printf_c("    maplength: %lx\n", maplength);
       _dl_debug_printf_c("\n");
-      */
 
       goto postmap;
     }
