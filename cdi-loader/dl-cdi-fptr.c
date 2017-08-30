@@ -241,36 +241,46 @@ void advance_fptype_iter(Fptype_Iter *iter) {
 
 typedef struct {
     /* points to the first page mmap'ed */
-    void *head;
+    unsigned char *head;
 
     /* points to one page after the last that was mapped */
-    void *tail;
+    unsigned char *tail;
 
     /* points to the next unused byte in the mmap'ed region */
-    void *used_tail;
+    unsigned char *used_tail;
 } Sled_Allocation;
 
-/*
-void _cdi_gen_fp_call_sled(Sled_Allocation **alloc,
-        Fptype_Iter *fp_iters, ElfW(Word) num_fp_iters,
-        Ftype_Iter *f_iter, ElfW(Word) num_f_iters) {
+void sled_allocate(Sled_Allocation *alloc) {
+    alloc->head = mmap(0, GLRO(dl_pagesize) * 10, PROT_WRITE | PROT_READ,
+            MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    alloc->tail = alloc->used_tail = alloc->head + GLRO(dl_pagesize) * 10;
+}
+
+void code_prot(Sled_Allocation *alloc) {
+    mprotect(alloc->head, alloc->tail - alloc->head, PROT_READ | PROT_EXEC);
+}
+
+
+void _cdi_gen_fp_call_sled(Sled_Allocation *alloc,
+        Ftype_Iter *f_iter, ElfW(Word) num_f_iters,
+        Fptype_Iter *fp_iters, ElfW(Word) num_fp_iters) {
 
 }
 
-void _cdi_gen_fp_ret_sled(Sled_Allocation **alloc,
-        Fptype_Iter *fp_iters, ElfW(Word) num_fp_iters,
-        Ftype_Iter *f_iter, ElfW(Word) num_f_iters) {
+/*
+void _cdi_gen_fp_ret_sled(Sled_Allocation *alloc,
+        Ftype_Iter *f_iter, ElfW(Word) num_f_iters),
+        Fptype_Iter *fp_iters, ElfW(Word) num_fp_iters) {
 
 }
 */
+
 
 void _cdi_gen_fptr_sleds(void) {
     Ftype_Iter **ftype_iters = malloc((_clb_tablen + 1) * sizeof(Ftype_Iter *));
     Fptype_Iter **fptype_iters = malloc((_clb_tablen + 1) * sizeof(Fptype_Iter *));
 
-    /*
-    Ftype_Iter **f_matchs = malloc((_clb_tablen + 1) * sizeof(Ftype_Iter *));
-    */
+    Ftype_Iter **f_matches = malloc((_clb_tablen + 1) * sizeof(Ftype_Iter *));
     Fptype_Iter **fp_matches = malloc((_clb_tablen + 1) * sizeof(Fptype_Iter *));
 
     for (int i = 0; i < _clb_tablen; i++) {
@@ -307,6 +317,35 @@ void _cdi_gen_fptr_sleds(void) {
     int num_sm_fptypes = find_smallest_fptypes(fptype_iters, _clb_tablen + 1, fp_matches);
     _dl_debug_printf_c("num matches: %u\n", num_sm_fptypes);
     while (num_sm_fptypes) {
+        int num_sm_ftypes = 0;
+        for (int i = 0; i < _clb_tablen + 1; i++) {
+            /* skip exhausted ftypes iters */
+            if (ftype_iters[i]->is_finished) {
+                continue;
+            }
+
+            int cmp = type_cmp(fp_matches[0], ftype_iters[i]);
+            while (!ftype_iters[i]->is_finished && cmp > 0) {
+                advance_ftype_iter(ftype_iters[i]);
+                cmp = type_cmp(fp_matches[0], ftype_iters[i]);
+            }
+
+            if (cmp == 0) {
+                f_matches[num_sm_ftypes++] = ftype_iters[i];
+            }
+        }
+        /*
+        _cdi_gen_fp_call_sled(&alloc, f_matches, num_sm_ftypes,
+                fp_matches, num_sm_fptypes);
+        _cdi_gen_fp_ret_sled(&alloc, f_matches, num_sm_ftypes, 
+                fp_matches, num_sm_fptypes);
+                */
+
+        for (int i = 0; i < num_sm_ftypes; i++) { 
+            print_ftypes_iter(f_matches[i]);
+            advance_ftype_iter(f_matches[i]);
+        }
+        _dl_debug_printf_c("\n");
         for (int i = 0; i < num_sm_fptypes; i++) { 
             print_fptypes_iter(fp_matches[i]);
             advance_fptype_iter(fp_matches[i]);
