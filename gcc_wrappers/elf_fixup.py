@@ -2,6 +2,7 @@ import __init__
 
 import spec
 import os
+import sys
 import struct
 import itertools
 import subprocess
@@ -40,7 +41,7 @@ def cdi_fixup_elf(lspec):
     plt_fixups    = get_plt_fixups(target_elf, globl_funct_mults, plt_sym_strs)
 
     target_elf.fixup(rrel32_fixups + rlt_fixups + plt_fixups)
-    
+
     objcopy_opts = []
     if lspec.target_is_shared:
         target_elf.init_strtab('.cdi_strtab')

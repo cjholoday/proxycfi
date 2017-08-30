@@ -166,6 +166,22 @@ void _cdi_find_mdata(CDI_Header *cdi_header, CDI_Metadata_Sections *mdata);
  */
 void _cdi_build_slt(CLB *clb, struct link_map *main_map);
 
+/*
+ * Builds function pointer call and return sleds. The address of the generated
+ * sleds are handled depending on the type:
+ *
+ * For call function pointer sleds, the trampoline in .cdi_tramtab associated 
+ * with the function pointer is fixed up to jmp to the new sled
+ *
+ * For return function pointer sleds, the address is written into bytes 4-11
+ * of the trampoline associated with the function that was indirectly called
+ * If bytes 4-11 of a trampoline are NULL after this function, then the function
+ * associated with the trampoline is not indirectly called outside of its own
+ * shared library
+ *
+ * The sleds are placed in an anonymous page chosen by the kernel
+ */
+void _cdi_gen_fptr_sleds(void);
 
 /*
  * Writes an SLT sled and returns a pointer to the next available address in

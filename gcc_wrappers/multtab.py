@@ -44,7 +44,6 @@ def build_multtab(target_elf, lspec, globl_funct_mults, write_dir):
             try:
                 slt_tramtab_sh = elf.find_section('.cdi_tramtab')
                 elf.init_strtab('.cdi_strtab')
-                print elf.cdi_strtab
                 num_cdi_deps += 1
             except common.elf.Elf64.MissingSection:
                 continue # this file is not CDI

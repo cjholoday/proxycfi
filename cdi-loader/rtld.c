@@ -2185,6 +2185,8 @@ ERROR: ld.so: object '%s' cannot be loaded as audit interface: %s; ignored.\n",
   }
   _cdi_print_clbs();
 
+  _cdi_gen_fptr_sleds();
+
   /* build the SLT and SLT trampoline tables */
   for (int i = 0; i < _clb_tablen; i++) {
       _cdi_build_slt(&_clb_table[i], main_map);

@@ -310,8 +310,6 @@ void _cdi_find_mdata(CDI_Header *cdi_header, CDI_Metadata_Sections *mdata) {
     }
 }
 
-
-
 CLB *_cdi_clb_from_soname(const char *soname_path) {
     /* we need to get rid of the path if it exists */
     int basename_idx = 0;

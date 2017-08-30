@@ -272,13 +272,13 @@ def write_typetabs(asm_dest, cfg, fptr_sites):
     def on_type_used(funct, loctab_entry = curr_loctab_entry):
         # store the relative offset to the function and its return sites
         # use RREL32 relocations to set the offsets 
-        loctab_entry.f_reloffs += ('\t.long 0x0\n"_CDIX_RREL32_0__CDIX_F_{}":\n'
-                .format(funct.uniq_label))
+        loctab_entry.f_reloffs += ('\t.long 0x0\n"_CDIX_RREL32_floctab__CDIX_F_{}":\n'
+                .format(fix_label(funct.uniq_label)))
         loctab_entry.num_f_reloffs += 1
 
         for ret_id in xrange(funct.num_rets):
             loctab_entry.fret_reloffs += ('\t.long 0x0\n"_CDIX_RREL32_0__CDIX_RET_{}_{}":\n'
-                    .format(funct.uniq_label, ret_id))
+                    .format(fix_label(funct.uniq_label), ret_id))
         loctab_entry.num_fret_reloffs += funct.num_rets
 
     floctab = []
@@ -299,11 +299,16 @@ def write_typetabs(asm_dest, cfg, fptr_sites):
     for text in floctab:
         asm_dest.write(text)
 
+    # terminate the loctab with a long NULL so the loader knows when the type
+    # table ends
+    asm_dest.write('\t.long 0x0\n')
+
 
     curr_loctab_entry = FploctabEntry()
     def on_type_used(fptr_site, loctab_entry = curr_loctab_entry):
         loctab_entry.site_reloffs += ('\t.long 0x0\n"_CDIX_RREL32_0__CDIX_FPTR_{}_{}":\n'
-                .format(fptr_site.enclosing_funct_uniq_label, fptr_site.indir_call_id))
+                .format(fix_label(fptr_site.enclosing_funct_uniq_label),
+                    fptr_site.indir_call_id))
         loctab_entry.num_site_reloffs += 1
 
     fploctab = []
@@ -326,7 +331,10 @@ def write_typetabs(asm_dest, cfg, fptr_sites):
         asm_dest.write('\t.byte 0x0\n')
         asm_dest.write('\t.section .cdi_fploctab, "a", @progbits\n')
         asm_dest.write('\t.align 4\n')
-        asm_dest.write('\t.long 0x0\n')
+
+    # terminate the loctab with a long NULL so the loader knows when the type
+    # table ends
+    asm_dest.write('\t.long 0x0\n')
     
 
 def write_typetab(asm_dest, type_objs, type_attr, on_type_used, on_type_exhausted):
