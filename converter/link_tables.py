@@ -128,7 +128,7 @@ def write_rlt(cfg, plt_sites, asm_dest, sled_id_faucet, options):
         code, data = cdi_abort(sled_id_faucet(), '',
             asm_parsing.DwarfSourceLoc(), False, options)
         cdi_abort_data += data
-        rlt_entry += code
+        rlt_entry += ''.join(code)
         rlt_entry += '\t.size {}, .-{}\n'.format(entry_label, entry_label)
         asm_dest.write(rlt_entry)
     asm_dest.write(cdi_abort_data)

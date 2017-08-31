@@ -284,15 +284,18 @@ def convert_call_site(site, funct, asm_line, asm_dest,
 
     call_sled += '1:\n'
 
-    # put the call address in temporary register %r10
+    # put the call address in temporary register %r10 so that shared library
+    # function pointer call sleds can always assume it is in %r10
     if call_operand != '%r10':
         call_sled += '\tmovq\t{}, %r10\n'.format(call_operand)
 
     code, data = cdi_abort(sled_id_faucet(), funct.asm_filename, 
             dwarf_loc, False, options)
+
+    call_sled += code[0]
     call_sled += '"_CDIX_FPTR_{}_{}":\n'.format(
             fix_label(funct.uniq_label), site.indir_call_id)
-    call_sled += code
+    call_sled += code[1]
 
     if options['--shared-library']:
         # make sure each relocation symbol is unique
@@ -365,7 +368,7 @@ def convert_return_site(site, funct, asm_line, asm_dest, cfg,
             dwarf_loc, True, options)
     ret_sled += '"_CDIX_RET_{}_{}":\n'.format(
             fix_label(funct.uniq_label), site.ret_id)
-    ret_sled += code
+    ret_sled += ''.join(code)
 
     if options['--shared-library']:
         # make sure each relocation symbol is unique
