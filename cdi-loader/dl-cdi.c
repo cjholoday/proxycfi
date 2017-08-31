@@ -245,6 +245,11 @@ char *_cdi_write_slt_sled_entry(char *sled_tail, ElfW(Addr) rlt_addr,
     return sled_tail;
 }
 
+/*
+void _cdi_write_ret__branch(ElfW(Addr) cmp_addr, ElfW(Addr), target_addr) {
+*/
+
+
 Elf64_Word _cdi_slt_size(Elf64_Word total_mult, Elf64_Word num_used_syms) {
     /*
      * Per multiplicity:

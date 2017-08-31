@@ -65,6 +65,10 @@ typedef struct {
     ElfW(Word) *fret_reloffs;
 
     unsigned char is_finished;
+
+    /* add this to reloffs to account for changes in the relative offsets
+     * since they were calcuated by the CDI converter */
+    ElfW(Sword) reloff_adjust;
 } Ftype_Iter;
 
 typedef struct {
@@ -77,6 +81,10 @@ typedef struct {
     ElfW(Word) *site_reloffs;
 
     unsigned char is_finished;
+
+    /* add this to reloffs to account for changes in the relative offsets
+     * since they were calcuated by the CDI converter */
+    ElfW(Sword) reloff_adjust;
 } Fptype_Iter;
 
 /*
@@ -111,6 +119,12 @@ Ftype_Iter *ftype_iter_init(CDI_Metadata_Sections *mdata) {
     iter->fret_reloffs = iter->f_reloffs + iter->num_f_reloffs;
     iter->is_finished = iter->num_f_reloffs == 0;
 
+    /* reloff calculations didn't account for the cdi_header or the multtab
+     * enlargements between the floctab/fploctab and executable code
+     *
+     * adding this to a reloff will normalize it */
+    iter->reloff_adjust = (char*)mdata->header - (char*)mdata->floctab + 16;
+
     return iter;
 }
 
@@ -124,6 +138,12 @@ Fptype_Iter *fptype_iter_init(CDI_Metadata_Sections *mdata) {
     iter->num_sites = mdata->fploctab[0];
     iter->site_reloffs = mdata->fploctab + 1;
     iter->is_finished = iter->num_sites == 0;
+
+    /* reloff calculations didn't account for the cdi_header or the multtab
+     * enlargements between the floctab/fploctab and executable code
+     *
+     * adding this to a reloff will normalize it */
+    iter->reloff_adjust = (char*)mdata->header - (char*)mdata->floctab + 16;
 
     return iter;
 }
@@ -250,21 +270,123 @@ typedef struct {
     unsigned char *used_tail;
 } Sled_Allocation;
 
-void sled_allocate(Sled_Allocation *alloc) {
-    alloc->head = mmap(0, GLRO(dl_pagesize) * 10, PROT_WRITE | PROT_READ,
+static void sled_allocate(Sled_Allocation *alloc) {
+    const int alloc_size = 16;
+    alloc->head = mmap(0, GLRO(dl_pagesize) * alloc_size, PROT_WRITE | PROT_READ,
             MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-    alloc->tail = alloc->used_tail = alloc->head + GLRO(dl_pagesize) * 10;
+    alloc->tail = alloc->head + GLRO(dl_pagesize) * alloc_size;
+    alloc->used_tail = alloc->head;
 }
 
-void code_prot(Sled_Allocation *alloc) {
+static void code_prot(Sled_Allocation *alloc) {
     mprotect(alloc->head, alloc->tail - alloc->head, PROT_READ | PROT_EXEC);
 }
 
-
+static ElfW(Addr) abs_addr(ElfW(Sword) *reloff) {
+    _dl_debug_printf_c("\treloff addr: %lx\n", (uintptr_t)reloff);
+    if (*reloff >= 0) {
+        _dl_debug_printf_c("\treloff: %lx\n", (long unsigned)*reloff);
+    }
+    else {
+        _dl_debug_printf_c("\treloff: -%lx\n", (long unsigned)(*reloff * -1));
+    }
+    ElfW(Addr) abs_addr = (uintptr_t)reloff;
+    if (*reloff >= 0) {
+        return abs_addr + *reloff;
+    }
+    else { 
+        return abs_addr - (ElfW(Addr))(*reloff * -1);
+    }
+}
 void _cdi_gen_fp_call_sled(Sled_Allocation *alloc,
-        Ftype_Iter *f_iter, ElfW(Word) num_f_iters,
-        Fptype_Iter *fp_iters, ElfW(Word) num_fp_iters) {
+        Ftype_Iter **f_iters, ElfW(Word) num_f_iters,
+        Fptype_Iter **fp_iters, ElfW(Word) num_fp_iters) {
+    /* by not writing into the trampoline table, the trampoline table 
+     * jumps will, by default, be pointed at _CDI_abort symbols */
+    if (!num_f_iters) {
+        return;
+    }
 
+    /*
+     * Per function target
+     * * * * * * * * * * * * * * *
+     * movabs candidate, %r11      [10 bytes]
+     * cmp    %r10, %r11           [3 bytes]
+     * jne    next_sled_entry      [2 bytes]
+     * call   *%r11                [3 bytes]
+     *                           = [18 bytes]
+     * Per sled
+     * * * * * * * * * * * * * * *
+     * movabs $_CDI_abort, %r10    [10 bytes]
+     * jmp %r10                    [3  bytes]
+     *                           = [13 bytes]
+     */
+    const int branch_size = 18;
+    const int abort_size = 13;
+
+
+    /* allocate new sled block if we can't fit at least 5 targets & chain */
+    int mem_avail = alloc->tail - alloc->used_tail;
+    if (mem_avail < branch_size * 5 + abort_size) {
+        _dl_debug_printf_c("allocating new page\n");
+        code_prot(alloc);
+        sled_allocate(alloc);
+        mem_avail = alloc->tail - alloc->used_tail;
+        _dl_debug_printf_c("mem_avail: %lx\n", (long unsigned)mem_avail);
+    }
+
+    ElfW(Addr) sled_start = (uintptr_t)alloc->used_tail;
+
+    for (int i = 0; i < num_f_iters; i++) {
+        _dl_debug_printf_c("mem_avail: %lx\n", (long unsigned)mem_avail);
+        for (int j = 0; j < f_iters[i]->num_f_reloffs; j++, mem_avail -= branch_size) {
+            if (mem_avail < branch_size + abort_size) {
+                _dl_debug_printf_c("allocating new page and chaining\n");
+
+                Sled_Allocation tmp = *alloc;
+                sled_allocate(alloc);
+
+                /* Chain the sled into the next allocation */
+                *alloc->used_tail++ = 0x49;
+                *alloc->used_tail++ = 0xbb;
+                memcpy(tmp.used_tail, &alloc->head, sizeof(ElfW(Addr)));
+
+                code_prot(&tmp);
+                mem_avail = alloc->tail - alloc->used_tail;
+            }
+
+
+            /* calculate the function address as an offset from the floctab */
+            ElfW(Addr) f_addr = abs_addr((ElfW(Sword)*)(&f_iters[i]->f_reloffs[j])) 
+                + sizeof(ElfW(Word)) + f_iters[i]->reloff_adjust;
+            _dl_debug_printf_c("f_addr: %lx\n", f_addr);
+
+            /* Fill %r11 with the candidate function */
+            *alloc->used_tail++ = 0x49;
+            *alloc->used_tail++ = 0xbb;
+            memcpy(alloc->used_tail, &f_addr, sizeof(ElfW(Addr)));
+            alloc->used_tail += sizeof(ElfW(Addr));
+
+            /* cmp %r10, %r11 */
+            *alloc->used_tail++ = 0x4d;
+            *alloc->used_tail++ = 0x39;
+            *alloc->used_tail++ = 0xd3;
+
+            /* Goto the next sled branch (jne) */
+            *alloc->used_tail++ = 0x75;
+            *alloc->used_tail++ = 0x03;
+
+            /* Call *%r11 */
+            *alloc->used_tail++ = 0x41;
+            *alloc->used_tail++ = 0xff;
+            *alloc->used_tail++ = 0xd3;
+        }
+    }
+    for (int i = 0; i < num_fp_iters; i++) {
+        ElfW(Addr) fp_site = abs_addr((ElfW(Sword)*)fp_iters[i]->site_reloffs) 
+            + sizeof(ElfW(Word)) + f_iters[i]->reloff_adjust;
+        _dl_debug_printf_c("fp_site: %lx; fptr sled addr: %lx\n", fp_site, sled_start);
+    }
 }
 
 /*
@@ -309,10 +431,8 @@ void _cdi_gen_fptr_sleds(void) {
 
     /* Do not mmap the memory for a sled allocation yet. Wait until we KNOW
      * there are function pointers */
-    /*
     Sled_Allocation alloc;
     alloc.head = alloc.tail = alloc.used_tail = 0;
-    */
 
     int num_sm_fptypes = find_smallest_fptypes(fptype_iters, _clb_tablen + 1, fp_matches);
     _dl_debug_printf_c("num matches: %u\n", num_sm_fptypes);
@@ -334,9 +454,12 @@ void _cdi_gen_fptr_sleds(void) {
                 f_matches[num_sm_ftypes++] = ftype_iters[i];
             }
         }
-        /*
+        if (num_sm_fptypes > 0) {
+            _dl_debug_printf_c("building sleds for type '%s'\n", fp_matches[0]->type);
+        }
         _cdi_gen_fp_call_sled(&alloc, f_matches, num_sm_ftypes,
                 fp_matches, num_sm_fptypes);
+        /*
         _cdi_gen_fp_ret_sled(&alloc, f_matches, num_sm_ftypes, 
                 fp_matches, num_sm_fptypes);
                 */
