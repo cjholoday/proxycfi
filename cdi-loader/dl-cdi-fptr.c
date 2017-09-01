@@ -298,6 +298,14 @@ static ElfW(Addr) abs_addr(ElfW(Sword) *reloff) {
         return abs_addr - (ElfW(Addr))(*reloff * -1);
     }
 }
+void unaligned_memcpy(void *dst, void *src, ElfW(Word) size) {
+    unsigned char *d = dst;
+    unsigned char *s = src;
+    for (unsigned i = 0; i < size; i++) {
+        *d++ = *s++;
+    }
+}
+
 void _cdi_gen_fp_call_sled(Sled_Allocation *alloc,
         Ftype_Iter **f_iters, ElfW(Word) num_f_iters,
         Fptype_Iter **fp_iters, ElfW(Word) num_fp_iters) {
@@ -386,6 +394,41 @@ void _cdi_gen_fp_call_sled(Sled_Allocation *alloc,
         ElfW(Addr) fp_site = abs_addr((ElfW(Sword)*)fp_iters[i]->site_reloffs) 
             + sizeof(ElfW(Word)) + fp_iters[i]->reloff_adjust;
         _dl_debug_printf_c("fp_site: %lx; fptr sled addr: %lx\n", fp_site, sled_start);
+
+        /* If the fp site is in a shared library we are looking at a relative
+         * jump to the trampoline table. Otherwise, the relative jump goes to
+         * _CDI_abort. We tell the difference by the first four bytes at 
+         * the target: trampoline table entries have the first four bytes 
+         * whereas _CDI_abort doesn't */
+        ElfW(Sword) jmp_reloff = 0;
+        memcpy(&jmp_reloff, (void *)(fp_site + 1), sizeof(ElfW(Sword)));
+
+        ElfW(Addr) jmp_target = fp_site + 5 + jmp_reloff;
+
+
+        unsigned char *sled_link = (unsigned char *) fp_site;
+        if (*((ElfW(Word)*)(jmp_target)) == 0) {
+            /* we are looking at a trampoline table entry. Link it to fptr
+             * call sled we just created */
+            sled_link = (unsigned char *)jmp_target;
+        }
+        else {
+            /* we are looking at _CDI_abort, so we need to link to the fptr
+             * sled from the function pointer site */
+            //TODO unprotect main executable code
+            sled_link = (unsigned char *) fp_site;
+        }
+
+        /* store the sled address into %r10 */
+        *sled_link++ = 0x49;
+        *sled_link++ = 0xba;
+        memcpy(sled_link, &sled_start, sizeof(ElfW(Addr)));
+        sled_link += sizeof(ElfW(Addr));
+
+        /* jmp *%r10 */
+        *sled_link++ = 0x41;
+        *sled_link++ = 0xff;
+        *sled_link++ = 0xe2;
     }
 }
 
