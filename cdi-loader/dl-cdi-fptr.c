@@ -384,7 +384,7 @@ void _cdi_gen_fp_call_sled(Sled_Allocation *alloc,
     }
     for (int i = 0; i < num_fp_iters; i++) {
         ElfW(Addr) fp_site = abs_addr((ElfW(Sword)*)fp_iters[i]->site_reloffs) 
-            + sizeof(ElfW(Word)) + f_iters[i]->reloff_adjust;
+            + sizeof(ElfW(Word)) + fp_iters[i]->reloff_adjust;
         _dl_debug_printf_c("fp_site: %lx; fptr sled addr: %lx\n", fp_site, sled_start);
     }
 }
