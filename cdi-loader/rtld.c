@@ -2183,14 +2183,23 @@ ERROR: ld.so: object '%s' cannot be loaded as audit interface: %s; ignored.\n",
       _clb_table[i].tramtab = (CDI_Trampoline *) _cdi_lookup(
               "_CDI_tramtab", _clb_table[i].l);
   }
+
+  /* unprotect the executable so that we can link sleds to function pointer
+   * return and call sleds */
+  _cdi_prot_tramtabs(1);
+  _cdi_prot_exe(main_map, 1);
+
   _cdi_print_clbs();
 
-  _cdi_gen_fptr_sleds();
+  _cdi_gen_fp_sleds();
+  _cdi_prot_exe(main_map, 0);
 
   /* build the SLT and SLT trampoline tables */
   for (int i = 0; i < _clb_tablen; i++) {
       _cdi_build_slt(&_clb_table[i], main_map);
   }
+
+  _cdi_prot_tramtabs(0);
 
   /* Notify the debugger all new objects are now ready to go.  We must re-get
      the address since by now the variable might be in another object.  */

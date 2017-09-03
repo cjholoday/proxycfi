@@ -1,5 +1,5 @@
 /* CDI extensions to the linker/loader
-   Copyright (C) 1995-2016 Free Software Foundation, Inc.
+j  Copyright (C) 1995-2016 Free Software Foundation, Inc.
    This file is part of the GNU C Library.
 
    The GNU C Library is free software; you can redistribute it and/or
@@ -107,11 +107,6 @@ void _cdi_build_slt(CLB *clb, struct link_map *main_map) {
      * symbols with _CDI_RLT_. We'll make it read-only after we're done */
     mprotect((void*)cdi_strtab_start_page, cdi_strtab_size, PROT_READ | PROT_WRITE);
     
-    /* enable writing into the SLT trampoline table so that we can patch it up 
-       notice that the SLT trampoline table is guaranteed to be aligned */
-    ElfW(Xword) tramptab_size = (num_slt_tramps + 1) * sizeof(CDI_Trampoline);
-    mprotect(clb->tramtab, tramptab_size, PROT_READ | PROT_WRITE);
-
     /* Index with respect to the second entry so that we increment in 
        lockstep with the multtab block */
     CDI_Trampoline *slt_tramptab = clb->tramtab + 1;
@@ -126,13 +121,12 @@ void _cdi_build_slt(CLB *clb, struct link_map *main_map) {
                 clb->multtab_block->mults[i], clb, main_map, cdi_abort_addr);
     }
         
-    mprotect((void*)cdi_strtab_start_page, cdi_strtab_size, PROT_READ);
-
-    /* Disable write access to the SLT and SLT tramploline tables */
+    /* Disable write access to the SLT and cdi_strtab */
     ElfW(Addr) aligned_slt = (ElfW(Addr))clb->slt & ~(GLRO(dl_pagesize) - 1);
     mprotect((void*)aligned_slt, (ElfW(Addr))slt_used_tail - aligned_slt, 
             PROT_READ | PROT_EXEC);
-    mprotect(clb->tramtab, tramptab_size, PROT_READ | PROT_EXEC);
+    mprotect((void*)cdi_strtab_start_page, cdi_strtab_size, PROT_READ);
+
 }
 
 char *_cdi_write_slt_sled(char *sled_addr, CDI_Trampoline *tramp, 
@@ -204,6 +198,26 @@ ElfW(Sword) _cdi_signed_offset(ElfW(Addr) from_addr, ElfW(Addr) to_addr) {
     }
 }
 
+void _cdi_prot_exe(struct link_map *main_map, signed char to_data) {
+    int prot_bits = PROT_READ | (to_data ? PROT_WRITE : PROT_EXEC);
+
+    /* we assume that the text section always starts at the beginning of 
+     * the mapping. If we're wrong the program will segfault quickly */
+    mprotect((void*)main_map->l_map_start, 
+            main_map->l_text_end - main_map->l_map_start, prot_bits);
+}
+
+void _cdi_prot_tramtabs(signed char to_data) {
+    int prot_bits = PROT_READ | (to_data ? PROT_WRITE : PROT_EXEC);
+    for (int i = 0; i < _clb_tablen; i++) {
+        ElfW(Xword) num_trams = *((ElfW(Xword)*)_clb_table[i].tramtab)
+            + *((ElfW(Xword)*)(_clb_table[i].tramtab + 1));
+
+        /* include the dummy trampoline in mprotect */
+        mprotect(_clb_table[i].tramtab, (num_trams + 1) * sizeof(CDI_Trampoline),
+                prot_bits);
+    }
+}
 
 
 char *_cdi_write_slt_sled_entry(char *sled_tail, ElfW(Addr) rlt_addr,

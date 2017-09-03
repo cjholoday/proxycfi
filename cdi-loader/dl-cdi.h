@@ -181,7 +181,18 @@ void _cdi_build_slt(CLB *clb, struct link_map *main_map);
  *
  * The sleds are placed in an anonymous page chosen by the kernel
  */
-void _cdi_gen_fptr_sleds(void);
+void _cdi_gen_fp_sleds(void);
+
+
+/* Change the protections on the executable code or shared library tramtabs
+ *
+ * If to_data is != 0 then the PROT_READ | PROT_EXEC is set
+ * If to_data is == 0 then the PROT_READ | PROT_WRITE  is set
+ *
+ * Code/data will never be writeable and executable at the same time
+ */
+void _cdi_prot_exe(struct link_map *main_map, signed char to_data);
+void _cdi_prot_tramtabs(signed char to_data);
 
 /*
  * Writes an SLT sled and returns a pointer to the next available address in

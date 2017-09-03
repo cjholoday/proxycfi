@@ -398,7 +398,7 @@ void _cdi_gen_fp_call_sled(Sled_Allocation *alloc,
         /* If the fp site is in a shared library we are looking at a relative
          * jump to the trampoline table. Otherwise, the relative jump goes to
          * _CDI_abort. We tell the difference by the first four bytes at 
-         * the target: trampoline table entries have the first four bytes 
+         * the target: trampoline table entries start with 4 null bytes
          * whereas _CDI_abort doesn't */
         ElfW(Sword) jmp_reloff = 0;
         memcpy(&jmp_reloff, (void *)(fp_site + 1), sizeof(ElfW(Sword)));
@@ -419,16 +419,16 @@ void _cdi_gen_fp_call_sled(Sled_Allocation *alloc,
             sled_link = (unsigned char *) fp_site;
         }
 
-        /* store the sled address into %r10 */
+        /* store the sled address into %r11 */
         *sled_link++ = 0x49;
-        *sled_link++ = 0xba;
+        *sled_link++ = 0xbb;
         memcpy(sled_link, &sled_start, sizeof(ElfW(Addr)));
         sled_link += sizeof(ElfW(Addr));
 
-        /* jmp *%r10 */
+        /* jmp *%r11 */
         *sled_link++ = 0x41;
         *sled_link++ = 0xff;
-        *sled_link++ = 0xe2;
+        *sled_link++ = 0xe3;
     }
 }
 
@@ -441,7 +441,7 @@ void _cdi_gen_fp_ret_sled(Sled_Allocation *alloc,
 */
 
 
-void _cdi_gen_fptr_sleds(void) {
+void _cdi_gen_fp_sleds(void) {
     Ftype_Iter **ftype_iters = malloc((_clb_tablen + 1) * sizeof(Ftype_Iter *));
     Fptype_Iter **fptype_iters = malloc((_clb_tablen + 1) * sizeof(Fptype_Iter *));
 
