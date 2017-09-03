@@ -10,7 +10,7 @@ int main_add(int x, int y) {
 
 int main() {
     int (*fptr1)(int, int) = add;
-    int (*fptr2)(int, int) = add_char1;
+    int (*fptr2)(char, int) = add_char1;
     int (*fptr3)(int, int) = do_add;
 
     printf("5 + 6 = %d\n\n", add(5, 6));
