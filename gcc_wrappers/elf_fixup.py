@@ -149,7 +149,12 @@ def get_rlt_fixups(elf, plt_sym_strs):
         if strtab_startswith(elf.strtab, sym.st_name, '_CDI_RLT_'):
             sym_str = strtab_grab(elf.strtab, sym.st_name)
             rlt_entry_offset = sym.st_value - rlt_sh.sh_addr + rlt_sh.sh_offset
-            plt_ret_addr = plt_ret_addrs[sym_str[len('_CDI_RLT_'):]]
+            try:
+                plt_ret_addr = plt_ret_addrs[sym_str[len('_CDI_RLT_'):]]
+            except: # TODO: DELETE THIS EXCEPT AND LET ERRORS TERMINATE MODULE
+                eprint("FATAL ERROR BEING IGNORED FOR DEBUGGING: No PLT found "
+                        "for '{}'".format(sym_str[len('_CDI_RLT_'):]))
+                continue
 
             # associate PLT callq return address with this RLT entry
             rlt_fixups.append(common.elf.Elf64.Fixup(

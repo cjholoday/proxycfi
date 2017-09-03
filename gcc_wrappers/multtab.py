@@ -114,7 +114,7 @@ def get_funct_mults(target_elf, lspec):
             update_mults(sym, elf.strtab, globl_funct_mults)
 
     for sym in target_elf.get_symbols('.symtab'):
-        if sym.st_value == 0: # only update multiplicities of defined symbols
+        if sym.st_shndx == 0: # only update multiplicities of external syms
             update_mults(sym, target_elf.strtab, globl_funct_mults)
 
     return globl_funct_mults
@@ -123,16 +123,16 @@ def update_mults(sym, strtab, globl_funct_mults):
     sym_type = sym.st_info & 15 # take the lower four bits
     sym_bind = (sym.st_info & 240) >> 4 # take the higher four bits
 
-    sym_str = strtab_grab(strtab, sym.st_name)
     # insist that the symbol is for a function of global scope
     if sym_type != 2 or ((not sym_bind == 1) and (not sym_bind == 2)):
         return
+
 
     # if this symbol is defined elsewhere update the multiplicity. Otherwise,
     # claim the symbol for this code object
     sym_str = strtab_grab(strtab, sym.st_name)
     sym_str = common.elf.strip_sym_versioning(sym_str)
-    if sym.st_value == 0: 
+    if sym.st_shndx == 0: 
         try:
             globl_funct_mults[sym_str].mult += 1
         except KeyError:
