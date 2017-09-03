@@ -21,11 +21,10 @@ if __name__ == "__main__":
     parser.add_argument('-v', '--verbose', action='store_true',
             help='prints out extra information', dest='--verbose')
     parser.add_argument('-pg', '--profile-gen', metavar='PROFILE',
-            help='generates a profile for use next time in compilation. TODO',
+            help='generates a profile for use next time in compilation.',
             dest='--profile-gen', default='')
-    parser.add_argument('-pu', '--profile-use', type=str, metavar='PROFILE',
-            help='uses profile data to optimize the CDI sleds. TODO',
-            dest='--profile-use', default='')
+    parser.add_argument('-pu', '--profile_use', action='store', dest='profile_use', type=str, default='')
+    parser.add_argument('-cl', '--clone_funct', action='store', dest='clone_funct', type=int, default=0)
     parser.add_argument('-nn', '--no-narrowing', action='store_true',
             help='if set, sleds won\'t be narrowed based on type signature',
             dest='--no-narrowing')
@@ -47,7 +46,9 @@ if __name__ == "__main__":
             help='if set, manglings must not contain unknown types',
             dest='--no-mystery-types')
 
+    paa = parser.parse_args()
     options = vars(parser.parse_args(sys.argv[1:]))
+
     if options.get('--help'):
         sys.exit(0)
     

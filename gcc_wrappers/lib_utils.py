@@ -321,6 +321,7 @@ def get_vaddr(symbol, execname):
     gdb_process = subprocess.Popen(['gdb', execname], stderr=subprocess.PIPE, 
             stdout=subprocess.PIPE, stdin=subprocess.PIPE)
     gdb_process.stdin.write('b main\nrun\ninfo addr {}\nq'.format(symbol))
+
     vaddr = gdb_process.communicate()[0].splitlines()[-2].split()[5]
 
     gdb_process.stdin.close()

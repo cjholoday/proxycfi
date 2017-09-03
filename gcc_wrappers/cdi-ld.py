@@ -212,7 +212,9 @@ if sl_load_addrs:
     converter_options.append('--sl-fptr-addrs')
     converter_options.append('.cdi/sl_callback_table')
 
+
 converter_command = [converter_path] + converter_options + fake_obj_paths
+
 try:
     subprocess.check_call(converter_command)
 except subprocess.CalledProcessError:
@@ -253,6 +255,70 @@ cdi_obj_fixups[-1].replacement = [
         cdi_obj_fixups[-1].replacement, '.cdi/cdi_abort.cdi.o']
 
 cdi_fixups = ar_fixups + cdi_obj_fixups + sl_fixups
+
+try:
+    cdi_spec = lspec.fixup(cdi_fixups)
+    subprocess.check_call(['ld'] + cdi_spec)
+except subprocess.CalledProcessError:
+    fatal_error("calling 'ld' with the following spec failed:\n\n{}"
+            .format(' '.join(cdi_spec)))
+
+# check that the predicted shared library load addresses are accurate
+for sl_path, lib_load_addr in lib_utils.sl_trace_bin(lspec.target):
+    if sl_load_addrs[os.path.realpath(sl_path)] != lib_load_addr:
+        fatal_error("load address shifted upon recompilation for shared "
+                "library '{}'. Original: {}. New: {}." .format(os.path.realpath(sl_path), 
+                    sl_load_addrs[os.path.realpath(sl_path)], lib_load_addr))
+
+# check that at least one predicted address for __restore_rt is correct
+if lib_utils.get_vaddr('__restore_rt', lspec.target) not in restore_rt_vaddrs:
+    fatal_error("__restore_rt address '{}' is different than all predicted addrs: {}"
+            .format(lib_utils.get_vaddr('__restore_rt'), ', '.join(restore_rt_vaddrs)))
+
+# restore_original_objects()
+
+# PROFILE:
+# calls run_profiler.py on the object file generated to generate execution profile
+# re-runs gen_cdi.py with the profiled file.
+
+profiler_path = cdi_ld_real_path + '/../cdi-profiling/run_profile.py '
+if '-o' in cdi_spec:
+    exec_fname = cdi_spec[cdi_spec.index('-o') + 1]
+else:
+    exec_fname = 'a.out'
+profiler_command = 'python ' + profiler_path + '-p ' + exec_fname
+
+try:
+    os.system(profiler_command)
+except subprocess.CalledProcessError:
+    fatal_error("Profiling failed with command: '{}'".format(
+        ' '.join(profiler_command)))
+
+profiled_file = exec_fname + '.profile'
+converter_options.append('--profile_use')
+converter_options.append(profiled_file)
+
+converter_command = [converter_path] + converter_options + fake_obj_paths
+try:
+    subprocess.check_call(converter_command)
+except subprocess.CalledProcessError:
+    fatal_error("conversion to CDI assembly failed with command: '{}'".format(
+        ' '.join(converter_command)))
+
+
+print 'Assembling cdi asm files...'
+sys.stdout.flush()
+
+for fake_obj in fake_objs:
+    cdi_asm_fname = chop_suffix(fake_obj.path, '.fake.o') + '.cdi.s'
+    cdi_obj_fname = chop_suffix(fake_obj.path, '.fake.o') + '.cdi.o'
+    gcc_as_command = (['as'] + fake_obj.as_spec_no_io + 
+            [cdi_asm_fname, '-o', cdi_obj_fname])
+    try:
+        subprocess.check_call(gcc_as_command)
+    except subprocess.CalledProcessError:
+        fatal_error("assembling '{}' failed with command '{}'".format(
+            cdi_asm_fname, ' '.join(gcc_as_command)))
 
 
 try:

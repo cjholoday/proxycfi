@@ -49,7 +49,7 @@ hanoi_main(void)
       Loops = Loops + 1;
       printf("%3d  %04X%04X\n",disk,count >> 16, count & 0xffff);
 
-      if ( disk == 30 ) break;
+      if ( disk == 10) break;
     }
   return 0;
 }

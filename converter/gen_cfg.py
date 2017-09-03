@@ -255,9 +255,9 @@ def assign_targets(fptr_sites, funct, cfg, options):
 
     eprint('>>> ' + funct.src_filename + ':' + funct.asm_name)
 
-    if options['--profile-use']:
-        assign_targets_profiled(fptr_sites, funct, cfg, options)
-        return
+    # if options['--profile-use']:
+    #     assign_targets_profiled(fptr_sites, funct, cfg, options)
+    #     return
 
     fptr_sites = sorted(fptr_sites, key=operator.attrgetter('src_line_num'))
     funct.fptr_types = sorted(funct.fptr_types, key=operator.attrgetter('src_line_num'))

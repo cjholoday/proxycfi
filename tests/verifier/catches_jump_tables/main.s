@@ -509,7 +509,7 @@ main:
 .LASF5:
 	.string	"printf"
 .LASF3:
-	.string	"/home/colton/research/cdi/tests/verifier/catches_jump_tables"
+	.string	"/home/misiker/Desktop/CDI-GCC/cdi/tests/verifier/catches_jump_tables"
 .LASF2:
 	.string	"main.c"
 .LASF4:
