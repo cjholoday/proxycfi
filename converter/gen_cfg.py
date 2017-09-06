@@ -104,7 +104,7 @@ def extract_funct(asm_file, funct_name, line_num, dwarf_loc, options):
     jmp_list = ["jo","jno","jb","jnae","jc","jnb","jae","jnc","jz","je","jnz",
                 "jne","jbe","jna","jnbe","ja","js","jns","jp","jpe","jnp","jpo","jl",
                 "jnge","jnl","jge","jle","jng","jnle","jg","jecxz","jrcxz","jmp","jmpe"]
-    CALL_SITE, RETURN_SITE, INDIR_JMP_SITE, PLT_SITE, = 0, 1, 2, 3
+    CALL_SITE, RETURN_SITE, INDIR_JMP_SITE, PLT_SITE, GOTPCREL_SITE = 0, 1, 2, 3, 4
 
     asm_line = asm_file.readline()
     line_num += 1
@@ -119,6 +119,7 @@ def extract_funct(asm_file, funct_name, line_num, dwarf_loc, options):
     fptr_sites = []
     direct_call_sites = []
     empty_ret_dict = dict()
+    gotpcrel_matcher = re.compile(r'^[A-Za-z][A-Za-z0-9_]*@GOTPCREL\(%rip\),')
 
     while asm_line:
         asm_parsing.update_dwarf_loc(asm_line, dwarf_loc)
@@ -152,6 +153,10 @@ def extract_funct(asm_file, funct_name, line_num, dwarf_loc, options):
         elif key_symbol in jmp_list:
             if '%' in arg_str:
                 sites.append(funct_cfg.Site(line_num, targets, INDIR_JMP_SITE, dwarf_loc, uniq_label))
+        elif gotpcrel_matcher.match(arg_str):
+            sites.append(funct_cfg.Site(line_num, None, GOTPCREL_SITE, dwarf_loc, uniq_label))
+            sites[-1].got_name = arg_str[:arg_str.find('@')]
+
         asm_line = asm_file.readline()
         line_num += 1
     else:

@@ -119,6 +119,7 @@ def write_cdi_header(sect_strs, sect_sizes):
                         .format(sect_strs[sect_idx - 1]))
             header.write(struct.pack('<II', segment_offsets[sect_idx], sect_id))
 
+
 def get_sect_sizes(sect_strs):
     """Get the size of each section in the list sect_strs
     
@@ -215,6 +216,7 @@ def get_plt_fixups(elf, globl_funct_mults, plt_sym_strs):
     are not fixed up
 
     While this isn't CDI compliant, it will be changed in the future
+
     """
 
     plt_sh = elf.find_section('.plt')
@@ -232,6 +234,49 @@ def get_plt_fixups(elf, globl_funct_mults, plt_sym_strs):
             # this PLT can't be for a CDI library. Othwerise, it would've been
             # in the function multiplicity table. Do not fix up this PLT
             pass 
+
+    # TODO: remove all of the code in this function above this point since
+    #       the linker will overwrite the PLTs accordingly
+    fast_plt_sh = elf.find_section('.plt.got')
+    slow_plt_sh = elf.find_section('.slow_plt')
+    got_sh = elf.find_section('.got')
+
+    if fast_plt_sh.sh_size * 2 > slow_plt_sh.sh_size:
+        error.fatal_error('.slow_plt is too small for .plt.got\n\t'
+                'slow plt size: {}, .plt.got size: {}'.format(
+                    slow_plt_sh.sh_size,
+                    fast_plt_sh.sh_size))
+
+    with open(elf.path, 'r+b') as elf_file:
+        for idx in xrange(fast_plt_sh.sh_size / 8):
+            elf_file.seek(fast_plt_sh.sh_offset + idx * 8 + 2)
+
+            # reloff from the fast plt to the GOT entry
+            fast_to_got_reloff = struct.unpack('<i', elf_file.read(4))[0] + 6
+
+            # reloff from the slow plt to the fast plt
+            slow_to_fast_reloff = fast_plt_sh.sh_addr - slow_plt_sh.sh_addr - 8 * idx
+
+            # reloff from the beginning of the slow plt entry to the GOT entry
+            slow_to_got_reloff = slow_to_fast_reloff + fast_to_got_reloff
+
+            # jmp <slow_plt entry>
+            elf_file.seek(fast_plt_sh.sh_offset + idx * 8)
+            elf_file.write('\xe9' + struct.pack('<i', (slow_to_fast_reloff + 5) * -1)
+                    + '\x90' * 3)
+
+            # write the reloff from the slow plt to the GOT into slow plt
+            elf_file.seek(slow_plt_sh.sh_offset + idx * 16)
+            elf_file.write(struct.pack('<i', slow_to_got_reloff))
+
+            # write the reloff from the GOT to the slow PLT
+            elf_file.seek(slow_plt_sh.sh_addr + idx * 16 
+                    + slow_to_got_reloff - got_sh.sh_addr + got_sh.sh_offset)
+            # print (hex(slow_plt_sh.sh_addr), idx, hex(slow_to_got_reloff),
+            #         hex(got_sh.sh_addr), hex(got_sh.sh_offset)
+            elf_file.write(struct.pack('<q', slow_to_got_reloff * -1))
+
+
     return fixups
 
 def extract_plt_sym_strs(elf):

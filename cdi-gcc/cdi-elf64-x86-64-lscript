@@ -80,6 +80,12 @@ SECTIONS
   .cdi_rlt : {
     *(.cdi_rlt)
   }
+  .slow_plt : {
+    *(.slow_plt)
+  }
+  .unsafe_callbacks : {
+    *(.unsafe_callbacks)
+  }
 
   .rodata         : { *(.rodata .rodata.* .gnu.linkonce.r.*) }
   .rodata1        : { *(.rodata1) }

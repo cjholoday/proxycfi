@@ -22,7 +22,7 @@ def write_linkage_tables(asm_dest, cfg, sled_id_faucet, plt_sites, options):
                 fptr_sites.append(site)
 
     asm_dest.write('\t.text\n')
-
+    write_slow_plt(asm_dest, cfg)
     if options['--sl-fptr-addrs']:
         write_callback_sled(asm_dest, options)
 
@@ -51,6 +51,35 @@ def write_linkage_tables(asm_dest, cfg, sled_id_faucet, plt_sites, options):
         asm_dest.write('\t.section .cdi_strtab, "a", @progbits\n')
         write_strtab(asm_dest, cdi_strtab)
     write_typetabs(asm_dest, cfg, fptr_sites)
+
+def write_slow_plt(asm_dest, cfg):
+    """Writes the .slow_plt section, which reserves 16 bytes for every fast plt"""
+    
+    # contains a set of all unique GOT names for GOTPCREL sites
+    gotpcrel_set = set()
+    for funct in cfg:
+        for site in funct.sites:
+            if (site.group == funct_cfg.Site.GOTPCREL_SITE 
+                    and site.got_name not in gotpcrel_set):
+                gotpcrel_set.add(site.got_name)
+    asm_dest.write('\t.align 16\n')
+    asm_dest.write('\t.section .slow_plt, "ax", @progbits\n')
+    asm_dest.write('\t_CDI_slow_plt:\n')
+    asm_dest.write('\t.quad 0x0\n' * (2 * len(gotpcrel_set)))
+
+    # write two extra slow plts because there are always two fast plts by default
+    asm_dest.write('\t.quad 0x0\n' * 2)
+
+    # write one more slow plt so that the .slow_plt section is never empty
+    asm_dest.write('\t.quad 0x0\n' * 2)
+    asm_dest.write('\t.section .cdi_seg_end, "a", @progbits\n')
+
+    # include calls to each GOTPCREL symbol so that the fast plt entries 
+    # are always created. if there is no direct call to the symbols
+    asm_dest.write('\t.section .cdi_seg_end, "a", @progbits\n')
+    for got_name in gotpcrel_set:
+        asm_dest.write('\tcallq {}@PLT\n'.format(got_name))
+
 
 def write_rlt(cfg, plt_sites, asm_dest, sled_id_faucet, options):
     """Write the RLT to asm_dest"""
@@ -198,6 +227,8 @@ def write_strtab(asm_dest, strtab):
     asm_dest.write('\n')
 
 def write_callback_sled(asm_dest, options):
+    asm_dest.write('\t.section .unsafe_callbacks, "ax", @progbits\n')
+
     callback_sled = '.globl _CDI_callback_sled\n'
     callback_sled += '_CDI_callback_sled:\n'
 

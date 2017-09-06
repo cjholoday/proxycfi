@@ -202,6 +202,8 @@ def convert_to_cdi(site, funct, asm_line, asm_dest, cfg,
         convert_indir_jmp_site(site, funct, asm_line, asm_dest)
     elif site.group == site.PLT_SITE:
         convert_plt_site(site, asm_line, funct, asm_dest, options)
+    elif site.group == site.GOTPCREL_SITE:
+        asm_dest.write(asm_line)
     else:
         eprint('warning: site has invalid type: line ' + site.asm_line_num, 
                 'in function named \'' + funct.asm_name + '\'')

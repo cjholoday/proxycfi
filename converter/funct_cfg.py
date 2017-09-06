@@ -116,12 +116,18 @@ class Site:
     INDIR_JMP_SITE = 2
     PLT_SITE = 3
 
+    # These sites are grab data from the GOT, which may create an problematic,
+    # optimized PLT that doesn't have enough space for us. We keep track of these
+    # sites and apply a workaround if the site grabs a function address form the GOT
+    GOTPCREL_SITE = 4
+
     def __init__(self, line_num, targets, type_of_site, dwarf_loc, uniq_label):
         assert type(line_num) is types.IntType
         assert type(type_of_site) is types.IntType
-        assert (type_of_site == Site.CALL_SITE or 
-                type_of_site == Site.RETURN_SITE or
-                type_of_site == Site.INDIR_JMP_SITE)
+        assert (type_of_site == Site.CALL_SITE
+                or type_of_site == Site.RETURN_SITE 
+                or type_of_site == Site.INDIR_JMP_SITE 
+                or type_of_site == Site.GOTPCREL_SITE)
 
         self.enclosing_funct_uniq_label = uniq_label
         self.asm_line_num = line_num
