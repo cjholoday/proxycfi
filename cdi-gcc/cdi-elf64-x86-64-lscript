@@ -48,9 +48,7 @@ SECTIONS
   {
     KEEP (*(SORT_NONE(.init)))
   }
-  .plt            : { *(.plt) *(.iplt) }
-.plt.got        : { *(.plt.got) }
-.plt.bnd        : { *(.plt.bnd) }
+
   .text           :
   {
     *(.text.unlikely .text.*_unlikely .text.unlikely.*)
@@ -76,6 +74,9 @@ SECTIONS
   .cdi_tramtab : {
     *(.cdi_tramtab)
   }
+    .plt            : { *(.plt) *(.iplt) }
+.plt.got        : { *(.plt.got) }
+.plt.bnd        : { *(.plt.bnd) }
   .cdi_rlt : {
     *(.cdi_rlt)
   }
