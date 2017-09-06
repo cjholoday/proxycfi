@@ -265,7 +265,7 @@ elf_machine_rela (struct link_map *map, const ElfW(Rela) *reloc,
 {
   ElfW(Addr) *const reloc_addr = reloc_addr_arg;
   _dl_debug_printf ("elf_machine_rela s --> *reloc_addr = 0x%lx \n", (((unsigned long int) *reloc_addr)));
-   void *addr_plt_plus_6 = (void*) *reloc_addr;
+   void *pre_relocation_value = (void*) *reloc_addr;
   // if ((((unsigned long int) *reloc_addr) - 6) > 0x400000 && (((unsigned long int) *reloc_addr) - 6) <0x4fffff)
   // _dl_debug_printf ("*reloc_addr = 0x%lx \n", *(unsigned long int *)(((unsigned long int) *reloc_addr) - 6));
   const unsigned long int r_type = ELFW(R_TYPE) (reloc->r_info);
@@ -504,31 +504,37 @@ elf_machine_rela (struct link_map *map, const ElfW(Rela) *reloc,
 # endif
 	}
     }
-_dl_debug_printf ("elf_machine_rela e --> *reloc_addr = 0x%lx \n", (((unsigned long int) *reloc_addr)));
-/* _CDI_: Modify the plt to a direct call to the actural relocated address. */
-if ((unsigned long int)addr_plt_plus_6 > 0x400000){
-	/*Check if the library is cdi compliant library.*/
-	CLB *clb = _cdi_clb_from_soname(map->l_name);
-	if (clb){
-		unsigned long int actual_addr = (unsigned long int) *reloc_addr;
-		unsigned char *plt_addr = (unsigned char*)(addr_plt_plus_6 - 6);
-		mprotect((void*)((long unsigned int)plt_addr & ~(GLRO(dl_pagesize) - 1)) , 16, PROT_READ | PROT_WRITE);
-		// opcode for mov instruction 0x49bb
-		*(plt_addr) = 0x49;
-		*(plt_addr + 1) = 0xbb;
-		
-		// mov r11, actual_addr
-		for(int i = 2; i < 10 ;i++){
-			*(plt_addr + i) = actual_addr >> ((i - 2) * 8) & 0xff;
+	_dl_debug_printf ("elf_machine_rela e --> reloc_addr = %lx, *reloc_addr = 0x%lx \n", (unsigned long int)reloc_addr, (((unsigned long int) *reloc_addr)));
+	/* _CDI_: Modify the plt to a direct call to the actural relocated address. */
+
+	if ((unsigned long int)pre_relocation_value > 0x400000){
+		/*Check if the library is cdi compliant library.*/
+		CLB *clb = _cdi_clb_from_soname(map->l_name);
+		if (clb){
+			unsigned char *relocation_addr;
+			/*.plt.got since .got comes after .plt.got negative offset implies .plt.got */
+			if ((unsigned long int)pre_relocation_value >  0xf000000000000000)
+				relocation_addr = (unsigned char*)((unsigned long int)pre_relocation_value + (unsigned long int)reloc_addr);
+			else		
+				relocation_addr = (unsigned char*)(pre_relocation_value - 6);
+			unsigned long int relocated_to = (unsigned long int) *reloc_addr;
+			mprotect((void*)((long unsigned int)relocation_addr & ~(GLRO(dl_pagesize) - 1)) , 16, PROT_READ | PROT_WRITE);
+			
+			// mov r11, actual_addr
+			*(relocation_addr) = 0x49;
+			*(relocation_addr + 1) = 0xbb;
+			
+			for(int i = 2; i < 10 ;i++){
+				*(relocation_addr + i) = relocated_to >> ((i - 2) * 8) & 0xff;
+			}
+			
+			/* Call *%r11 */
+		    *(relocation_addr + 10) = 0x41;
+		    *(relocation_addr + 11) = 0xff;
+		    *(relocation_addr + 12) = 0xd3;
+		    mprotect((void*)((long unsigned int)relocation_addr & ~(GLRO(dl_pagesize) - 1)) , 16, PROT_READ | PROT_WRITE);
 		}
-		
-		/* Call *%r11 */
-	    *(plt_addr + 10) = 0x41;
-	    *(plt_addr + 11) = 0xff;
-	    *(plt_addr + 12) = 0xd3;
-	    mprotect((void*)((long unsigned int)plt_addr & ~(GLRO(dl_pagesize) - 1)) , 16, PROT_READ | PROT_WRITE);
 	}
-}
 }
 
 auto inline void
