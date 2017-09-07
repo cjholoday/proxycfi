@@ -517,24 +517,76 @@ elf_machine_rela (struct link_map *map, const ElfW(Rela) *reloc,
           return;
       }
       _dl_debug_printf ("**** CDI lib relocation :\n");
-      unsigned char *relocation_addr;
+      unsigned char *plt = 0;
       /*.plt.got since .got comes after .plt.got negative offset implies .plt.got */
       if ((unsigned long int)pre_relocation_value >  0xf000000000000000){
           _dl_debug_printf ("****fixing a slow_plt ****:\n");
           _dl_debug_printf ("pre_relocation_value = 0x%lx reloc_addr = 0x%lx\n", (unsigned long int)pre_relocation_value, (unsigned long int)reloc_addr);
           _dl_debug_printf ("relocated_to = %lx \n", (unsigned long int) *reloc_addr);
-          unsigned char *slow_plt_addr = (unsigned char*)((unsigned long int)pre_relocation_value + (unsigned long int)reloc_addr);
-          unsigned long int relocated_to = (unsigned long int) *reloc_addr;
-          unsigned long int relocated_to_value = *(unsigned long int *)relocated_to;
+          unsigned char *slow_plt = (unsigned char*)((unsigned long int)pre_relocation_value + (unsigned long int)reloc_addr);
+          unsigned char *target = (unsigned char*) *reloc_addr;
+          if (!target) {
+              return;
+          }
+          _dl_debug_printf_c("HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIT\n");
+          
+          _dl_debug_printf_c("bytes: %u, %u, %u, %u\n", target[0], target[1], target[6], target[11]);
+
+          /* check for the format of a PLT */
+          if (target[0] == 0xff && target[1] == 0x25
+                  && target[6] == 0x68 && target[11] == 0xe9) {
+              /* we're probably looking at a PLT. Let's make sure by checking 
+               * the format of the first PLT in the code object */
+              unsigned char *first_plt = *(ElfW(Sword)*)(target + 12) + (target + 16); 
+              if (first_plt[0] == 0xff && first_plt[1] == 0x35
+                      && first_plt[6] == 0xff && first_plt[7] == 0x25
+                      && first_plt[12] == 0x0f && first_plt[13] == 0x1f
+                      && first_plt[14] == 0x40 && first_plt[15] == 0x00) {
+                  /* we're looking at a PLT entry */
+                  ElfW(Word) got_reloff = *(ElfW(Word)*)(target + 2);
+                  ElfW(Addr) *got_entry = (ElfW(Addr) *)(target + 6 + got_reloff);
 
 
+                  if (*got_entry == (uintptr_t)target + 6) {
+                      /* the GOT entry hasn't been relocated nor has it been
+                       * chained to slow plts. Start the chain */
+                      *got_entry = (uintptr_t)slow_plt;
+                      _cdi_write_direct_plt(slow_plt, &target, 0);
+                  }
+                  else if (*(unsigned char *)(*got_entry + 13) == 0x0f 
+                          && *(unsigned char *)(*got_entry + 14) == 0x0b
+                          && *(unsigned char *)(*got_entry + 15) == 0x90) {
+                      /* the got entry points to a slow plt. Add ourselves to
+                       * the chain */
+
+                      _cdi_write_direct_plt(slow_plt, got_entry, 0);
+                      *got_entry = (uintptr_t)slow_plt;
+                  }
+                  else {
+                      _cdi_write_direct_plt(slow_plt, got_entry, 1);
+                  }
+                  return;
+              }
+          }
+          /* check for the format of a CDI direct call plt */
+          else if (target[0] == 0x49 && target[1] == 0xbb 
+                  && target[10] == 0x41 && target[11] == 0xff
+                  && target[12] == 0xd3 && target[13] == 0x0f
+                  && target[14] == 0x0b && target[15] == 0x90) {
+              /* the GOT has been relocated to point to a fixed up PLT */
+              /* snatch the function's address from the CDI PLT */
+              _cdi_write_direct_plt(slow_plt, target + 2, 1);
+          }
+          else {
+              _cdi_write_direct_plt(slow_plt, &target, 1);
+          }
+
+          return;
       }
       else{
+          plt = (unsigned char*)(pre_relocation_value - 6);
           if((unsigned long int)reloc_addr > 0x700000000000 && strcmp(map->l_name,"")){		
-              relocation_addr = (unsigned char*)(pre_relocation_value - 6) + map->l_addr;
-          }
-          else{
-              relocation_addr = (unsigned char*)(pre_relocation_value - 6);
+              plt += map->l_addr;
           }
       }
       unsigned long int relocated_to = (unsigned long int) *reloc_addr;
@@ -543,41 +595,11 @@ elf_machine_rela (struct link_map *map, const ElfW(Rela) *reloc,
           return;
       }
 
-      int target_goes_to_cdi_sl = 0;
-      for (int i = 0; i < _clb_tablen; i++) {
-          if (relocated_to >= _clb_table[i].l->l_map_start
-                  && relocated_to < _clb_table[i].l->l_map_end) {
-              target_goes_to_cdi_sl = 1;
-              break;
-          }
-      }
-      if (!target_goes_to_cdi_sl) {
+      if (!_cdi_addr_is_in_cdi_sl(relocated_to)) {
           return;
       }
       _dl_debug_printf ("***doing fixup\n");
-      mprotect((void*)((long unsigned int)relocation_addr & ~(GLRO(dl_pagesize) - 1)),
-              16, PROT_READ | PROT_WRITE);
-
-      // mov r11, actual_addr
-      *(relocation_addr) = 0x49;
-      *(relocation_addr + 1) = 0xbb;
-
-      for(int i = 2; i < 10 ;i++){
-          *(relocation_addr + i) = relocated_to >> ((i - 2) * 8) & 0xff;
-      }
-
-      /* Call *%r11 */
-      *(relocation_addr + 10) = 0x41;
-      *(relocation_addr + 11) = 0xff;
-      *(relocation_addr + 12) = 0xd3;
-
-      /* Invalid instruction to be checked for fast plt relocation*/
-      *(relocation_addr + 10) = 0x41;
-      *(relocation_addr + 11) = 0xff;
-      *(relocation_addr + 12) = 0xd3;
-      
-      mprotect((void*)((long unsigned int)relocation_addr & ~(GLRO(dl_pagesize) - 1)),
-              16, PROT_READ | PROT_EXEC);
+      _cdi_write_direct_plt(plt, &relocated_to, 1);
   }
 }
 

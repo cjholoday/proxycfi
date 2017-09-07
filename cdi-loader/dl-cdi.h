@@ -183,6 +183,12 @@ void _cdi_build_slt(CLB *clb, struct link_map *main_map);
  */
 void _cdi_gen_fp_sleds(void);
 
+void _cdi_write_direct_plt(void *loc, void *to_addr, int is_call);
+/*
+ * Returns true if addr is in the range of a CDI shared library 
+ */
+
+int _cdi_addr_is_in_cdi_sl(ElfW(Addr) addr);
 
 /* Change the protections on the executable code or shared library tramtabs
  *

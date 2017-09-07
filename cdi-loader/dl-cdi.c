@@ -259,6 +259,41 @@ char *_cdi_write_slt_sled_entry(char *sled_tail, ElfW(Addr) rlt_addr,
     return sled_tail;
 }
 
+void _cdi_write_direct_plt(void *from_addr, void *to_addr, int is_call) {
+    unsigned char *loc = from_addr;
+
+    ElfW(Addr) base_page = (uintptr_t)loc & ~(GLRO(dl_pagesize) - 1);
+    mprotect((void*)base_page, (uintptr_t)loc + 16 - base_page, PROT_READ | PROT_WRITE);
+
+
+    /* movabs */
+    loc[0] = 0x49;
+    loc[1] = 0xbb;
+    memcpy(loc + 2, to_addr, sizeof(ElfW(Addr)));
+
+    /* jmp *%r11 */
+    loc[10] = 0x41;
+    loc[11] = 0xff;
+    loc[12] = is_call ? 0xd3 : 0xe3;
+
+    /* mark the PLT as written with UD2 instruction + nop */
+    loc[13] = 0x0f;
+    loc[14] = 0x0b;
+    loc[15] = 0x90;
+
+    mprotect((void*)base_page, (uintptr_t)loc + 16 - base_page, PROT_READ | PROT_WRITE);
+}
+
+int _cdi_addr_is_in_cdi_sl(ElfW(Addr) addr) {
+    for (int i = 0; i < _clb_tablen; i++) {
+        if (addr >= _clb_table[i].l->l_map_start
+                && addr < _clb_table[i].l->l_map_end) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 /*
 void _cdi_write_ret__branch(ElfW(Addr) cmp_addr, ElfW(Addr), target_addr) {
 */
