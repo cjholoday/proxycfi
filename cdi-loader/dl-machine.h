@@ -533,23 +533,34 @@ elf_machine_rela (struct link_map *map, const ElfW(Rela) *reloc,
 				}
 			}
 			unsigned long int relocated_to = (unsigned long int) *reloc_addr;
-			if (relocated_to != 0){
-				_dl_debug_printf ("***doing fixup\n");
-				mprotect((void*)((long unsigned int)relocation_addr & ~(GLRO(dl_pagesize) - 1)) , 16, PROT_READ | PROT_WRITE);
-				
-				// mov r11, actual_addr
-				*(relocation_addr) = 0x49;
-				*(relocation_addr + 1) = 0xbb;
-				
-				for(int i = 2; i < 10 ;i++){
-					*(relocation_addr + i) = relocated_to >> ((i - 2) * 8) & 0xff;
-				}
-				
-				/* Call *%r11 */
-			    *(relocation_addr + 10) = 0x41;
-			    *(relocation_addr + 11) = 0xff;
-			    *(relocation_addr + 12) = 0xd3;
-			    mprotect((void*)((long unsigned int)relocation_addr & ~(GLRO(dl_pagesize) - 1)) , 16, PROT_READ | PROT_EXEC);
+
+                        if (relocated_to) {
+                            int target_goes_to_cdi_sl = 0;
+                            for (int i = 0; i < _clb_tablen; i++) {
+                                if (relocated_to >= _clb_table[i].l->l_map_start
+                                        && relocated_to < _clb_table[i].l->l_map_end) {
+                                    target_goes_to_cdi_sl = 1;
+                                    break;
+                                }
+                            }
+                            if (target_goes_to_cdi_sl) {
+                                _dl_debug_printf ("***doing fixup\n");
+                                mprotect((void*)((long unsigned int)relocation_addr & ~(GLRO(dl_pagesize) - 1)) , 16, PROT_READ | PROT_WRITE);
+                                
+                                // mov r11, actual_addr
+                                *(relocation_addr) = 0x49;
+                                *(relocation_addr + 1) = 0xbb;
+                                
+                                for(int i = 2; i < 10 ;i++){
+                                        *(relocation_addr + i) = relocated_to >> ((i - 2) * 8) & 0xff;
+                                }
+                                    
+                                    /* Call *%r11 */
+                                *(relocation_addr + 10) = 0x41;
+                                *(relocation_addr + 11) = 0xff;
+                                *(relocation_addr + 12) = 0xd3;
+                                mprotect((void*)((long unsigned int)relocation_addr & ~(GLRO(dl_pagesize) - 1)) , 16, PROT_READ | PROT_EXEC);
+                            }
 			}
 		}
 	}
