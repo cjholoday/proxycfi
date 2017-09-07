@@ -524,8 +524,14 @@ elf_machine_rela (struct link_map *map, const ElfW(Rela) *reloc,
 				_dl_debug_printf ("relocated_to = %lx \n", (unsigned long int) *reloc_addr);
 				relocation_addr = (unsigned char*)((unsigned long int)pre_relocation_value + (unsigned long int)reloc_addr);
 			}
-			else		
-				relocation_addr = (unsigned char*)(pre_relocation_value - 6);
+			else{
+				if((unsigned long int)reloc_addr > 0x700000000000 && strcmp(map->l_name,"")){		
+					relocation_addr = (unsigned char*)(pre_relocation_value - 6) + map->l_addr;
+				}
+				else{
+					relocation_addr = (unsigned char*)(pre_relocation_value - 6);
+				}
+			}
 			unsigned long int relocated_to = (unsigned long int) *reloc_addr;
 			if (relocated_to != 0){
 				_dl_debug_printf ("***doing fixup\n");
