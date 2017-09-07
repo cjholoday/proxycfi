@@ -523,7 +523,11 @@ elf_machine_rela (struct link_map *map, const ElfW(Rela) *reloc,
           _dl_debug_printf ("****fixing a slow_plt ****:\n");
           _dl_debug_printf ("pre_relocation_value = 0x%lx reloc_addr = 0x%lx\n", (unsigned long int)pre_relocation_value, (unsigned long int)reloc_addr);
           _dl_debug_printf ("relocated_to = %lx \n", (unsigned long int) *reloc_addr);
-          relocation_addr = (unsigned char*)((unsigned long int)pre_relocation_value + (unsigned long int)reloc_addr);
+          unsigned char *slow_plt_addr = (unsigned char*)((unsigned long int)pre_relocation_value + (unsigned long int)reloc_addr);
+          unsigned long int relocated_to = (unsigned long int) *reloc_addr;
+          unsigned long int relocated_to_value = *(unsigned long int *)relocated_to;
+
+
       }
       else{
           if((unsigned long int)reloc_addr > 0x700000000000 && strcmp(map->l_name,"")){		
@@ -566,6 +570,12 @@ elf_machine_rela (struct link_map *map, const ElfW(Rela) *reloc,
       *(relocation_addr + 10) = 0x41;
       *(relocation_addr + 11) = 0xff;
       *(relocation_addr + 12) = 0xd3;
+
+      /* Invalid instruction to be checked for fast plt relocation*/
+      *(relocation_addr + 10) = 0x41;
+      *(relocation_addr + 11) = 0xff;
+      *(relocation_addr + 12) = 0xd3;
+      
       mprotect((void*)((long unsigned int)relocation_addr & ~(GLRO(dl_pagesize) - 1)),
               16, PROT_READ | PROT_EXEC);
   }
