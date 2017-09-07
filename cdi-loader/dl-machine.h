@@ -264,7 +264,10 @@ elf_machine_rela (struct link_map *map, const ElfW(Rela) *reloc,
 		  void *const reloc_addr_arg, int skip_ifunc)
 {
   ElfW(Addr) *const reloc_addr = reloc_addr_arg;
-  _dl_debug_printf ("elf_machine_rela s --> *reloc_addr = 0x%lx \n", (((unsigned long int) *reloc_addr)));
+  if (map)
+  	if (map->l_name)
+  		_dl_debug_printf ("map->l_name = %s\n", map->l_name);
+  _dl_debug_printf ("elf_machine_rela s --> reloc_addr = 0x%lx, *reloc_addr = 0x%lx \n", (unsigned long int) reloc_addr, (((unsigned long int) *reloc_addr)));
    void *pre_relocation_value = (void*) *reloc_addr;
   // if ((((unsigned long int) *reloc_addr) - 6) > 0x400000 && (((unsigned long int) *reloc_addr) - 6) <0x4fffff)
   // _dl_debug_printf ("*reloc_addr = 0x%lx \n", *(unsigned long int *)(((unsigned long int) *reloc_addr) - 6));
@@ -504,35 +507,44 @@ elf_machine_rela (struct link_map *map, const ElfW(Rela) *reloc,
 # endif
 	}
     }
-	_dl_debug_printf ("elf_machine_rela e --> reloc_addr = %lx, *reloc_addr = 0x%lx \n", (unsigned long int)reloc_addr, (((unsigned long int) *reloc_addr)));
+	_dl_debug_printf ("elf_machine_rela e --> reloc_addr = 0x%lx, *reloc_addr = 0x%lx \n", (unsigned long int)reloc_addr, (((unsigned long int) *reloc_addr)));
 	/* _CDI_: Modify the plt to a direct call to the actural relocated address. */
 
 	if ((unsigned long int)pre_relocation_value > 0x400000){
 		/*Check if the library is cdi compliant library.*/
 		CLB *clb = _cdi_clb_from_soname(map->l_name);
-		if (clb){
+		// bool is_share_lib = strcmp(map->l_name,'');
+		if (clb || !strcmp(map->l_name,"")){
+			_dl_debug_printf ("**** CDI lib relocation :\n");
 			unsigned char *relocation_addr;
 			/*.plt.got since .got comes after .plt.got negative offset implies .plt.got */
-			if ((unsigned long int)pre_relocation_value >  0xf000000000000000)
+			if ((unsigned long int)pre_relocation_value >  0xf000000000000000){
+				_dl_debug_printf ("****fixing a slow_plt ****:\n");
+				_dl_debug_printf ("pre_relocation_value = 0x%lx reloc_addr = 0x%lx\n", (unsigned long int)pre_relocation_value, (unsigned long int)reloc_addr);
+				_dl_debug_printf ("relocated_to = %lx \n", (unsigned long int) *reloc_addr);
 				relocation_addr = (unsigned char*)((unsigned long int)pre_relocation_value + (unsigned long int)reloc_addr);
+			}
 			else		
 				relocation_addr = (unsigned char*)(pre_relocation_value - 6);
 			unsigned long int relocated_to = (unsigned long int) *reloc_addr;
-			mprotect((void*)((long unsigned int)relocation_addr & ~(GLRO(dl_pagesize) - 1)) , 16, PROT_READ | PROT_WRITE);
-			
-			// mov r11, actual_addr
-			*(relocation_addr) = 0x49;
-			*(relocation_addr + 1) = 0xbb;
-			
-			for(int i = 2; i < 10 ;i++){
-				*(relocation_addr + i) = relocated_to >> ((i - 2) * 8) & 0xff;
+			if (relocated_to != 0){
+				_dl_debug_printf ("***doing fixup\n");
+				mprotect((void*)((long unsigned int)relocation_addr & ~(GLRO(dl_pagesize) - 1)) , 16, PROT_READ | PROT_WRITE);
+				
+				// mov r11, actual_addr
+				*(relocation_addr) = 0x49;
+				*(relocation_addr + 1) = 0xbb;
+				
+				for(int i = 2; i < 10 ;i++){
+					*(relocation_addr + i) = relocated_to >> ((i - 2) * 8) & 0xff;
+				}
+				
+				/* Call *%r11 */
+			    *(relocation_addr + 10) = 0x41;
+			    *(relocation_addr + 11) = 0xff;
+			    *(relocation_addr + 12) = 0xd3;
+			    mprotect((void*)((long unsigned int)relocation_addr & ~(GLRO(dl_pagesize) - 1)) , 16, PROT_READ | PROT_EXEC);
 			}
-			
-			/* Call *%r11 */
-		    *(relocation_addr + 10) = 0x41;
-		    *(relocation_addr + 11) = 0xff;
-		    *(relocation_addr + 12) = 0xd3;
-		    mprotect((void*)((long unsigned int)relocation_addr & ~(GLRO(dl_pagesize) - 1)) , 16, PROT_READ | PROT_WRITE);
 		}
 	}
 }
@@ -542,7 +554,10 @@ __attribute ((always_inline))
 elf_machine_rela_relative (ElfW(Addr) l_addr, const ElfW(Rela) *reloc,
 			   void *const reloc_addr_arg)
 {
+	_dl_debug_printf ("***elf_machine_rela_relative\n");
+ 
   ElfW(Addr) *const reloc_addr = reloc_addr_arg;
+  _dl_debug_printf ("--> reloc_addr = %lx, *reloc_addr = 0x%lx l_addr = %lx, reloc->r_addend = %lx\n", (unsigned long int) reloc_addr, (((unsigned long int) *reloc_addr)), (unsigned long int)l_addr, (unsigned long int)reloc->r_addend);
 #if !defined RTLD_BOOTSTRAP
   /* l_addr + r_addend may be > 0xffffffff and R_X86_64_RELATIVE64
      relocation updates the whole 64-bit entry.  */
@@ -562,6 +577,7 @@ elf_machine_lazy_rel (struct link_map *map,
 		      ElfW(Addr) l_addr, const ElfW(Rela) *reloc,
 		      int skip_ifunc)
 {
+	_dl_debug_printf ("***elf_machine_lazy_rel\n");
   ElfW(Addr) *const reloc_addr = (void *) (l_addr + reloc->r_offset);
   const unsigned long int r_type = ELFW(R_TYPE) (reloc->r_info);
 
