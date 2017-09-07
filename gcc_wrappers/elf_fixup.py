@@ -21,7 +21,6 @@ def cdi_fixup_elf(lspec):
 
     target_elf = common.elf.Elf64(lspec.target, error.fatal_error)
     globl_funct_mults = multtab.get_funct_mults(target_elf, lspec)
-    plt_sym_strs  = extract_plt_sym_strs(target_elf)
 
     # _CDI_abort multiplicity doesn't affect SLT size, so remove info on it
     if '_CDI_abort' in globl_funct_mults:
@@ -36,11 +35,13 @@ def cdi_fixup_elf(lspec):
     type_sect_strs  = ['.cdi_floctab', '.cdi_fploctab', '.cdi_ftypetab', '.cdi_fptypetab']
     type_sect_sizes = [floctab_size, fploctab_size, ftypetab_size, fptypetab_size]
 
+    # fixup_plt must be run before getting rlt fixups so that we can find the
+    # slow plts from the GOT entries we see from .rela.dyn relocations
+    fixup_plt(target_elf)
     rrel32_fixups = get_rrel32_fixups(target_elf)
-    rlt_fixups    = get_rlt_fixups(target_elf, plt_sym_strs)
-    plt_fixups    = get_plt_fixups(target_elf, globl_funct_mults, plt_sym_strs)
+    rlt_fixups = get_rlt_fixups(target_elf)
 
-    target_elf.fixup(rrel32_fixups + rlt_fixups + plt_fixups)
+    target_elf.fixup(rrel32_fixups + rlt_fixups)
 
     objcopy_opts = []
     if lspec.target_is_shared:
@@ -136,14 +137,14 @@ def get_sect_sizes(sect_strs):
                 sect_str))
     return sect_sizes
 
-def get_rlt_fixups(elf, plt_sym_strs):
+def get_rlt_fixups(elf):
     try:
         rlt_sh = elf.find_section('.cdi_rlt')
     except common.elf.Elf64.MissingSection:
         eprint('cdi-ld: warning: no .cdi_rlt section in target')
         return []
 
-    plt_ret_addrs = get_plt_ret_addr_dict(elf, plt_sym_strs)
+    plt_ret_addrs = extract_plt_ret_addrs(elf)
     
     rlt_fixups = []
     for sym in elf.get_symbols('.symtab'):
@@ -209,43 +210,10 @@ def get_rrel32_fixups(elf):
     # collapse the lists of fixups into a single list of fixups
     return list(itertools.chain.from_iterable(rrel32_fixup_dict.values()))
 
-def get_plt_fixups(elf, globl_funct_mults, plt_sym_strs):
-    """Returns fixups to replace each CDI plt's indirect jump with an indirect call 
-    
-    PLT entries that are associated with a non CDI shared library (if any exist)
-    are not fixed up
-
-    While this isn't CDI compliant, it will be changed in the future
-
-    """
-
-    plt_sh = elf.find_section('.plt')
-    num_entries = plt_sh.sh_size / plt_sh.sh_entsize
-
-    # Go through all PLT entries except the first, which is special
-    fixups = []
-    for idx in xrange(1, num_entries):
-        plt_sym_str = plt_sym_strs[idx - 1]
-        try:
-            # only fix up PLT entries that are for CDI libraries
-            if globl_funct_mults[plt_sym_str].is_claimed:
-                fixups.append(common.elf.Elf64.Fixup(plt_sh.sh_offset + idx * 16 + 1, '\x15'))
-        except KeyError:
-            # this PLT can't be for a CDI library. Othwerise, it would've been
-            # in the function multiplicity table. Do not fix up this PLT
-            pass 
-
-    # TODO: remove all of the code in this function above this point since
-    #       the linker will overwrite the PLTs accordingly
+def fixup_plt(elf):
     fast_plt_sh = elf.find_section('.plt.got')
     slow_plt_sh = elf.find_section('.slow_plt')
     got_sh = elf.find_section('.got')
-
-    if fast_plt_sh.sh_size * 2 > slow_plt_sh.sh_size:
-        error.fatal_error('.slow_plt is too small for .plt.got\n\t'
-                'slow plt size: {}, .plt.got size: {}'.format(
-                    slow_plt_sh.sh_size,
-                    fast_plt_sh.sh_size))
 
     with open(elf.path, 'r+b') as elf_file:
         for idx in xrange(fast_plt_sh.sh_size / 8):
@@ -276,40 +244,46 @@ def get_plt_fixups(elf, globl_funct_mults, plt_sym_strs):
             #         hex(got_sh.sh_addr), hex(got_sh.sh_offset)
             elf_file.write(struct.pack('<q', slow_to_got_reloff * -1))
 
-
-    return fixups
-
-def extract_plt_sym_strs(elf):
-    """Returns the name of each .plt entry, in order"""
+def extract_plt_ret_addrs(elf):
+    """Returns a dict mapping {PLT symbol -> ret address}. This includes fast PLTs"""
+    ret_addrs = dict()
 
     try:
         plt_relocs = elf.get_rela_relocs('.rela.plt')
     except common.elf.Elf64.MissingSection:
-        # the section is omitted if there is no PLT
-        return []
+        # it's possibel there are no regular PLT entries
+        pass 
 
-    if plt_relocs == []:
-        return []
-
-    reloc_strs = []
-    for sym in elf.get_symbols('.dynsym'):
-        if sym.idx == (plt_relocs[len(reloc_strs)].r_info >> 32):
-            reloc_strs.append(strtab_grab(elf.dynstr, sym.st_name))
-        if len(plt_relocs) == len(reloc_strs):
-            return reloc_strs
-    else:
-        error.fatal_error('could not find a string for each plt relocation')
-
-def get_plt_ret_addr_dict(elf, plt_sym_strs):
-    """Returns a dict mapping {PLT symbol name -> address after call}"""
     plt_sh = elf.find_section('.plt')
+    got_sh = elf.find_section('.got')
+    slow_plt_sh = elf.find_section('.slow_plt')
+    for sym in elf.get_symbols('.dynsym'):
+        try:
+            rela_st_idx = plt_relocs[len(ret_addrs)].r_info >> 32
+        except IndexError:
+            break # we're finished since we ran out of PLT relocs
 
-    plt_ret_addrs = dict()
-    for idx, sym_str in enumerate(plt_sym_strs):
-        entry_vaddr = plt_sh.sh_addr + plt_sh.sh_entsize * (idx + 1)
-        plt_ret_addrs[sym_str] = entry_vaddr + 6 # after the callq
-    return plt_ret_addrs
+        if sym.idx == rela_st_idx:
+            sym_str = strtab_grab(elf.dynstr, sym.st_name)
+            entry_vaddr = plt_sh.sh_addr + plt_sh.sh_entsize * (len(ret_addrs) + 1)
+            ret_addrs[sym_str] = entry_vaddr + 13 # after movabs, callq
+    assert len(ret_addrs) == len(plt_relocs)
+
+    dyn_relocs = elf.get_rela_relocs('.rela.dyn')
+    dyn_relocs_by_idx = {reloc.r_info >> 32 : reloc for reloc in dyn_relocs}
     
+    with open(elf.path, 'r+b') as elf_file:
+        for sym in elf.get_symbols('.dynsym'):
+            if sym.idx in dyn_relocs_by_idx:
+                sym_str = strtab_grab(elf.dynstr, sym.st_name)
+                got_addr = dyn_relocs_by_idx[sym.idx].r_offset
+                elf_file.seek(got_addr - got_sh.sh_addr + got_sh.sh_offset)
+
+                slow_plt_reloff = struct.unpack('<q', elf_file.read(8))[0]
+                slow_plt_addr = got_addr + slow_plt_reloff
+                ret_addrs[sym_str] = slow_plt_addr + 13
+
+    return ret_addrs
 
 def write_removable_syms(elf, path):
     """Saves all the removable symbol names in filename at path"""
