@@ -6,6 +6,7 @@ import link_tables
 import copy
 import operator
 import asm_parsing
+import string
 import subprocess
 import sys
 import re
@@ -193,7 +194,7 @@ def convert_to_cdi(site, funct, asm_line, asm_dest, cfg,
     """Converts asm_line to cdi compliant code then writes it to asm_dest"""
 
     if site.group == site.CALL_SITE:
-        convert_call_site(site, funct, asm_line, asm_dest, 
+        convert_call_site(site, cfg, funct, asm_line, asm_dest, 
                 sled_id_faucet, abort_data, dwarf_loc, options)
     elif site.group == site.RETURN_SITE:
         convert_return_site(site, funct, asm_line, asm_dest, cfg, 
@@ -212,7 +213,7 @@ def increment_dict(dictionary, key, start = 1):
     dictionary[key] = dictionary.get(key, start - 1) + 1
     return dictionary[key]
 
-def convert_call_site(site, funct, asm_line, asm_dest, 
+def convert_call_site(site, cfg, funct, asm_line, asm_dest, 
         sled_id_faucet, abort_data, dwarf_loc, options):
 
     arg_str = asm_parsing.decode_line(asm_line, False)[2]
@@ -233,7 +234,20 @@ def convert_call_site(site, funct, asm_line, asm_dest,
         if funct.asm_filename != site.targets[0].asm_filename and not options['--shared-library']:
             globl_decl = '.globl\t' + label + '\n'
 
-        asm_dest.write(asm_line + globl_decl + label + ':\n')
+        call = asm_line
+        if options['--shared-library']:
+            target = cfg.funct(site.targets[0].uniq_label)
+            if not hasattr(target, 'rel_id_faucet'):
+                target.rel_id_faucet = 0
+
+            call = '\t.byte 0xe8\n'
+            call += '\t.long 0x00\n'
+
+            call += '"_CDIX_RREL32_{}__CDIX_F_{}":\n'.format(
+                 target.rel_id_faucet, target_name)
+            target.rel_id_faucet += 1
+
+        asm_dest.write(call + globl_decl + label + ':\n')
         return
 
     call_sled = ''
