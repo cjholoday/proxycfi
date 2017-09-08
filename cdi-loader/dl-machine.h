@@ -528,7 +528,7 @@ elf_machine_rela (struct link_map *map, const ElfW(Rela) *reloc,
           if (!target) {
               return;
           }
-          _dl_debug_printf_c("HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIT\n");
+          _dl_debug_printf_c("HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIT\n");
           
           _dl_debug_printf_c("bytes: %u, %u, %u, %u\n", target[0], target[1], target[6], target[11]);
 
@@ -584,44 +584,47 @@ elf_machine_rela (struct link_map *map, const ElfW(Rela) *reloc,
           return;
       }
   
-      	if (reloc_addr == pre_relocation_value - 6){
-      		/*It points the second instruction in it's own plt*/
-			plt = (unsigned char*)(pre_relocation_value - 6);
-			if((unsigned long int)reloc_addr > 0x700000000000 && strcmp(map->l_name,"")){		
-			  plt += map->l_addr;
-			}
+  	/* check if it points to chain of slow plts*/
+	if 	(*((unsigned char*)(pre_relocation_value + 13)) == 0x0f && 
+		 *((unsigned char*)(pre_relocation_value + 14)) == 0x0b &&
+		 *((unsigned char*)(pre_relocation_value + 15)) == 0x90){
+		_dl_debug_printf_c("-- fixing chain of slow plts: *pre_1 = %lx\n", *((unsigned long int*)pre_relocation_value + 2));
+		/* check for chain of fast plts*/
+		unsigned long int relocated_to = (unsigned long int) *reloc_addr;
+		ElfW(Addr) plt_chain = *((ElfW(Addr) *)((unsigned char *)pre_relocation_value + 2));
+		 _cdi_write_direct_plt(pre_relocation_value, &relocated_to, 1);
+		 _dl_debug_printf_c ("c = %lx, *c1 = %lx \n", (unsigned long int)plt_chain, *(unsigned long int*)plt_chain );
+		/*process all the fast plts in the chain*/
+		 while(*((unsigned char*)(plt_chain + 13)) == 0x0f && 
+			   *((unsigned char*)(plt_chain + 14)) == 0x0b &&
+			   *((unsigned char*)(plt_chain + 15)) == 0x90){
+		 	ElfW(Addr) tmp = *((ElfW(Addr) *)((unsigned char *)plt_chain + 2));
+		 	_cdi_write_direct_plt((void *)plt_chain, &relocated_to, 1);
+		 	plt_chain = tmp;
+		 	_dl_debug_printf_c ("c = %lx, *c = %lx \n", (unsigned long int)plt_chain, *(unsigned long int*)plt_chain );
+		 }
 
-			unsigned long int relocated_to = (unsigned long int) *reloc_addr;
-			if (!relocated_to) {
-			  return;
-			}
+		 /*finally update the plt itself*/
+  		_cdi_write_direct_plt((void *)plt_chain, &relocated_to, 1);
+	}
+  	else {
+  		/*It points the second instruction in it's own plt*/
+		plt = (unsigned char*)(pre_relocation_value - 6);
+		if((unsigned long int)reloc_addr > 0x700000000000 && strcmp(map->l_name,"")){		
+		  plt += map->l_addr;
+		}
 
-			if (!_cdi_addr_is_in_cdi_sl(relocated_to)) {
-			  return;
-			}
-			_dl_debug_printf ("***doing fixup\n");
-			_cdi_write_direct_plt(plt, &relocated_to, 1);
-  		}
-  		else if (*((unsigned char*)(pre_relocation_value + 13)) == 0x0f && 
-  				 *((unsigned char*)(pre_relocation_value + 14)) == 0x0b &&
-  				 *((unsigned char*)(pre_relocation_value + 15)) == 0x90){
-  			/* check for chain of fast plts*/
-  			unsigned long int relocated_to = (unsigned long int) *reloc_addr;
-  			ElfW(Addr) plt_chain = *((ElfW(Addr) *)pre_relocation_value + 2);
-  			 _cdi_write_direct_plt(pre_relocation_value, &relocated_to, 1);
+		unsigned long int relocated_to = (unsigned long int) *reloc_addr;
+		if (!relocated_to) {
+		  return;
+		}
 
-  			/*process all the fast plts in the chain*/
-  			 while(*((unsigned char*)(plt_chain + 13)) == 0x0f && 
-  				   *((unsigned char*)(plt_chain + 14)) == 0x0b &&
-  				   *((unsigned char*)(plt_chain + 15)) == 0x90){
-  			 	ElfW(Addr) tmp = *((ElfW(Addr) *)plt_chain + 2);
-  			 	_cdi_write_direct_plt((void *)plt_chain, &relocated_to, 1);
-  			 	plt_chain = tmp;
-  			 }
-
-  			 /*finally update the plt itself*/
-		  	_cdi_write_direct_plt((void *)plt_chain, &relocated_to, 1);
-  		}
+		if (!_cdi_addr_is_in_cdi_sl(relocated_to)) {
+		  return;
+		}
+		_dl_debug_printf ("***doing fixup\n");
+		_cdi_write_direct_plt(plt, &relocated_to, 1);
+	}  		
   }
 }
 
