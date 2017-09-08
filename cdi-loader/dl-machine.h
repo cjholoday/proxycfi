@@ -583,23 +583,45 @@ elf_machine_rela (struct link_map *map, const ElfW(Rela) *reloc,
 
           return;
       }
-      else{
-          plt = (unsigned char*)(pre_relocation_value - 6);
-          if((unsigned long int)reloc_addr > 0x700000000000 && strcmp(map->l_name,"")){		
-              plt += map->l_addr;
-          }
-      }
-      unsigned long int relocated_to = (unsigned long int) *reloc_addr;
+  
+      	if (reloc_addr == pre_relocation_value - 6){
+      		/*It points the second instruction in it's own plt*/
+			plt = (unsigned char*)(pre_relocation_value - 6);
+			if((unsigned long int)reloc_addr > 0x700000000000 && strcmp(map->l_name,"")){		
+			  plt += map->l_addr;
+			}
 
-      if (!relocated_to) {
-          return;
-      }
+			unsigned long int relocated_to = (unsigned long int) *reloc_addr;
+			if (!relocated_to) {
+			  return;
+			}
 
-      if (!_cdi_addr_is_in_cdi_sl(relocated_to)) {
-          return;
-      }
-      _dl_debug_printf ("***doing fixup\n");
-      _cdi_write_direct_plt(plt, &relocated_to, 1);
+			if (!_cdi_addr_is_in_cdi_sl(relocated_to)) {
+			  return;
+			}
+			_dl_debug_printf ("***doing fixup\n");
+			_cdi_write_direct_plt(plt, &relocated_to, 1);
+  		}
+  		else if (*((unsigned char*)(pre_relocation_value + 13)) == 0x0f && 
+  				 *((unsigned char*)(pre_relocation_value + 14)) == 0x0b &&
+  				 *((unsigned char*)(pre_relocation_value + 15)) == 0x90){
+  			/* check for chain of fast plts*/
+  			unsigned long int relocated_to = (unsigned long int) *reloc_addr;
+  			ElfW(Addr) plt_chain = *((ElfW(Addr) *)pre_relocation_value + 2);
+  			 _cdi_write_direct_plt(pre_relocation_value, &relocated_to, 1);
+
+  			/*process all the fast plts in the chain*/
+  			 while(*((unsigned char*)(plt_chain + 13)) == 0x0f && 
+  				   *((unsigned char*)(plt_chain + 14)) == 0x0b &&
+  				   *((unsigned char*)(plt_chain + 15)) == 0x90){
+  			 	ElfW(Addr) tmp = *((ElfW(Addr) *)plt_chain + 2);
+  			 	_cdi_write_direct_plt((void *)plt_chain, &relocated_to, 1);
+  			 	plt_chain = tmp;
+  			 }
+
+  			 /*finally update the plt itself*/
+		  	_cdi_write_direct_plt((void *)plt_chain, &relocated_to, 1);
+  		}
   }
 }
 
