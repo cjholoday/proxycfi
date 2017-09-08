@@ -17,6 +17,20 @@
     .section .cdi_libstrtab, "a", @progbits
     .quad 0xdeadbeefefbeadde
 
+    /* Contains the following information: 
+        <8 byte static virtual address for the .plt section>
+        <8 byte size of the .plt section>
+        <8 byte static virtual address for the .slow_plt section>
+        <8 byte size of the .slow_plt section>
+
+       Since the size of this section is non-variable, reserve the exact amount
+    */
+    .section .cdi_plt_ranges, "a", @progbits
+    .quad 0xdeadbeefefbeadde
+    .quad 0xdeadbeefefbeadde
+    .quad 0xdeadbeefefbeadde
+    .quad 0xdeadbeefefbeadde
+
     /* this marks the end of the CDI segment. Including it allows us to 
        calculate the size of any CDI metadata section by looking at addresses
        of the sections that surround the section in question */
