@@ -281,7 +281,7 @@ void _cdi_write_direct_plt(void *from_addr, void *to_addr, int is_call) {
     loc[14] = 0x0b;
     loc[15] = 0x90;
 
-    mprotect((void*)base_page, (uintptr_t)loc + 16 - base_page, PROT_READ | PROT_WRITE);
+    mprotect((void*)base_page, (uintptr_t)loc + 16 - base_page, PROT_READ | PROT_EXEC);
 }
 
 int _cdi_addr_is_in_cdi_sl(ElfW(Addr) addr) {
