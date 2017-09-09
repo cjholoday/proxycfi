@@ -94,6 +94,9 @@ typedef struct {
 
     char *strtab;
     char *libstrtab;
+
+    ElfW(Addr) *plt_ranges;
+
     void *multtab;
     void *mdata_end;
 } CDI_Metadata_Sections;

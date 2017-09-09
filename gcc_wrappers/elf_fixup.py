@@ -43,12 +43,14 @@ def cdi_fixup_elf(lspec):
 
     target_elf.fixup(rrel32_fixups + rlt_fixups)
 
+    fixup_plt_loc_metadata(target_elf)
+
     objcopy_opts = []
     if lspec.target_is_shared:
         target_elf.init_strtab('.cdi_strtab')
         
-        write_cdi_header(type_sect_strs + ['.cdi_strtab', '.cdi_seg_end'],
-                type_sect_sizes + [len(target_elf.cdi_strtab), 8])
+        write_cdi_header(type_sect_strs + ['.cdi_plt_ranges', '.cdi_strtab', '.cdi_seg_end'],
+                type_sect_sizes + [32, len(target_elf.cdi_strtab), 8])
 
         objcopy_opts.extend(['--update-section', '.cdi_header=.cdi/cdi_header'])
         objcopy_opts.extend(['--remove-section', '.cdi_multtab'])
@@ -58,8 +60,9 @@ def cdi_fixup_elf(lspec):
 
         updated_sects = ['.cdi_multtab', '.cdi_libstrtab']
         updated_sizes = get_sect_sizes(updated_sects)
-        write_cdi_header(updated_sects[:1] + type_sect_strs + updated_sects[-1:] + ['.cdi_seg_end'],
-                updated_sizes[:1] + type_sect_sizes + updated_sizes[-1:] + [8])
+        write_cdi_header(updated_sects[:1] + type_sect_strs + updated_sects[-1:] 
+                + ['.cdi_plt_ranges', '.cdi_seg_end'],
+                updated_sizes[:1] + type_sect_sizes + updated_sizes[-1:] + [32, 8])
         objcopy_opts.extend(['--update-section', '.cdi_multtab=.cdi/cdi_multtab'])
         objcopy_opts.extend(['--update-section', '.cdi_libstrtab=.cdi/cdi_libstrtab'])
         objcopy_opts.extend(['--update-section', '.cdi_header=.cdi/cdi_header'])
@@ -113,6 +116,8 @@ def write_cdi_header(sect_strs, sect_sizes):
                 sect_id = 5
             elif sect_strs[sect_idx - 1] == '.cdi_fploctab':
                 sect_id = 6
+            elif sect_strs[sect_idx - 1] == '.cdi_plt_ranges':
+                sect_id = 7
             elif sect_strs[sect_idx - 1] == '.cdi_seg_end':
                 sect_id = 100
             else:
@@ -162,6 +167,18 @@ def get_rlt_fixups(elf):
             rlt_fixups.append(common.elf.Elf64.Fixup(
                 rlt_entry_offset - 8, struct.pack('<Q', plt_ret_addr)))
     return rlt_fixups
+
+def fixup_plt_loc_metadata(target_elf):
+    plt_sh = target_elf.find_section('.plt')
+    slow_plt_sh = target_elf.find_section('.slow_plt')
+    plt_ranges_sh = target_elf.find_section('.cdi_plt_ranges')
+
+    with open(target_elf.path, 'r+b') as elf:
+        elf.seek(plt_ranges_sh.sh_offset)
+        elf.write(struct.pack('<Q', plt_sh.sh_addr))
+        elf.write(struct.pack('<Q', plt_sh.sh_size))
+        elf.write(struct.pack('<Q', slow_plt_sh.sh_addr))
+        elf.write(struct.pack('<Q', slow_plt_sh.sh_size))
 
 def get_rrel32_fixups(elf):
     # maps each [tdd] of an RREL32 CDI symbol to a list of fixups

@@ -277,6 +277,9 @@ SECTIONS
   .cdi_libstrtab : {
     *(.cdi_libstrtab)
   }
+  .cdi_plt_ranges : {
+    *(.cdi_plt_ranges)
+  }
 
   /* warning: _cdi_build_slt in the loader makes all code up to .cdi_seg_end
      unshared. Do not move .cdi_strtab from this position */

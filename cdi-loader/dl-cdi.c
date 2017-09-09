@@ -356,6 +356,10 @@ void _cdi_find_mdata(CDI_Header *cdi_header, CDI_Metadata_Sections *mdata) {
                 mdata->fploctab = (ElfW(Word) *)(((char*)cdi_header) 
                     + cdi_header->entries[i].hdr_off);
                 break;
+            case 7:
+                mdata->plt_ranges = (ElfW(Addr) *)(((char*)cdi_header) 
+                    + cdi_header->entries[i].hdr_off);
+                break;
             case 100:
                 mdata->mdata_end = ((char*)cdi_header) 
                     + cdi_header->entries[i].hdr_off;
@@ -452,6 +456,7 @@ void _cdi_print_clb(const CLB *clb) {
     _dl_debug_printf_c("    cdi_ftypetab    | %lx\n", (uintptr_t)clb->mdata.ftypetab);
     _dl_debug_printf_c("    cdi_fptypetab   | %lx\n", (uintptr_t)clb->mdata.fptypetab);
     _dl_debug_printf_c("    cdi_libstrtab   | %lx\n", (uintptr_t)clb->mdata.libstrtab);
+    _dl_debug_printf_c("    cdi_plt_ranges  | %lx\n", (uintptr_t)clb->mdata.plt_ranges);
     _dl_debug_printf_c("    cdi_strtab      | %lx\n", (uintptr_t)clb->mdata.strtab);
     _dl_debug_printf_c("    mdata_end       | %lx\n", (uintptr_t)clb->mdata.mdata_end);
     _dl_debug_printf_c("--------------------+------------------\n");
