@@ -35,7 +35,7 @@ void _he_insert_value(hash_entry *he, ElfW(Addr) value){
 	tmp->next = NULL;
 }
 
-hash_entry* _ht_get_entry(hash_table *ht, ElfW(Addr) key){
+hash_entry* _ht_get_insertion_he (hash_table *ht, ElfW(Addr) key){
 	int index = getHashKey(key) % ht_size;
 	hash_entry *tmp = ht->table[index];
 	if(!tmp){
@@ -61,7 +61,7 @@ hash_entry* _ht_get_entry(hash_table *ht, ElfW(Addr) key){
 }
 
 void _ht_put (hash_table *ht, ElfW(Addr) key, ElfW(Addr) value){
-	hash_entry *he = _ht_get_entry (ht, key);
+	hash_entry *he = _ht_get_insertion_he (ht, key);
 	_he_insert_value(he, value);
 }
 
@@ -71,13 +71,30 @@ void _ht_init (hash_table *ht){
 	}
 }
 
+hash_entry* _ht_get_entry(hash_table *ht, ElfW(Addr) key){
+	int index = getHashKey(key) % ht_size;
+	hash_entry *tmp = ht->table[index];
+	if(!tmp){
+		return NULL;
+	}
+	while(tmp->next || tmp->fp_addr == key){
+		if(tmp->fp_addr == key){
+			return tmp;
+		}
+		tmp = (hash_entry *)tmp->next;
+	}
+	return NULL;
+}
+
 /****** print hash table *****/
 void _he_print (int index, hash_entry *he){
-	_dl_debug_printf_c("%u: fp_ptr = 0x%lx's plt addresses:\n", (unsigned)index, he->fp_addr);
-	plt_entry *tmp_plt = he->first;
-	while (tmp_plt){
-		_dl_debug_printf_c("\t\t0x%lx\n", tmp_plt->plt_addr);
-		tmp_plt = (plt_entry*)tmp_plt->next;
+	if(he){
+		_dl_debug_printf_c("%u: fp_ptr = 0x%lx's plt addresses:\n", (unsigned)index, he->fp_addr);
+		plt_entry *tmp_plt = he->first;
+		while (tmp_plt){
+			_dl_debug_printf_c("\t\t0x%lx\n", tmp_plt->plt_addr);
+			tmp_plt = (plt_entry*)tmp_plt->next;
+		}
 	}	
 }
 

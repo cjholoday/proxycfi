@@ -2192,6 +2192,29 @@ ERROR: ld.so: object '%s' cannot be loaded as audit interface: %s; ignored.\n",
 
   _cdi_print_clbs();
 
+  hash_table *ht = malloc(sizeof(hash_table));
+  /*testing hash table*/
+  _ht_init (ht);
+  _ht_put (ht, 0xfff77772345, 0x123457689);
+  _ht_put (ht, 0xfff77772345, 0x1234cfad689);
+  _ht_put (ht, 0xfff77772345, 0x123c456b89);
+  _ht_put (ht, 0xfff77772345, 0x12b45ae89);
+  _ht_put (ht, 0xfaf77772345, 0x12a457689);
+  _ht_put (ht, 0xffb77772345, 0x1234fad689);
+  _ht_put (ht, 0xfacf7777235, 0x12d356b89);
+  _ht_put (ht, 0xff237772345, 0x1234d5ae89);
+  _ht_print(ht);
+  _dl_debug_printf("\n***** Printing entries ******\n");
+hash_entry* tmp = _ht_get_entry(ht, 0xfff77772345);
+_he_print (0, tmp);
+tmp = _ht_get_entry(ht, 0xfaf77772345);
+_he_print (1, tmp);
+tmp = _ht_get_entry(ht, 0xffb77772345);
+_he_print (2, tmp);
+tmp = _ht_get_entry(ht, 0xff77772345);
+_he_print (3, tmp);
+_dl_debug_printf("\n***** ******************* ******\n");
+/******/
   _cdi_gen_fp_sleds();
   _cdi_prot_exe(main_map, 0);
 

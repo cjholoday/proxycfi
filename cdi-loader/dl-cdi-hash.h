@@ -52,5 +52,6 @@ hash_entry* _ht_get_entry(hash_table *ht, ElfW(Addr) key);
 void _ht_put (hash_table *ht, ElfW(Addr) key, ElfW(Addr) value);
 void _ht_init (hash_table *ht);
 void _ht_print (hash_table * ht);
+void _he_print (int index, hash_entry *he); /* Prints all the plt addresses for a fp*/
 hash_entry* _ht_get_entry(hash_table *ht, ElfW(Addr) key);
 #endif
