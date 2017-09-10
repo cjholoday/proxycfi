@@ -39,7 +39,7 @@ typedef struct {
 }plt_entry;
 
 typedef struct {
-	ElfW(Addr) fp_addr;
+	ElfW(Addr) f_addr;
 	plt_entry* first;
 	struct hash_entry* next;
 }hash_entry;

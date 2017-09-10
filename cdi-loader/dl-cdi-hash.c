@@ -40,13 +40,13 @@ hash_entry* _ht_get_insertion_he (hash_table *ht, ElfW(Addr) key){
 	hash_entry *tmp = ht->table[index];
 	if(!tmp){
 		ht->table[index] = malloc(sizeof(hash_entry));
-		ht->table[index]->fp_addr = key;
+		ht->table[index]->f_addr = key;
 		ht->table[index]->first = NULL;
 		ht->table[index]->next = NULL;
 		return ht->table[index];
 	}
-	while(tmp->next || tmp->fp_addr == key){
-		if(tmp->fp_addr == key){
+	while(tmp->next || tmp->f_addr == key){
+		if(tmp->f_addr == key){
 			return tmp;
 		}
 		tmp = (hash_entry *)tmp->next;
@@ -54,7 +54,7 @@ hash_entry* _ht_get_insertion_he (hash_table *ht, ElfW(Addr) key){
 
 	tmp->next = malloc(sizeof(hash_entry));
 	tmp = (hash_entry *)tmp->next;
-	tmp->fp_addr = key;
+	tmp->f_addr = key;
 	tmp->first = NULL;
 	tmp->next = NULL;
 	return tmp;
@@ -77,8 +77,8 @@ hash_entry* _ht_get_entry(hash_table *ht, ElfW(Addr) key){
 	if(!tmp){
 		return NULL;
 	}
-	while(tmp->next || tmp->fp_addr == key){
-		if(tmp->fp_addr == key){
+	while(tmp->next || tmp->f_addr == key){
+		if(tmp->f_addr == key){
 			return tmp;
 		}
 		tmp = (hash_entry *)tmp->next;
@@ -89,7 +89,7 @@ hash_entry* _ht_get_entry(hash_table *ht, ElfW(Addr) key){
 /****** print hash table *****/
 void _he_print (int index, hash_entry *he){
 	if(he){
-		_dl_debug_printf_c("%u: fp_ptr = 0x%lx's plt addresses:\n", (unsigned)index, he->fp_addr);
+		_dl_debug_printf_c("%u: fp_ptr = 0x%lx's plt addresses:\n", (unsigned)index, he->f_addr);
 		plt_entry *tmp_plt = he->first;
 		while (tmp_plt){
 			_dl_debug_printf_c("\t\t0x%lx\n", tmp_plt->plt_addr);

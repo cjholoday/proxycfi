@@ -20,8 +20,8 @@
     /* Contains the following information: 
         <8 byte static virtual address for the .plt section>
         <8 byte size of the .plt section>
-        <8 byte static virtual address for the .slow_plt section>
-        <8 byte size of the .slow_plt section>
+        <8 byte static virtual address for the .plt.got section>
+        <8 byte size of the .plt.got section>
 
        Since the size of this section is non-variable, reserve the exact amount
     */

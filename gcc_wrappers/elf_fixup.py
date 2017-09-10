@@ -170,15 +170,15 @@ def get_rlt_fixups(elf):
 
 def fixup_plt_loc_metadata(target_elf):
     plt_sh = target_elf.find_section('.plt')
-    slow_plt_sh = target_elf.find_section('.slow_plt')
+    fast_plt_sh = target_elf.find_section('.plt.got')
     plt_ranges_sh = target_elf.find_section('.cdi_plt_ranges')
 
     with open(target_elf.path, 'r+b') as elf:
         elf.seek(plt_ranges_sh.sh_offset)
         elf.write(struct.pack('<Q', plt_sh.sh_addr))
         elf.write(struct.pack('<Q', plt_sh.sh_size))
-        elf.write(struct.pack('<Q', slow_plt_sh.sh_addr))
-        elf.write(struct.pack('<Q', slow_plt_sh.sh_size))
+        elf.write(struct.pack('<Q', fast_plt_sh.sh_addr))
+        elf.write(struct.pack('<Q', fast_plt_sh.sh_size))
 
 def get_rrel32_fixups(elf):
     # maps each [tdd] of an RREL32 CDI symbol to a list of fixups
