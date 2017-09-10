@@ -32,7 +32,7 @@ dl-routines	= $(addprefix dl-,load lookup object reloc deps hwcaps \
 				  runtime error init fini debug misc \
 				  version profile conflict tls origin scope \
 				  execstack caller open close trampoline \
-				  cdi cdi-fptr)
+				  cdi cdi-fptr cdi-hash)
 ifeq (yes,$(use-ldconfig))
 dl-routines += dl-cache
 endif

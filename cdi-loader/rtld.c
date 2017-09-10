@@ -42,6 +42,7 @@
 #include <stap-probe.h>
 #include <stackinfo.h>
 #include "dl-cdi.h"
+#include "dl-cdi-hash.h"
 
 #include <assert.h>
 
