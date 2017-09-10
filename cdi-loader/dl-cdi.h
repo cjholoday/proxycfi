@@ -184,7 +184,7 @@ void _cdi_build_slt(CLB *clb, struct link_map *main_map);
  *
  * The sleds are placed in an anonymous page chosen by the kernel
  */
-void _cdi_gen_fp_sleds(void);
+void _cdi_gen_fp_sleds(struct link_map *main_map);
 
 void _cdi_write_direct_plt(void *loc, void *to_addr, int is_call);
 /*

@@ -284,6 +284,7 @@ static void code_prot(Sled_Allocation *alloc) {
 }
 
 static ElfW(Addr) abs_addr(ElfW(Sword) *reloff) {
+    /*
     _dl_debug_printf_c("\treloff addr: %lx\n", (uintptr_t)reloff);
     if (*reloff >= 0) {
         _dl_debug_printf_c("\treloff: %lx\n", (long unsigned)*reloff);
@@ -291,6 +292,7 @@ static ElfW(Addr) abs_addr(ElfW(Sword) *reloff) {
     else {
         _dl_debug_printf_c("\treloff: -%lx\n", (long unsigned)(*reloff * -1));
     }
+    */
     ElfW(Addr) abs_addr = (uintptr_t)reloff;
     if (*reloff >= 0) {
         return abs_addr + *reloff;
@@ -399,7 +401,10 @@ void _cdi_gen_fp_call_sled(Sled_Allocation *alloc, hash_table *plt_addrs_ht,
 
             hash_entry *ht_entry = _ht_get_entry(plt_addrs_ht, f_addr);
             plt_entry *plt_ent = ht_entry ? ht_entry->first : 0;
+            _dl_debug_printf_c("adding plt addrs for function at '%s'"
+                    " with address '%lx':\n", f_iters[i]->type, f_addr);
             for (; plt_ent != 0; plt_ent = (plt_entry*) plt_ent->next) {
+                _dl_debug_printf_c("\t%lx\n", plt_ent->plt_addr);
                 write_fp_call_branch(alloc, plt_ent->plt_addr);
             }
         }
@@ -454,42 +459,44 @@ void _cdi_gen_fp_ret_sled(Sled_Allocation *alloc,
 }
 */
 
-void fill_plt_addrs_ht(hash_table *plt_addrs_ht) {
-    /* map {function address -> [plt_addr, plt_addr, fast_plt_addr, ...]} 
-     * where the value is a linked list of plt addrs and fast_plt addrs */
-    for (int i = 0; i < _clb_tablen; i++) {
-        ElfW(Addr) *plt_ranges = _clb_table[i].mdata.plt_ranges;
-
-        unsigned char *plt = (unsigned char *) plt_ranges[0] + _clb_table[i].l->l_addr;
-        ElfW(Word) num_plt_entries = plt_ranges[1] / 16;
-        for (int j = 1; j < num_plt_entries; j++) {
-            switch(plt[j * 16]) {
-                case 0x49:
-                    /* Add target address of CDI PLT to hash table */
-                    _ht_put(plt_addrs_ht, *(ElfW(Addr)*)(plt + j * 16 + 2),
-                            (ElfW(Addr))plt + j * 16);
-                    break;
-                case 0xff:
-                    /* Add this PLT to the mixed whitelist for fptr calls */
-                    break;
-            }
+void fill_plt_addrs_ht(hash_table *plt_addrs_ht, ElfW(Addr) *plt_ranges,
+        struct link_map *l) {
+    unsigned char *plt = (unsigned char *) plt_ranges[0] + l->l_addr;
+    ElfW(Word) num_plt_entries = plt_ranges[1] / 16;
+    for (int j = 1; j < num_plt_entries; j++) {
+        switch(plt[j * 16]) {
+            case 0x49:
+                /* Add target address of CDI PLT to hash table */
+                _ht_put(plt_addrs_ht, *(ElfW(Addr)*)(plt + j * 16 + 2),
+                        (ElfW(Addr))plt + j * 16);
+                _dl_debug_printf("cdi_plt key: %lx\n",
+                        *(ElfW(Addr)*)(plt + j * 8 + 2));
+                break;
+            case 0xff:
+                /* Add this PLT to the mixed whitelist for fptr calls */
+                break;
         }
+    }
 
-        unsigned char *fast_plt = (unsigned char *) plt_ranges[2] + _clb_table[i].l->l_addr;
-        ElfW(Word) num_fast_plt_entries = plt_ranges[3] / 8;
-        for (int j = 1; j < num_fast_plt_entries; j++) {
-            if (fast_plt[j * 8] == 0xe9) {
-                /* add fast plt target address to the hash table */
-                ElfW(Sword) cdi_plt_reloff = *(ElfW(Sword)*)(fast_plt + j * 8 + 1);
-                unsigned char *cdi_plt_entry = cdi_plt_reloff + fast_plt + j * 8 + 5;
-                _ht_put(plt_addrs_ht, *(ElfW(Addr)*)(cdi_plt_entry + j * 8 + 2),
-                        (ElfW(Addr))cdi_plt_entry + j * 8);
-            }
+    unsigned char *fast_plt = (unsigned char *) plt_ranges[2] + l->l_addr;
+    ElfW(Word) num_fast_plt_entries = plt_ranges[3] / 8;
+    for (int j = 0; j < num_fast_plt_entries; j++) {
+        if (fast_plt[j * 8] == 0xe9) {
+            _dl_debug_printf_c("fast plt entry addr: %lx\n", (uintptr_t)fast_plt + j * 8);
+            /* add fast plt target address to the hash table */
+            ElfW(Sword) cdi_plt_reloff = *(ElfW(Sword)*)(fast_plt + j * 8 + 1);
+            _dl_debug_printf_c("cdi_plt_reloff: %x\n", cdi_plt_reloff);
+            unsigned char *cdi_plt_entry = cdi_plt_reloff + fast_plt + j * 8 + 5;
+            _dl_debug_printf_c("cdi_plt_entry: %lx\n", (uintptr_t)cdi_plt_entry);
+            _dl_debug_printf("fast_plt: cdi_plt_entry key: %lx\n",
+                    *(ElfW(Addr)*)(cdi_plt_entry + j * 8 + 2));
+            _ht_put(plt_addrs_ht, *(ElfW(Addr)*)(cdi_plt_entry + 2),
+                    (ElfW(Addr))fast_plt + j * 8);
         }
     }
 }
 
-void _cdi_gen_fp_sleds(void) {
+void _cdi_gen_fp_sleds(struct link_map *main_map) {
     Ftype_Iter **ftype_iters = malloc((_clb_tablen + 1) * sizeof(Ftype_Iter *));
     Fptype_Iter **fptype_iters = malloc((_clb_tablen + 1) * sizeof(Fptype_Iter *));
 
@@ -498,7 +505,15 @@ void _cdi_gen_fp_sleds(void) {
 
     hash_table plt_addrs_ht;
     _ht_init(&plt_addrs_ht);
-    fill_plt_addrs_ht(&plt_addrs_ht);
+    /* map {function address -> [plt_addr, plt_addr, fast_plt_addr, ...]} 
+     * where the value is a linked list of plt addrs and fast_plt addrs */
+    for (int i = 0; i < _clb_tablen; i++) {
+        fill_plt_addrs_ht(&plt_addrs_ht, _clb_table[i].mdata.plt_ranges,
+                _clb_table[i].l);
+    }
+    fill_plt_addrs_ht(&plt_addrs_ht, _cdi_mdata->plt_ranges, main_map);
+
+    _ht_print(&plt_addrs_ht);
 
     /* initialize all ftype and fptype iterators */
     for (int i = 0; i < _clb_tablen; i++) {
