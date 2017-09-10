@@ -368,6 +368,148 @@ void write_fp_call_branch(Sled_Allocation *alloc, ElfW(Addr) f_addr) {
     *alloc->used_tail++ = 0xff;
     *alloc->used_tail++ = 0xd3;
 }
+/*
+ * Per function target
+ * * * * * * * * * * * * * * *
+ * movabs candidate, %r10      [10 bytes]
+ * cmp    %r10, -8(%rsp)       [5  bytes]
+ * jne    next_sled_entry      [2  bytes]
+ * jmp    *%r10                [3  bytes]
+ *                           = [20 bytes]
+ * Per sled
+ * * * * * * * * * * * * * * *
+ * movabs $_CDI_abort, %r10    [10 bytes]
+ * jmp %r10                    [3  bytes]
+ *                           = [13 bytes]
+ */
+const int fp_ret_branch_size = 0;
+
+void write_fp_ret_branch(Sled_Allocation *alloc, ElfW(Addr) ret_addr) {
+    if (alloc->tail - alloc->used_tail < fp_ret_branch_size + cdi_abort_size) {
+        chain_sled_allocs(alloc);
+    }
+
+    /* Fill %r10 with the candidate function */
+    *alloc->used_tail++ = 0x49;
+    *alloc->used_tail++ = 0xba;
+    memcpy(alloc->used_tail, &ret_addr, sizeof(ElfW(Addr)));
+    alloc->used_tail += sizeof(ElfW(Addr));
+
+    /* cmp %r10, -8(%rsp) */
+    *alloc->used_tail++ = 0x4c;
+    *alloc->used_tail++ = 0x39;
+    *alloc->used_tail++ = 0x54;
+    *alloc->used_tail++ = 0x24;
+    *alloc->used_tail++ = 0xf8;
+
+    /* Goto the next sled branch (jne) */
+    *alloc->used_tail++ = 0x75;
+    *alloc->used_tail++ = 0x03;
+
+    /* jump *%r10 */
+    *alloc->used_tail++ = 0x41;
+    *alloc->used_tail++ = 0xff;
+    *alloc->used_tail++ = 0xe2;
+}
+
+/*
+ * Generate function pointer return sleds. This MUST be done AFTER generating
+ * the function pointer call sleds so that the return address can be calculated
+ */
+void _cdi_gen_fp_ret_sled(Sled_Allocation *alloc,
+        Ftype_Iter **f_iters, ElfW(Word) num_f_iters,
+        Fptype_Iter **fp_iters, ElfW(Word) num_fp_iters) {
+
+    /* allocate new sled block if we can't fit at least 5 targets & chain */
+    if (alloc->tail - alloc->used_tail < fp_ret_branch_size * 5 + cdi_abort_size) {
+        _dl_debug_printf_c("allocating new page\n");
+        code_prot(alloc);
+        sled_allocate(alloc);
+        int mem_avail = alloc->tail - alloc->used_tail;
+        _dl_debug_printf_c("mem_avail: %lx\n", (long unsigned)mem_avail);
+    }
+
+    ElfW(Addr) sled_start = (uintptr_t)alloc->used_tail;
+
+    /* write the fp return sled */
+    for (int i = 0; i < num_fp_iters; i++) {
+        for (int j = 0; j < fp_iters[i]->num_sites; j++) {
+            ElfW(Addr) site_addr = abs_addr((ElfW(Sword)*)&fp_iters[i]->site_reloffs[j])
+                + fp_iters[i]->reloff_adjust + sizeof(ElfW(Sword));
+
+            _dl_debug_printf_c("site addr: %lx\n", site_addr);
+
+            ElfW(Addr) ret_addr = site_addr;
+            switch (*(unsigned char *)site_addr) {
+                case 0xe9:
+                    /* this site has a 5 byte relative jump */
+                    ret_addr += 5;
+                    break;
+                case 0x49:
+                    /* this site contains a movabs, call/jmp pair (13 bytes) */
+                    ret_addr += 13;
+                    break;
+                default:
+                    _dl_debug_printf_c("FATAL ERROR: expected byte 0x49 or 0xe9. Found: %x\n",
+                            *(unsigned char *)site_addr);
+                    break;
+            }
+            _dl_debug_printf_c("ret addr: %lx\n", ret_addr);
+            write_fp_ret_branch(alloc, ret_addr);
+        }
+    }
+
+    /* link the ends of return sleds to the newly generated sled */
+    for (int i = 0; i < num_f_iters; i++) {
+        for (int j = 0; j < f_iters[i]->num_fret_reloffs; j++) {
+            unsigned char *link_site = (unsigned char *)abs_addr(
+                    (ElfW(Sword)*)&f_iters[i]->fret_reloffs[j])
+                + f_iters[i]->reloff_adjust + sizeof(ElfW(Sword));
+
+            _dl_debug_printf_c("link_site: %lx\n", (uintptr_t)link_site);
+
+            if (*link_site != 0xe9) {
+                _dl_debug_printf_c("FATAL ERROR: static return site"
+                       "  doesn't end with relative jump\n");;
+            }
+
+            unsigned char *jmp_target = (unsigned char *)abs_addr((ElfW(Sword)*)(link_site + 1));
+
+            _dl_debug_printf_c("jmp_target: %lx\n", (uintptr_t)jmp_target);
+            if (*jmp_target == 0x00) {
+                /* This site jumps to the trampoline table. 
+                 *
+                 * Write the address of the sled into bytes 4-11 of the trampoline
+                 * so that the SLT building process can chain the end of the SLT
+                 * sled into this function pointer return sled */
+                memcpy(jmp_target + 4, &sled_start, sizeof(ElfW(Addr)));
+
+                /* since there is a trampoline table, we're dealing with a 
+                 * shared library. Therefore all link sites in this code object
+                 * will point to a trampoline table entry. All link sites for 
+                 * THIS function pointer type will point to the SAME 
+                 * trampoline table entry. Hence, we're finished fixing up link
+                 * sites for this shared library. Move on to the next code object
+                 */
+                break;
+            }
+
+            /* this site relative jumps to _CDI_abort. 13 bytes are
+             * reserved for the direct jmp here */
+
+            /* move the sled address into %r10 */
+            *link_site++ = 0x49;
+            *link_site++ = 0xba;
+            memcpy(link_site, &sled_start, sizeof(ElfW(Addr)));
+            link_site += sizeof(ElfW(Addr));
+
+            /* jmp *%r10 */
+            *link_site++ = 0x41;
+            *link_site++ = 0xff;
+            *link_site++ = 0xe2;
+        }
+    }
+}
 
 void _cdi_gen_fp_call_sled(Sled_Allocation *alloc, hash_table *plt_addrs_ht,
         Ftype_Iter **f_iters, ElfW(Word) num_f_iters,
@@ -450,14 +592,6 @@ void _cdi_gen_fp_call_sled(Sled_Allocation *alloc, hash_table *plt_addrs_ht,
         *sled_link++ = 0xe3;
     }
 }
-
-/*
-void _cdi_gen_fp_ret_sled(Sled_Allocation *alloc,
-        Ftype_Iter *f_iter, ElfW(Word) num_f_iters),
-        Fptype_Iter *fp_iters, ElfW(Word) num_fp_iters) {
-
-}
-*/
 
 void fill_plt_addrs_ht(hash_table *plt_addrs_ht, ElfW(Addr) *plt_ranges,
         struct link_map *l) {
@@ -570,10 +704,8 @@ void _cdi_gen_fp_sleds(struct link_map *main_map) {
         }
         _cdi_gen_fp_call_sled(&alloc, &plt_addrs_ht,
                 f_matches, num_sm_ftypes, fp_matches, num_sm_fptypes);
-        /*
         _cdi_gen_fp_ret_sled(&alloc, f_matches, num_sm_ftypes, 
                 fp_matches, num_sm_fptypes);
-                */
 
         for (int i = 0; i < num_sm_ftypes; i++) { 
             print_ftypes_iter(f_matches[i]);

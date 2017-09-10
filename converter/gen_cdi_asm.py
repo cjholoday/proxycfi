@@ -382,9 +382,10 @@ def convert_return_site(site, funct, asm_line, asm_dest, cfg,
 
     code, data = cdi_abort(sled_id_faucet(), funct.asm_filename,
             dwarf_loc, True, options)
+    ret_sled += code[0]
     ret_sled += '"_CDIX_RET_{}_{}":\n'.format(
             fix_label(funct.uniq_label), site.ret_id)
-    ret_sled += ''.join(code)
+    ret_sled += code[1]
 
     if options['--shared-library']:
         # make sure each relocation symbol is unique
