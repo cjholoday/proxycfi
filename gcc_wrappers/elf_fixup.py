@@ -232,6 +232,25 @@ def fixup_plt(elf):
     slow_plt_sh = elf.find_section('.slow_plt')
     got_sh = elf.find_section('.got')
 
+    # __cxa_finalize goes through the fast plt, but it is part of the 
+    # startup/cleanup code that will not be made CDI compliant in this 
+    # version of CDI. We therefore find it's got addr and skip fixing up
+    # the slow plt
+    cxa_finalize_sym_idx = -1
+    for idx, sym in enumerate(elf.get_symbols('.dynsym')):
+        sym_str = strtab_grab(elf.dynstr, sym.st_name)
+        if sym_str == '__cxa_finalize':
+            cxa_finalize_sym_idx = idx
+            break
+
+    cxa_finalize_got_addr = -1
+    dyn_relocs = elf.get_rela_relocs('.rela.dyn')
+    for reloc in dyn_relocs:
+        rela_st_idx = reloc.r_info >> 32
+        if rela_st_idx == cxa_finalize_sym_idx:
+            cxa_finalize_got_addr = reloc.r_offset
+
+    
     with open(elf.path, 'r+b') as elf_file:
         for idx in xrange(fast_plt_sh.sh_size / 8):
             elf_file.seek(fast_plt_sh.sh_offset + idx * 8 + 2)
@@ -253,6 +272,15 @@ def fixup_plt(elf):
             # write the reloff from the slow plt to the GOT into slow plt
             elf_file.seek(slow_plt_sh.sh_offset + idx * 16)
             elf_file.write(struct.pack('<i', slow_to_got_reloff))
+
+            # signal to the loader that there should be a jump not a call, but
+            # only if this slow plt is for __cxa_finalize
+            got_addr = slow_plt_sh.sh_addr + idx * 16 + slow_to_got_reloff
+            if got_addr == cxa_finalize_got_addr:
+                # we signal by writing 0xCC to the last byte of the PLT entry
+                elf_file.seek(11, 1)
+                print 'hit\n\n\n\n\n\n\n'
+                elf_file.write('\xcc')
 
             # write the reloff from the GOT to the slow PLT
             elf_file.seek(slow_plt_sh.sh_addr + idx * 16 

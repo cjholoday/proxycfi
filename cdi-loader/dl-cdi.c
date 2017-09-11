@@ -334,7 +334,6 @@ void _cdi_write_direct_plt(void *from_addr, void *to_addr, int is_call) {
     _dl_debug_printf_c("mprotect (_cdi_write_direct_plt): (%lx, %lx, %x)\n",
             base_page, (uintptr_t)loc + 16 - base_page, PROT_READ | PROT_WRITE);
 
-
     /* movabs */
     loc[0] = 0x49;
     loc[1] = 0xbb;
@@ -348,7 +347,11 @@ void _cdi_write_direct_plt(void *from_addr, void *to_addr, int is_call) {
     /* mark the PLT as written with UD2 instruction + nop */
     loc[13] = 0x0f;
     loc[14] = 0x0b;
-    loc[15] = 0x90;
+    /* retain a force_jump flag that is used by slow plts to know if a slow
+     * plt should contain a jump when unchained */
+    if (loc[15] != 0xcc) {
+        loc[15] = 0x90;
+    }
 
     mprotect((void*)base_page, (uintptr_t)loc + 16 - base_page, PROT_READ | PROT_WRITE);
     _dl_debug_printf_c("mprotect (_cdi_write_direct_plt): (%lx, %lx, %x)\n",
