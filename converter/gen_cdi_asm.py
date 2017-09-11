@@ -318,8 +318,8 @@ def convert_call_site(site, cfg, funct, asm_line, asm_dest,
         if not hasattr(convert_call_site, 'fptr_id_faucet'):
             convert_call_site.fptr_id_faucet = 0
 
-        # The jmp will be relocated to point at a return trampoline
-        call_sled += '\t.byte 0xe9\n'
+        # The call will be relocated to point at a call trampoline
+        call_sled += '\t.byte 0xe8\n'
         call_sled += '\t.long 0x00\n'
         call_sled += '_CDIX_RREL32_{}__CDIX_TRAM_C_{}:\n'.format(
                 convert_call_site.fptr_id_faucet, site.fptype)
@@ -382,9 +382,10 @@ def convert_return_site(site, funct, asm_line, asm_dest, cfg,
 
     code, data = cdi_abort(sled_id_faucet(), funct.asm_filename,
             dwarf_loc, True, options)
+    ret_sled += code[0]
     ret_sled += '"_CDIX_RET_{}_{}":\n'.format(
             fix_label(funct.uniq_label), site.ret_id)
-    ret_sled += ''.join(code)
+    ret_sled += code[1]
 
     if options['--shared-library']:
         # make sure each relocation symbol is unique
