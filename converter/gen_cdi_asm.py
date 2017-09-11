@@ -318,8 +318,8 @@ def convert_call_site(site, cfg, funct, asm_line, asm_dest,
         if not hasattr(convert_call_site, 'fptr_id_faucet'):
             convert_call_site.fptr_id_faucet = 0
 
-        # The jmp will be relocated to point at a return trampoline
-        call_sled += '\t.byte 0xe9\n'
+        # The call will be relocated to point at a call trampoline
+        call_sled += '\t.byte 0xe8\n'
         call_sled += '\t.long 0x00\n'
         call_sled += '_CDIX_RREL32_{}__CDIX_TRAM_C_{}:\n'.format(
                 convert_call_site.fptr_id_faucet, site.fptype)

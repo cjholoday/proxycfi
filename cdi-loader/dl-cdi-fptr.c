@@ -329,21 +329,23 @@ void chain_sled_allocs(Sled_Allocation *alloc) {
 /*
  * Per function target
  * * * * * * * * * * * * * * *
- * movabs candidate, %r11      [10 bytes]
+ * movabs cmp_candidate, %r11  [10 bytes]
  * cmp    %r10, %r11           [3 bytes]
  * jne    next_sled_entry      [2 bytes]
+ * movabs candidate, %r11      [10 bytes] (only needed if cmp_addr != f_addr)
  * call   *%r11                [3 bytes]
- *                           = [18 bytes]
+ *                           = [28 bytes]
  * Per sled
  * * * * * * * * * * * * * * *
  * movabs $_CDI_abort, %r10    [10 bytes]
  * jmp %r10                    [3  bytes]
  *                           = [13 bytes]
  */
-const int fp_call_branch_size = 18;
+const int fp_call_branch_size = 28; /* Be pessimistic about the size */
 const int cdi_abort_size = 13;
 
-void write_fp_call_branch(Sled_Allocation *alloc, ElfW(Addr) f_addr) {
+void write_fp_call_branch(Sled_Allocation *alloc, ElfW(Addr) f_addr,
+        ElfW(Addr) cmp_addr) {
     if (alloc->tail - alloc->used_tail < fp_call_branch_size + cdi_abort_size) {
         chain_sled_allocs(alloc);
     }
@@ -351,7 +353,7 @@ void write_fp_call_branch(Sled_Allocation *alloc, ElfW(Addr) f_addr) {
     /* Fill %r11 with the candidate function */
     *alloc->used_tail++ = 0x49;
     *alloc->used_tail++ = 0xbb;
-    memcpy(alloc->used_tail, &f_addr, sizeof(ElfW(Addr)));
+    memcpy(alloc->used_tail, &cmp_addr, sizeof(ElfW(Addr)));
     alloc->used_tail += sizeof(ElfW(Addr));
 
     /* cmp %r10, %r11 */
@@ -361,13 +363,22 @@ void write_fp_call_branch(Sled_Allocation *alloc, ElfW(Addr) f_addr) {
 
     /* Goto the next sled branch (jne) */
     *alloc->used_tail++ = 0x75;
-    *alloc->used_tail++ = 0x03;
+    *alloc->used_tail++ = f_addr == cmp_addr ? 0x03 : 0x0d;
 
-    /* Call *%r11 */
+    /* Fill %r11 with the actual function address if cmp_addr isn't it */ 
+    if (f_addr != cmp_addr) {
+        *alloc->used_tail++ = 0x49;
+        *alloc->used_tail++ = 0xbb;
+        memcpy(alloc->used_tail, &f_addr, sizeof(ElfW(Addr)));
+        alloc->used_tail += sizeof(ElfW(Addr));
+    }
+
+    /* jmp *%r11 */
     *alloc->used_tail++ = 0x41;
     *alloc->used_tail++ = 0xff;
-    *alloc->used_tail++ = 0xd3;
+    *alloc->used_tail++ = 0xe3;
 }
+
 /*
  * Per function target
  * * * * * * * * * * * * * * *
@@ -415,13 +426,27 @@ void write_fp_ret_branch(Sled_Allocation *alloc, ElfW(Addr) ret_addr) {
 /*
  * Generate function pointer return sleds. This MUST be done AFTER generating
  * the function pointer call sleds so that the return address can be calculated
+ *
  */
 void _cdi_gen_fp_ret_sled(Sled_Allocation *alloc,
         Ftype_Iter **f_iters, ElfW(Word) num_f_iters,
         Fptype_Iter **fp_iters, ElfW(Word) num_fp_iters) {
 
-    /* allocate new sled block if we can't fit at least 5 targets & chain */
-    if (alloc->tail - alloc->used_tail < fp_ret_branch_size * 5 + cdi_abort_size) {
+    /*
+     * We need to fix the stack pointer since only one ret address was pushed
+     * onto the stack while fp calling but return sled code assumes that two
+     * return addresses were pushed onto the stack for the direct call scenario
+     *
+     *      subq 0x8, %rsp [8 bytes]
+     */
+    const int fix_rsp_size = 8;
+    const unsigned char fix_rsp[8] = 
+            {0x48, 0x2b, 0x24, 0x25, 0x08, 0x0, 0x0, 0x0};
+
+    /* allocate new sled block if we can't fit at least 5 targets, chain
+     * to the next sled, and fix rsp */
+    if (alloc->tail - alloc->used_tail < 
+            (fp_ret_branch_size * 5 + cdi_abort_size + fix_rsp_size)) {
         _dl_debug_printf_c("allocating new page\n");
         code_prot(alloc);
         sled_allocate(alloc);
@@ -430,6 +455,8 @@ void _cdi_gen_fp_ret_sled(Sled_Allocation *alloc,
     }
 
     ElfW(Addr) sled_start = (uintptr_t)alloc->used_tail;
+    memcpy(alloc->used_tail, fix_rsp, fix_rsp_size);
+    alloc->used_tail += fix_rsp_size;
 
     /* write the fp return sled */
     for (int i = 0; i < num_fp_iters; i++) {
@@ -539,7 +566,7 @@ void _cdi_gen_fp_call_sled(Sled_Allocation *alloc, hash_table *plt_addrs_ht,
             ElfW(Addr) f_addr = abs_addr((ElfW(Sword)*)(&f_iters[i]->f_reloffs[j])) 
                 + sizeof(ElfW(Word)) + f_iters[i]->reloff_adjust;
             _dl_debug_printf_c("f_addr: %lx\n", f_addr);
-            write_fp_call_branch(alloc, f_addr);
+            write_fp_call_branch(alloc, f_addr, f_addr);
 
             hash_entry *ht_entry = _ht_get_entry(plt_addrs_ht, f_addr);
             plt_entry *plt_ent = ht_entry ? ht_entry->first : 0;
@@ -547,7 +574,7 @@ void _cdi_gen_fp_call_sled(Sled_Allocation *alloc, hash_table *plt_addrs_ht,
                     " with address '%lx':\n", f_iters[i]->type, f_addr);
             for (; plt_ent != 0; plt_ent = (plt_entry*) plt_ent->next) {
                 _dl_debug_printf_c("\t%lx\n", plt_ent->plt_addr);
-                write_fp_call_branch(alloc, plt_ent->plt_addr);
+                write_fp_call_branch(alloc, f_addr, plt_ent->plt_addr);
             }
         }
     }

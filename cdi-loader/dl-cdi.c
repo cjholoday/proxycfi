@@ -79,18 +79,18 @@ void _cdi_init(CDI_Header *cdi_header) {
 
 void _cdi_build_slt(CLB *clb, struct link_map *main_map) {
     void *slt_used_tail = (char*)clb->slt;
-    ElfW(Xword) num_slt_tramps = *((ElfW(Xword)*) clb->tramtab);
+    ElfW(Xword) num_slt_trams = *((ElfW(Xword)*) clb->tramtab);
     _cdi_print_link_map(clb->l);
 
     ElfW(Addr) cdi_abort_addr = _cdi_lookup("_CDI_abort", clb->l);
 
     /* Do a sanity check for compatibility */
-    if (num_slt_tramps != clb->multtab_block->num_global_syms) {
+    if (num_slt_trams != clb->multtab_block->num_global_syms) {
         _dl_debug_printf_c("executable and shared library are "
                 "incompatible: the executable expected %u global symbols, but "
                 "'%s' has %lu global symbols\n", 
                 clb->multtab_block->num_global_syms, clb->soname,
-                num_slt_tramps);
+                num_slt_trams);
     }
 
     /* we'll grab a bit extra from mdata_end but that's okay */
@@ -109,16 +109,43 @@ void _cdi_build_slt(CLB *clb, struct link_map *main_map) {
     
     /* Index with respect to the second entry so that we increment in 
        lockstep with the multtab block */
-    CDI_Trampoline *slt_tramptab = clb->tramtab + 1;
-    for (int i = 0; i < num_slt_tramps; i++) {
-        /* make the SLT trampoline jump down to the SLT sled */
-        ElfW(Sword) offset_to_sled = _cdi_signed_offset(
-                (ElfW(Addr))slt_tramptab[i].jmp_bytes + 5, (ElfW(Addr))slt_used_tail);
-        memcpy(&slt_tramptab[i].jmp_bytes[1], &offset_to_sled, sizeof(offset_to_sled));
-        slt_tramptab[i].jmp_bytes[0] = 0xe9;
+    CDI_Trampoline *slt_tramtab = clb->tramtab + 1;
+    for (int i = 0; i < num_slt_trams; i++) {
+        /* build the sled first so that we don't overwrite a potential fptr
+         * return sled that's written in bytes 4-11 in the trampoline entry */
 
-        slt_used_tail = _cdi_write_slt_sled(slt_used_tail, &slt_tramptab[i],
+        void *temp_tail = _cdi_write_slt_sled(slt_used_tail, &slt_tramtab[i],
                 clb->multtab_block->mults[i], clb, main_map, cdi_abort_addr);
+        if (temp_tail == slt_used_tail) {
+            /* the SLT sled is empty. Jump to the fptr return sled or CDI abort
+             * if no such sled exists */
+            unsigned char *sled_link = (unsigned char *)&slt_tramtab[i];
+            ElfW(Addr) fp_ret_sled_addr = *(ElfW(Addr)*)(sled_link + 4);
+
+            /* movabs <addr>, %r10 */
+            *sled_link++ = 0x49;
+            *sled_link++ = 0xba;
+            if (fp_ret_sled_addr) {
+                memcpy(sled_link, &fp_ret_sled_addr, sizeof(ElfW(Addr)));
+            }
+            else {
+                memcpy(sled_link, &cdi_abort_addr, sizeof(ElfW(Addr)));
+            }
+            sled_link += sizeof(ElfW(Addr));
+
+            /* jmp %r10 */
+            *sled_link++ = 0x41;
+            *sled_link++ = 0xff;
+            *sled_link++ = 0xe2;
+        }
+        else {
+            /* make the SLT trampoline jump down to the SLT sled */
+            ElfW(Sword) offset_to_sled = _cdi_signed_offset(
+                    (ElfW(Addr))slt_tramtab[i].jmp_bytes + 5, (ElfW(Addr))slt_used_tail);
+            memcpy(&slt_tramtab[i].jmp_bytes[1], &offset_to_sled, sizeof(offset_to_sled));
+            slt_tramtab[i].jmp_bytes[0] = 0xe9;
+            slt_used_tail = temp_tail;
+        }
     }
         
     /* Disable write access to the SLT and cdi_strtab */
@@ -129,17 +156,20 @@ void _cdi_build_slt(CLB *clb, struct link_map *main_map) {
 
 }
 
-char *_cdi_write_slt_sled(char *sled_addr, CDI_Trampoline *tramp, 
+char *_cdi_write_slt_sled(char *sled_addr, CDI_Trampoline *tram, 
         ElfW(Word) mult, CLB *clb, struct link_map *main_map, ElfW(Addr) abort_addr) {
     if (mult == 0) {
         return sled_addr;
     }
+
+    ElfW(Addr) fp_ret_sled_addr = *(ElfW(Addr)*)((char*)tram + 4);
+
     char *sled_tail = sled_addr;
     int num_matches_found = 0;
 
-    ElfW(Word) cdi_strtab_idx = tramp->symtab_idx_bytes[0]
-        | tramp->symtab_idx_bytes[1] << 8
-        | tramp->symtab_idx_bytes[2] << 16;
+    ElfW(Word) cdi_strtab_idx = tram->symtab_idx_bytes[0]
+        | tram->symtab_idx_bytes[1] << 8
+        | tram->symtab_idx_bytes[2] << 16;
 
     /* temporarily overwrite the preceding chars to prefix with _CDI_RLT */
     const int RLT_PREFIX_LEN = 9;
@@ -178,13 +208,26 @@ finish_sled:
     /* restore .cdi_strtab */
     memcpy(rlt_str, saved_chars, RLT_PREFIX_LEN);
 
-    /* jmp _CDI_abort */
-    ElfW(Sword) offset_to_abort = _cdi_signed_offset(
-            (uintptr_t)sled_tail + 5, abort_addr);
+    /* Jump to _CDI_abort or chain this sled into a fp ret sled */
+    if (fp_ret_sled_addr) {
+        /* mov <addr>, %r10 */
+        *sled_tail++ = 0x49;
+        *sled_tail++ = 0xba;
+        memcpy(sled_tail, &fp_ret_sled_addr, sizeof(ElfW(Addr)));
+        sled_tail += sizeof(ElfW(Addr));
 
-    *sled_tail++ = 0xe9;
-    memcpy(sled_tail, &offset_to_abort, sizeof(ElfW(Sword)));
-    sled_tail += sizeof(ElfW(Sword));
+        /* jmp *%r10 */
+        *sled_tail++ = 0x41;
+        *sled_tail++ = 0xff;
+        *sled_tail++ = 0xe2;
+    }
+    else {
+        ElfW(Sword) offset_to_abort = _cdi_signed_offset(
+                (uintptr_t)sled_tail + 5, abort_addr);
+        *sled_tail++ = 0xe9;
+        memcpy(sled_tail, &offset_to_abort, sizeof(ElfW(Sword)));
+        sled_tail += sizeof(ElfW(Sword));
+    }
 
     return sled_tail;
 }
@@ -281,7 +324,7 @@ void _cdi_write_direct_plt(void *from_addr, void *to_addr, int is_call) {
     loc[14] = 0x0b;
     loc[15] = 0x90;
 
-    mprotect((void*)base_page, (uintptr_t)loc + 16 - base_page, PROT_READ | PROT_EXEC);
+    mprotect((void*)base_page, (uintptr_t)loc + 16 - base_page, PROT_READ | PROT_WRITE);
 }
 
 int _cdi_addr_is_in_cdi_sl(ElfW(Addr) addr) {
