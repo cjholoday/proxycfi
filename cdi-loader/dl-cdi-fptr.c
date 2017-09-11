@@ -437,11 +437,10 @@ void _cdi_gen_fp_ret_sled(Sled_Allocation *alloc,
      * onto the stack while fp calling but return sled code assumes that two
      * return addresses were pushed onto the stack for the direct call scenario
      *
-     *      subq 0x8, %rsp [8 bytes]
+     *      subq 0x8, %rsp [4 bytes]
      */
-    const int fix_rsp_size = 8;
-    const unsigned char fix_rsp[8] = 
-            {0x48, 0x2b, 0x24, 0x25, 0x08, 0x0, 0x0, 0x0};
+    const int fix_rsp_size = 4;
+    const unsigned char fix_rsp[4] = {0x48, 0x83, 0xec, 0x08};
 
     /* allocate new sled block if we can't fit at least 5 targets, chain
      * to the next sled, and fix rsp */
@@ -469,7 +468,8 @@ void _cdi_gen_fp_ret_sled(Sled_Allocation *alloc,
             ElfW(Addr) ret_addr = site_addr;
             switch (*(unsigned char *)site_addr) {
                 case 0xe9:
-                    /* this site has a 5 byte relative jump */
+                case 0xe8:
+                    /* this site has a 5 byte relative jump/call */
                     ret_addr += 5;
                     break;
                 case 0x49:
@@ -477,7 +477,7 @@ void _cdi_gen_fp_ret_sled(Sled_Allocation *alloc,
                     ret_addr += 13;
                     break;
                 default:
-                    _dl_debug_printf_c("FATAL ERROR: expected byte 0x49 or 0xe9. Found: %x\n",
+                    _dl_debug_printf_c("FATAL ERROR: expected byte 0x49, 0xe9, or 0xe8. Found: %x\n",
                             *(unsigned char *)site_addr);
                     break;
             }
@@ -500,7 +500,8 @@ void _cdi_gen_fp_ret_sled(Sled_Allocation *alloc,
                        "  doesn't end with relative jump\n");;
             }
 
-            unsigned char *jmp_target = (unsigned char *)abs_addr((ElfW(Sword)*)(link_site + 1));
+            unsigned char *jmp_target = (unsigned char *)abs_addr((ElfW(Sword)*)(link_site + 1))
+                + sizeof(ElfW(Word));
 
             _dl_debug_printf_c("jmp_target: %lx\n", (uintptr_t)jmp_target);
             if (*jmp_target == 0x00) {
@@ -510,12 +511,14 @@ void _cdi_gen_fp_ret_sled(Sled_Allocation *alloc,
                  * so that the SLT building process can chain the end of the SLT
                  * sled into this function pointer return sled */
                 memcpy(jmp_target + 4, &sled_start, sizeof(ElfW(Addr)));
+                _dl_debug_printf("memcpying sled_start... result: %lx\n",
+                        *(ElfW(Addr)*)(jmp_target + 4));
 
                 /* since there is a trampoline table, we're dealing with a 
                  * shared library. Therefore all link sites in this code object
                  * will point to a trampoline table entry. All link sites for 
                  * THIS function pointer type will point to the SAME 
-                 * trampoline table entry. Hence, we're finished fixing up link
+l                * trampoline table entry. Hence, we're finished fixing up link
                  * sites for this shared library. Move on to the next code object
                  */
                 break;

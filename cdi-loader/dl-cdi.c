@@ -163,6 +163,7 @@ char *_cdi_write_slt_sled(char *sled_addr, CDI_Trampoline *tram,
     }
 
     ElfW(Addr) fp_ret_sled_addr = *(ElfW(Addr)*)((char*)tram + 4);
+    _dl_debug_printf("fp ret sled addr observed: %lx\n", fp_ret_sled_addr);
 
     char *sled_tail = sled_addr;
     int num_matches_found = 0;
