@@ -214,7 +214,15 @@ char *_cdi_write_slt_sled(char *sled_addr, CDI_Trampoline *tram,
         }
     }
 
+    /* it's possible to get here if there is a function pointer call but not
+     * a direct call from another shared library */
     _dl_debug_printf_c("mults finished %x / %x\n", num_matches_found, mult);
+
+    /* we didn't find any matches so there's no slt sled to write. Let the 
+     * parent function handle the logic from here */
+    if (!num_matches_found) {
+        return sled_tail;
+    }
 
 finish_sled:
     /* restore .cdi_strtab */
