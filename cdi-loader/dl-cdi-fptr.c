@@ -520,7 +520,7 @@ void _cdi_gen_fp_ret_sled(Sled_Allocation *alloc,
                  * shared library. Therefore all link sites in this code object
                  * will point to a trampoline table entry. All link sites for 
                  * THIS function pointer type will point to the SAME 
-l                * trampoline table entry. Hence, we're finished fixing up link
+                 * trampoline table entry. Hence, we're finished fixing up link
                  * sites for this shared library. Move on to the next code object
                  *
                  * But, each function's return path should first consider its
@@ -589,46 +589,60 @@ void _cdi_gen_fp_call_sled(Sled_Allocation *alloc, hash_table *plt_addrs_ht,
         }
     }
     for (int i = 0; i < num_fp_iters; i++) {
-        ElfW(Addr) fp_site = abs_addr((ElfW(Sword)*)fp_iters[i]->site_reloffs) 
-            + sizeof(ElfW(Word)) + fp_iters[i]->reloff_adjust;
-        _dl_debug_printf_c("fp_site: %lx; fptr sled addr: %lx\n", fp_site, sled_start);
+        for (int j = 0; j < fp_iters[i]->num_sites; j++) {
+            ElfW(Addr) fp_site = abs_addr((ElfW(Sword)*)&fp_iters[i]->site_reloffs[j]) 
+                + sizeof(ElfW(Word)) + fp_iters[i]->reloff_adjust;
+            _dl_debug_printf_c("fp_site: %lx; fptr sled addr: %lx\n", fp_site, sled_start);
 
-        /* If the fp site is in a shared library we are looking at a relative
-         * jump to the trampoline table. Otherwise, the relative jump goes to
-         * _CDI_abort. We tell the difference by the first four bytes at 
-         * the target: trampoline table entries start with 4 null bytes
-         * whereas _CDI_abort doesn't */
-        ElfW(Sword) jmp_reloff = 0;
-        memcpy(&jmp_reloff, (void *)(fp_site + 1), sizeof(ElfW(Sword)));
+            /* If the fp site is in a shared library we are looking at a relative
+             * jump to the trampoline table. Otherwise, the relative jump goes to
+             * _CDI_abort. We tell the difference by the first four bytes at 
+             * the target: trampoline table entries start with 4 null bytes
+             * whereas _CDI_abort doesn't */
+            ElfW(Sword) jmp_reloff = 0;
+            memcpy(&jmp_reloff, (void *)(fp_site + 1), sizeof(ElfW(Sword)));
 
-        ElfW(Addr) jmp_target = fp_site + 5 + jmp_reloff;
+            ElfW(Addr) jmp_target = fp_site + 5 + jmp_reloff;
+            _dl_debug_printf_c("jmp_target: %lx, jmp_reloff: %x\n", jmp_target, 
+                    (unsigned)jmp_reloff);
 
 
-        unsigned char *sled_link = (unsigned char *) fp_site;
-        unsigned char do_jmp = 0;
-        if (*((ElfW(Word)*)(jmp_target)) == 0) {
-            /* we are looking at a trampoline table entry. Link it to fptr
-             * call sled we just created */
-            sled_link = (unsigned char *)jmp_target;
-            do_jmp = 1;
+            unsigned char *sled_link = 0;
+            unsigned char do_jmp = 1;
+            if (*((ElfW(Word)*)(jmp_target)) == 0) {
+                /* we are looking at a trampoline table entry. Link it to fptr
+                 * call sled we just created */
+                sled_link = (unsigned char *)jmp_target;
+                do_jmp = 1;
+            }
+            else {
+                /* we are looking at _CDI_abort, so we need to link to the fptr
+                 * sled from the function pointer site */
+                sled_link = (unsigned char *)fp_site;
+                do_jmp = 0;
+            }
+
+            /* store the sled address into %r11 */
+            *sled_link++ = 0x49;
+            *sled_link++ = 0xbb;
+            memcpy(sled_link, &sled_start, sizeof(ElfW(Addr)));
+            sled_link += sizeof(ElfW(Addr));
+
+            /* jmp/call *%r11 (respectively)*/
+            *sled_link++ = 0x41;
+            *sled_link++ = 0xff;
+            *sled_link++ = do_jmp ? 0xe3 : 0xd3;
+
+            if (do_jmp) {
+                /* Since we're dealing with a trampoline table, we must be 
+                 * looking at a shared library. fp call trampolines entries are
+                 * shared by all function pointer sites with the same signature
+                 * Hence, by fixing up this one trampoline entry, we've fixed up
+                 * all fp call sites. Move onto the next code object
+                 */
+                break;
+            }
         }
-        else {
-            /* we are looking at _CDI_abort, so we need to link to the fptr
-             * sled from the function pointer site */
-            sled_link = (unsigned char *) fp_site;
-            do_jmp = 0;
-        }
-
-        /* store the sled address into %r11 */
-        *sled_link++ = 0x49;
-        *sled_link++ = 0xbb;
-        memcpy(sled_link, &sled_start, sizeof(ElfW(Addr)));
-        sled_link += sizeof(ElfW(Addr));
-
-        /* jmp/call *%r11 (respectively)*/
-        *sled_link++ = 0x41;
-        *sled_link++ = 0xff;
-        *sled_link++ = do_jmp ? 0xe3 : 0xd3;
     }
 }
 
