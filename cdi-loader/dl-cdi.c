@@ -106,6 +106,8 @@ void _cdi_build_slt(CLB *clb, struct link_map *main_map) {
     /* we need to set .cdi_strtab as writable since we'll be prefixing 
      * symbols with _CDI_RLT_. We'll make it read-only after we're done */
     mprotect((void*)cdi_strtab_start_page, cdi_strtab_size, PROT_READ | PROT_WRITE);
+    _dl_debug_printf_c("mprotect (_cdi_build_slt1): (%lx, %lx, %x)\n",
+            cdi_strtab_start_page, cdi_strtab_size, PROT_READ | PROT_WRITE);
     
     /* Index with respect to the second entry so that we increment in 
        lockstep with the multtab block */
@@ -152,7 +154,11 @@ void _cdi_build_slt(CLB *clb, struct link_map *main_map) {
     ElfW(Addr) aligned_slt = (ElfW(Addr))clb->slt & ~(GLRO(dl_pagesize) - 1);
     mprotect((void*)aligned_slt, (ElfW(Addr))slt_used_tail - aligned_slt, 
             PROT_READ | PROT_EXEC);
+    _dl_debug_printf_c("mprotect (_cdi_build_slt2): (%lx, %lx, %x)\n",
+            aligned_slt, (ElfW(Addr))slt_used_tail - aligned_slt, PROT_READ | PROT_EXEC);
     mprotect((void*)cdi_strtab_start_page, cdi_strtab_size, PROT_READ);
+    _dl_debug_printf_c("mprotect (_cdi_build_slt3): (%lx, %lx, %x)\n",
+            cdi_strtab_start_page, cdi_strtab_size, PROT_READ);
 
 }
 
@@ -249,20 +255,24 @@ void _cdi_prot_exe(struct link_map *main_map, signed char to_data) {
      * the mapping. If we're wrong the program will segfault quickly */
     mprotect((void*)main_map->l_map_start, 
             main_map->l_text_end - main_map->l_map_start, prot_bits);
+    _dl_debug_printf_c("mprotect (code_prot): (%lx, %lx, %x)\n",
+            main_map->l_map_start, main_map->l_text_end - main_map->l_map_start, (unsigned)prot_bits);
 }
 
 void _cdi_prot_tramtabs(signed char to_data) {
     int prot_bits = PROT_READ | (to_data ? PROT_WRITE : PROT_EXEC);
     for (int i = 0; i < _clb_tablen; i++) {
         ElfW(Xword) num_trams = *((ElfW(Xword)*)_clb_table[i].tramtab)
-            + *((ElfW(Xword)*)(_clb_table[i].tramtab + 1));
+            + *(ElfW(Xword)*)((char*)_clb_table[i].tramtab + sizeof(ElfW(Xword)));
 
         /* include the dummy trampoline in mprotect */
         mprotect(_clb_table[i].tramtab, (num_trams + 1) * sizeof(CDI_Trampoline),
                 prot_bits);
+    _dl_debug_printf("num trams: %lx\n", num_trams + 1);
+    _dl_debug_printf_c("mprotect (_cdi_prot_tramtabs): (%lx, %lx, %x)\n",
+        (uintptr_t)_clb_table[i].tramtab, (num_trams + 1) * sizeof(CDI_Trampoline), prot_bits);
     }
 }
-
 
 char *_cdi_write_slt_sled_entry(char *sled_tail, ElfW(Addr) rlt_addr,
         ElfW(Xword) target_l_addr) {
@@ -308,6 +318,8 @@ void _cdi_write_direct_plt(void *from_addr, void *to_addr, int is_call) {
 
     ElfW(Addr) base_page = (uintptr_t)loc & ~(GLRO(dl_pagesize) - 1);
     mprotect((void*)base_page, (uintptr_t)loc + 16 - base_page, PROT_READ | PROT_WRITE);
+    _dl_debug_printf_c("mprotect (_cdi_write_direct_plt): (%lx, %lx, %x)\n",
+            base_page, (uintptr_t)loc + 16 - base_page, PROT_READ | PROT_WRITE);
 
 
     /* movabs */
@@ -326,6 +338,8 @@ void _cdi_write_direct_plt(void *from_addr, void *to_addr, int is_call) {
     loc[15] = 0x90;
 
     mprotect((void*)base_page, (uintptr_t)loc + 16 - base_page, PROT_READ | PROT_WRITE);
+    _dl_debug_printf_c("mprotect (_cdi_write_direct_plt): (%lx, %lx, %x)\n",
+            base_page, (uintptr_t)loc + 16 - base_page, PROT_READ | PROT_WRITE);
 }
 
 int _cdi_addr_is_in_cdi_sl(ElfW(Addr) addr) {
