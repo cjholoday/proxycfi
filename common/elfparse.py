@@ -4,6 +4,7 @@ import re
 import types
 import getopt
 from eprint import eprint
+from operator import attrgetter
 
 class ExecSection:
     def __init__(self, name, size, file_offset, virtual_address, index):
@@ -47,6 +48,12 @@ class Function:
         
         return (virtual_address >= self.virtual_address and 
                 virtual_address < self.virtual_address + self.size)
+class Rlt:
+    def __init__(self, name, start_offset, virtual_address, size):
+        self.name = name
+        self.start_offset = start_offset
+        self.virtual_address = virtual_address
+        self.size = size
 
 def gather_exec_sections(binary_name):
     """Outputs a list of the executable sections found in file object <binary>
@@ -85,13 +92,14 @@ def gather_exec_sections(binary_name):
     return exec_sections
 
 
-def gather_functions(binary_name, exec_sections):
+def gather_functions_rlts(binary_name, exec_sections, rlt_start_addr, rlt_section_offset, rlt_section_size):
     """Outputs a list of functions from the ExecSections passed
     
     exec_sections should be a list of ExecSections
     binary_name should be a string path for the executable being analyzed
     """
     functions = []
+    rlts = []
     try:
         readelf_text = subprocess.check_output(['readelf', '-s', binary_name])
     except subprocess.CalledProcessError as e:
@@ -137,11 +145,24 @@ def gather_functions(binary_name, exec_sections):
 
                     functions.append( Function(symbols[7], funct_size,
                         file_offset, int(symbols[1], 16)))
+            if len(symbols) > 7 and '_CDI_RLT' in symbols[7]:
+                rlt_addr = int(symbols[1], 16)
+                rlt_name = symbols[7]
+                rlt_offset = (rlt_addr - rlt_start_addr) + rlt_section_offset
+                rlts.append(Rlt(rlt_name, rlt_offset, rlt_addr, int(symbols[6], 16)))
+
         i += 1
-    return functions
+    rlts = sorted(rlts, key=attrgetter('start_offset'))
+    
+    if rlts:
+        for i in range(len(rlts) - 1):
+            rlts[i].size = rlts[i+1].start_offset - rlts[i].start_offset
+
+        rlts[len(rlts) - 1].size = rlt_section_offset + rlt_section_size - rlts[len(rlts) - 1].start_offset
+    return functions, rlts
 
 
-def gather_plts(binary):
+def gather_plts_tram(binary):
     """ Outputs list of plt entries in a given binary
     binary should be a file object for the executable being analyzed
     """
@@ -151,13 +172,18 @@ def gather_plts(binary):
     except subprocess.CalledProcessError as e:
         print e.output
     found_plt = False
+    found_tramtab = False
     start_address = 0
     plt_size = 0
+    tramtab_start_address = 0
+    tramtab_size = 0
     entry_size = 0
     size = 0
     for section in sections.splitlines():
         column = section.split()
-
+        if found_tramtab:
+            tramtab_size = int(column[0],16)
+            found_tramtab = False
         if found_plt:
             plt_size = int(column[0],16)
             entry_size = int(column[1], 16)
@@ -166,8 +192,41 @@ def gather_plts(binary):
             if column[1] == ".plt":
                 start_address = int(column[3], 16)
                 found_plt = True
+            if column[1] == '.cdi_tramtab':
+                tramtab_start_address = int(column[3], 16)
+                found_tramtab = True
 
-    return start_address, plt_size, entry_size
+    return start_address, plt_size, entry_size, tramtab_start_address, tramtab_size
+
+
+
+def rlt_addr(binary):
+    """ Outputs list of plt entries in a given binary
+    binary should be a file object for the executable being analyzed
+    """
+    try:
+        sections = subprocess.check_output(['readelf', '-S', binary.name])
+    except subprocess.CalledProcessError as e:
+        print e.output
+    found_rlt = False
+    start_address = 0
+    rlt_size = 0
+    entry_size = 0
+    offset = 0
+    for section in sections.splitlines():
+        column = section.split()
+
+        if found_rlt:
+            rlt_size = int(column[0],16)
+            entry_size = int(column[1], 16)
+            break
+        if len(column) > 1:
+            if column[1] == ".cdi_rlt":
+                start_address = int(column[3], 16)
+                offset = int(column[4], 16) 
+                found_rlt = True
+
+    return start_address, offset, rlt_size
 
 #############################
 # Helper Functions

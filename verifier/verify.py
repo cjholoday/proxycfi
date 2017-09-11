@@ -16,8 +16,9 @@ IGNORE_RET_FROM_MAIN = False
 
 # functor used to avoid excessive parameter passing
 class Verifier:
-    def __init__(self, file_object, exec_sections, function_list, plt_start_addr,
-            plt_size, plt_entry_size, exit_on_insecurity, print_instr_as_decoded):
+    def __init__(self, file_object, exec_sections, function_list, rlts, plt_start_addr,
+            plt_size, plt_entry_size, tramtab_start_addr, tramtab_size, exit_on_insecurity,
+             print_instr_as_decoded):
         self.binary = file_object
         self.exec_sections = exec_sections
         self.plt_start_addr = plt_start_addr
@@ -29,6 +30,9 @@ class Verifier:
         
         self.function_list = sorted(function_list, 
                 key=attrgetter('virtual_address'))
+        self.rlts = rlts
+        self.tramtab_start_addr = tramtab_start_addr
+        self.tramtab_size = tramtab_size
 
     def verify(self, function):
         """Recursively verifies that function is CDI compliant"""
@@ -116,6 +120,9 @@ class Verifier:
                 insecurity.print_debug_info()
                 self.secure = False
 
+        # check rlts
+        for r in self.rlts:
+            verifier.check_rlt(r)
         # verify shared library portion (TODO)
         # verify .init, _start, etc. (TODO)
         
@@ -282,6 +289,10 @@ class Verifier:
                             raise MiddleOfPltEntryJump(target_section(function.virtual_address),
                                     function, '', addr, 'plt starts at ' + hex(plt_start_addr))
 
+                    elif addr > self.tramtab_start_addr and addr <= tramtab_start_addr + tramtab_size:
+                        if (addr - self.tramtab_start_addr) % 0x10 != 0:
+                            raise MiddleOfTramtabEntryJump(target_section(function.virtual_address),
+                                    function, '', addr, 'tramtab starts at ' + hex(tramtab_start_addr))
                     else:
                         jmps.append(addr)
                 except ValueError:
@@ -351,6 +362,38 @@ class Verifier:
             addresses.append(int(i.address))
             
         return addresses
+
+
+    def check_rlt(self, rlt):
+        """ Check if the jmp address of rlt entry is not following a direct call to plt
+
+        """
+        file = open(self.binary.name, 'rb')
+        file.seek(rlt.start_offset)
+        buff = file.read(int(rlt.size))
+        md = Cs(CS_ARCH_X86, CS_MODE_64)
+       	if self.print_instr_as_decoded:
+        	print '--------------:  ' + rlt.name
+
+        for i in md.disasm(buff, rlt.virtual_address):
+            if i.mnemonic == 'je':
+            	# op = i.op_str.split(',') # if we are checking the 'cmp'
+                addr_to_chk = int(i.op_str,16)
+                for f in self.function_list:
+                    if f.contains_address(addr_to_chk):
+                        chk_offset = (addr_to_chk - f.virtual_address) + f.file_offset - 5
+
+                        file.seek(0)
+                        file.seek(chk_offset)
+                        bf = file.read(5)
+
+                        dis = md.disasm(bf, addr_to_chk - 5)
+
+                        for inst in dis:
+                            if (inst.mnemonic != 'call'):
+                                raise RltNotAfterDirectCall(self.target_section(addr_to_chk),
+                                     rlt, hex(int(i.address)), i.op_str, 'RLT_Inst.')
+
 #############################
 # Exception Types
 #############################
@@ -392,6 +435,12 @@ class MiddleOfPltEntryJump(InsecureJump):
 
     def print_debug_info(self):
         print '--JUMP TO MIDDLE OF PLT ENTRY--'
+        InsecureJump.print_debug_info(self)
+class MiddleOfTramtabEntryJump(InsecureJump):
+    """Exception for jump to middle of tramtab"""
+
+    def print_debug_info(self):
+        print '--JUMP TO MIDDLE OF TRAMTAB ENTRY--'
         InsecureJump.print_debug_info(self)
 class IndirectCall(InsecureJump):
     """Exception for unconstrained indirect jump"""
@@ -442,6 +491,13 @@ class MiddleOfInstructionLoopJump(InsecureJump):
         print '--LOOP JUMP POINTS TO MIDDLE OF INSTRUCTION--'
         InsecureJump.print_debug_info(self)
 
+class RltNotAfterDirectCall(InsecureJump):
+    """Exception for rlt not jmping back after a direct call"""
+
+    def print_debug_info(self):
+        print '--RLT JUMP DOESN"T POINT AFTER A DIRECT CALL--'
+        InsecureJump.print_debug_info(self)
+
 #############################
 # Script
 #############################
@@ -484,12 +540,15 @@ if __name__ == "__main__":
 
     binary = open(args[0], 'rb')
     exec_sections = elfparse.gather_exec_sections(binary.name)
+    rlt_start_addr, rlt_start_offset, rlt_section_size = elfparse.rlt_addr(binary)
+    plt_start_addr, plt_size, plt_entry_size, tramtab_start_addr, tramtab_size = elfparse.gather_plts_tram(binary)
 
-    functions = elfparse.gather_functions(binary.name, exec_sections)
-    plt_start_addr, plt_size, plt_entry_size = elfparse.gather_plts(binary)
+    functions, rlts = elfparse.gather_functions_rlts (binary.name, exec_sections, rlt_start_addr, rlt_start_offset, rlt_section_size)
     
-    verifier = Verifier(binary, exec_sections, functions, plt_start_addr, 
-            plt_size, plt_entry_size, exit_on_insecurity, print_instr_as_decoded)
+    verifier = Verifier(binary, exec_sections, functions, rlts, plt_start_addr, 
+            plt_size, plt_entry_size, tramtab_start_addr, tramtab_size, 
+            exit_on_insecurity, print_instr_as_decoded)
+
 
     if verifier.judge():
         sys.exit(0)
