@@ -605,16 +605,18 @@ void _cdi_gen_fp_call_sled(Sled_Allocation *alloc, hash_table *plt_addrs_ht,
 
 
         unsigned char *sled_link = (unsigned char *) fp_site;
+        unsigned char do_jmp = 0;
         if (*((ElfW(Word)*)(jmp_target)) == 0) {
             /* we are looking at a trampoline table entry. Link it to fptr
              * call sled we just created */
             sled_link = (unsigned char *)jmp_target;
+            do_jmp = 1;
         }
         else {
             /* we are looking at _CDI_abort, so we need to link to the fptr
              * sled from the function pointer site */
-            //TODO unprotect main executable code
             sled_link = (unsigned char *) fp_site;
+            do_jmp = 0;
         }
 
         /* store the sled address into %r11 */
@@ -623,10 +625,10 @@ void _cdi_gen_fp_call_sled(Sled_Allocation *alloc, hash_table *plt_addrs_ht,
         memcpy(sled_link, &sled_start, sizeof(ElfW(Addr)));
         sled_link += sizeof(ElfW(Addr));
 
-        /* jmp *%r11 */
+        /* jmp/call *%r11 (respectively)*/
         *sled_link++ = 0x41;
         *sled_link++ = 0xff;
-        *sled_link++ = 0xe3;
+        *sled_link++ = do_jmp ? 0xe3 : 0xd3;
     }
 }
 
