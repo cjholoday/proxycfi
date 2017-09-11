@@ -543,7 +543,8 @@ if __name__ == "__main__":
     rlt_start_addr, rlt_start_offset, rlt_section_size = elfparse.rlt_addr(binary)
     plt_start_addr, plt_size, plt_entry_size, tramtab_start_addr, tramtab_size = elfparse.gather_plts_tram(binary)
 
-    functions, rlts = elfparse.gather_functions_rlts (binary.name, exec_sections, rlt_start_addr, rlt_start_offset, rlt_section_size)
+    functions =  elfparse.gather_functions (binary.name, exec_sections)
+    rlts = elfparse.gather_rlts (binary.name, exec_sections, rlt_start_addr, rlt_start_offset, rlt_section_size)
     
     verifier = Verifier(binary, exec_sections, functions, rlts, plt_start_addr, 
             plt_size, plt_entry_size, tramtab_start_addr, tramtab_size, 

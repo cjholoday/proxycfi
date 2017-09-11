@@ -92,14 +92,14 @@ def gather_exec_sections(binary_name):
     return exec_sections
 
 
-def gather_functions_rlts(binary_name, exec_sections, rlt_start_addr, rlt_section_offset, rlt_section_size):
+def gather_functions(binary_name, exec_sections):
     """Outputs a list of functions from the ExecSections passed
     
     exec_sections should be a list of ExecSections
     binary_name should be a string path for the executable being analyzed
     """
     functions = []
-    rlts = []
+
     try:
         readelf_text = subprocess.check_output(['readelf', '-s', binary_name])
     except subprocess.CalledProcessError as e:
@@ -145,11 +145,45 @@ def gather_functions_rlts(binary_name, exec_sections, rlt_start_addr, rlt_sectio
 
                     functions.append( Function(symbols[7], funct_size,
                         file_offset, int(symbols[1], 16)))
-            if len(symbols) > 7 and '_CDI_RLT' in symbols[7]:
-                rlt_addr = int(symbols[1], 16)
-                rlt_name = symbols[7]
-                rlt_offset = (rlt_addr - rlt_start_addr) + rlt_section_offset
-                rlts.append(Rlt(rlt_name, rlt_offset, rlt_addr, int(symbols[6], 16)))
+
+        i += 1
+    return functions
+
+
+def gather_rlts(binary_name, exec_sections, rlt_start_addr, rlt_section_offset, rlt_section_size):
+    """Outputs a list of functions from the ExecSections passed
+    
+    exec_sections should be a list of ExecSections
+    binary_name should be a string path for the executable being analyzed
+    """
+    rlts = []
+    try:
+        readelf_text = subprocess.check_output(['readelf', '-s', binary_name])
+    except subprocess.CalledProcessError as e:
+        eprint('FATAL ERROR: Cannot use readelf -s on ' + binary_name)
+        sys.exit(1)
+    
+    table_lines = readelf_text.splitlines()
+
+    # Ignore the dynamic symbol table because everything in the
+    # the dynamic symbol table is also in the regular symbol table
+    i = 0
+    while i < len(table_lines):
+        symbols = table_lines[i].split()
+        if len(symbols) >= 2 and symbols[2] == "'.symtab'":
+            break
+        i += 1
+    else:
+        eprint('FATAL ERROR: Symbol table (".symtab") not found in ' + binary_name)
+        sys.exit(1)
+
+    while i < len(table_lines):
+        symbols = table_lines[i].split()
+        if len(symbols) > 7 and '_CDI_RLT' in symbols[7]:
+            rlt_addr = int(symbols[1], 16)
+            rlt_name = symbols[7]
+            rlt_offset = (rlt_addr - rlt_start_addr) + rlt_section_offset
+            rlts.append(Rlt(rlt_name, rlt_offset, rlt_addr, int(symbols[6], 16)))
 
         i += 1
     rlts = sorted(rlts, key=attrgetter('start_offset'))
@@ -159,7 +193,7 @@ def gather_functions_rlts(binary_name, exec_sections, rlt_start_addr, rlt_sectio
             rlts[i].size = rlts[i+1].start_offset - rlts[i].start_offset
 
         rlts[len(rlts) - 1].size = rlt_section_offset + rlt_section_size - rlts[len(rlts) - 1].start_offset
-    return functions, rlts
+    return rlts
 
 
 def gather_plts_tram(binary):
