@@ -185,12 +185,15 @@ char *_cdi_write_slt_sled(char *sled_addr, CDI_Trampoline *tram,
     char saved_chars[RLT_PREFIX_LEN];
     memcpy(saved_chars, rlt_str, RLT_PREFIX_LEN);
     memcpy(rlt_str, "_CDI_RLT_", RLT_PREFIX_LEN);
+    _dl_debug_printf_c("_cdi_write_slt_sled: rlt_str: %s, mult: %x\n",
+            rlt_str, mult);
 
     /* inspect the main map first so that it's put first in each SLT sled */
     ElfW(Addr) rlt_addr = _cdi_lookup(rlt_str, main_map);
     if (rlt_addr) {
         sled_tail = _cdi_write_slt_sled_entry(sled_tail, rlt_addr, 0);
         if (++num_matches_found == mult) {
+            _dl_debug_printf_c("goto finish_sled\n");
             goto finish_sled;
         }
     }
@@ -207,9 +210,11 @@ char *_cdi_write_slt_sled(char *sled_addr, CDI_Trampoline *tram,
             _dl_debug_printf_c("\tRLT: %lx\n", rlt_addr);
             _dl_debug_printf_c("\tPLT ret addr: %lx\n", *((ElfW(Addr) *)(rlt_addr - 8)));
             */
-            if (++num_matches_found == mult) break;
+            if (++num_matches_found == mult) goto finish_sled;
         }
     }
+
+    _dl_debug_printf_c("mults finished %x / %x\n", num_matches_found, mult);
 
 finish_sled:
     /* restore .cdi_strtab */

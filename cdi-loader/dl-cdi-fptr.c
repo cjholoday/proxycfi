@@ -514,29 +514,36 @@ void _cdi_gen_fp_ret_sled(Sled_Allocation *alloc,
                 _dl_debug_printf("memcpying sled_start... result: %lx\n",
                         *(ElfW(Addr)*)(jmp_target + 4));
 
-                /* since there is a trampoline table, we're dealing with a 
+                /* You might think: 
+                 *
+                 * since there is a trampoline table, we're dealing with a 
                  * shared library. Therefore all link sites in this code object
                  * will point to a trampoline table entry. All link sites for 
                  * THIS function pointer type will point to the SAME 
 l                * trampoline table entry. Hence, we're finished fixing up link
                  * sites for this shared library. Move on to the next code object
+                 *
+                 * But, each function's return path should first consider its
+                 * SLT sled and only THEN go to the function pointer return
+                 * sled. Therefore each return site corresponds to a different
+                 * trampoline
                  */
-                break;
             }
+            else {
+                /* this site relative jumps to _CDI_abort. 13 bytes are
+                 * reserved for the direct jmp here */
 
-            /* this site relative jumps to _CDI_abort. 13 bytes are
-             * reserved for the direct jmp here */
+                /* move the sled address into %r10 */
+                *link_site++ = 0x49;
+                *link_site++ = 0xba;
+                memcpy(link_site, &sled_start, sizeof(ElfW(Addr)));
+                link_site += sizeof(ElfW(Addr));
 
-            /* move the sled address into %r10 */
-            *link_site++ = 0x49;
-            *link_site++ = 0xba;
-            memcpy(link_site, &sled_start, sizeof(ElfW(Addr)));
-            link_site += sizeof(ElfW(Addr));
-
-            /* jmp *%r10 */
-            *link_site++ = 0x41;
-            *link_site++ = 0xff;
-            *link_site++ = 0xe2;
+                /* jmp *%r10 */
+                *link_site++ = 0x41;
+                *link_site++ = 0xff;
+                *link_site++ = 0xe2;
+            }
         }
     }
 }
