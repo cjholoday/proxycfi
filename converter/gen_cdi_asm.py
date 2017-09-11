@@ -374,11 +374,13 @@ def convert_return_site(site, funct, asm_line, asm_dest, cfg,
                 ret_sled += '\tje\t"' + sled_label + '"\n'
             i += 1
 
-    if options['--shared-library']:
-        # subtract another 8 bytes off the stack pointer since we'll be 
-        # using two return address on the way back: one to get from the SLT
-        # to the RLT and another to get from the RLT to the executable code
-        ret_sled += '\taddq $8, %rsp\n'
+    # subtract another 8 bytes off the stack pointer since we'll be 
+    # using two return address on the way back: one to get from the SLT
+    # to the RLT and another to get from the RLT to the executable code
+    #
+    # Even if this we're looking at the executable, we must include the extra
+    # add in case this sled is linked to a fp ret sled
+    ret_sled += '\taddq $8, %rsp\n'
 
     code, data = cdi_abort(sled_id_faucet(), funct.asm_filename,
             dwarf_loc, True, options)
