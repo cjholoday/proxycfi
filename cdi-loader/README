@@ -7,8 +7,8 @@ This guide is only tested on Ubuntu version 16.04 with GLIBC version 2.23. Make 
 First compile GLIBC normally using the following configure:
 
     [directory: cdi/cdi-loader]
-    mkdir -p dest && mkdir -p build && cdi $_
-    ../glibc-2.23/configure --prefix="$(pwd)"/dest
+    mkdir -p dest && mkdir -p build && cd $_
+    ../glibc-2.23/configure --prefix="$(pwd)"/../dest
     make 2> errlog.txt | tee makelog.txt
 
 Now run the recompile script in cdi/cdi-loader. Use this script every time you
