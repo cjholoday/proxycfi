@@ -552,14 +552,18 @@ elf_machine_rela (struct link_map *map, const ElfW(Rela) *reloc,
                        * chained to slow plts. Start the chain */
 
                       *got_entry = (uintptr_t)slow_plt;
+                      _cdi_print_plt_bytes(slow_plt, "start chain before");
                       _cdi_write_direct_plt(slow_plt, &target, 0);
+                      _cdi_print_plt_bytes(slow_plt, "start chain after");
                   }
                   else if (*(unsigned char *)(*got_entry + 13) == 0x0f 
                           && *(unsigned char *)(*got_entry + 14) == 0x0b) {
                       /* the got entry points to a slow plt. Add ourselves to
                        * the chain */
 
+                      _cdi_print_plt_bytes(slow_plt, "chain before");
                       _cdi_write_direct_plt(slow_plt, got_entry, 0);
+                      _cdi_print_plt_bytes(slow_plt, "chain after");
                       *got_entry = (uintptr_t)slow_plt;
                   }
                   else {
@@ -573,7 +577,7 @@ elf_machine_rela (struct link_map *map, const ElfW(Rela) *reloc,
                        * just take the address from the got and go there
                        */
                       _cdi_write_direct_plt(slow_plt, (void*)*got_entry, !force_jump);
-                      _dl_debug_printf_c("SEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEERiously?\n");
+                      _dl_debug_printf_c("FATAL ERROR: how did we get here?\n");
                   }
                   return;
               }
@@ -584,11 +588,26 @@ elf_machine_rela (struct link_map *map, const ElfW(Rela) *reloc,
                   && target[12] == 0xd3 && target[13] == 0x0f) {
               /* the GOT has been relocated to point to a fixed up PLT */
               /* snatch the function's address from the CDI PLT */
+              _cdi_print_plt_bytes(slow_plt, "cdi direct before");
               _cdi_write_direct_plt(slow_plt, target + 2, 1);
+              _cdi_print_plt_bytes(slow_plt, "cdi direct after");
           }
           else {
               /* we're pointing directly to the function */
-              _cdi_write_direct_plt(slow_plt, &target, 1);
+
+              /* we're not sure why force_jump is needed here, but it fixes
+               * the problem. Currently this is the only place in which
+               * force_jump is needed, but the other modifications will be left
+               * because those locations are more logically the place where changes
+               * should be made to support non cdi calls in a cdi code object
+               */
+              unsigned char force_jump = 0;
+              if (*(unsigned char*)(slow_plt + 15) == 0xcc) {
+                  force_jump = 1;
+              }
+              _cdi_print_plt_bytes(slow_plt, "direct before");
+              _cdi_write_direct_plt(slow_plt, &target, !force_jump);
+              _cdi_print_plt_bytes(slow_plt, "direct after");
           }
 
           return;
@@ -611,7 +630,9 @@ elf_machine_rela (struct link_map *map, const ElfW(Rela) *reloc,
               force_jump = 1;
           }
 
+          _cdi_print_plt_bytes(pre_relocation_value, "resolve first before");
           _cdi_write_direct_plt(pre_relocation_value, &relocated_to, !force_jump);
+          _cdi_print_plt_bytes(pre_relocation_value, "resolve first after");
           _dl_debug_printf_c ("c = %lx, *c1 = %lx \n", (unsigned long int)plt_chain, *(unsigned long int*)plt_chain );
           /*process all the fast plts in the chain*/
           while(*((unsigned char*)(plt_chain + 13)) == 0x0f && 
@@ -621,13 +642,17 @@ elf_machine_rela (struct link_map *map, const ElfW(Rela) *reloc,
                   force_jump = 1;
               }
               ElfW(Addr) tmp = *((ElfW(Addr) *)((unsigned char *)plt_chain + 2));
+              _cdi_print_plt_bytes((void*)plt_chain, "resolve before");
               _cdi_write_direct_plt((void *)plt_chain, &relocated_to, !force_jump);
+              _cdi_print_plt_bytes((void*)plt_chain, "resolve after");
               plt_chain = tmp;
               _dl_debug_printf_c ("c = %lx, *c = %lx \n", (unsigned long int)plt_chain, *(unsigned long int*)plt_chain );
           }
 
           /*finally update the plt itself*/
+          _cdi_print_plt_bytes((void*)plt_chain, "resolve last before");
           _cdi_write_direct_plt((void *)plt_chain, &relocated_to, !force_jump);
+          _cdi_print_plt_bytes((void*)plt_chain, "resolve last after");
       }
       else {
           /*It points the second instruction in it's own plt*/
@@ -646,7 +671,9 @@ elf_machine_rela (struct link_map *map, const ElfW(Rela) *reloc,
           }
 
           _dl_debug_printf ("***doing fixup\n");
+          _cdi_print_plt_bytes(plt, "overwrite before");
           _cdi_write_direct_plt(plt, &relocated_to, 1);
+          _cdi_print_plt_bytes(plt, "overwrite after");
       }  		
   }
 }

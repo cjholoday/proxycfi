@@ -368,6 +368,15 @@ int _cdi_addr_is_in_cdi_sl(ElfW(Addr) addr) {
     return 0;
 }
 
+void _cdi_print_plt_bytes(void *plt, const char *plt_name) {
+    _dl_debug_printf("Printing PLT (%s)\n\t", plt_name);
+    unsigned char *plt_bytes = (unsigned char *)plt;
+    for (int i = 0; i < 16; i++) {
+        _dl_debug_printf_c("0x%x ", plt_bytes[i]);
+    }
+    _dl_debug_printf_c("\n");
+}
+
 /*
 void _cdi_write_ret__branch(ElfW(Addr) cmp_addr, ElfW(Addr), target_addr) {
 */
