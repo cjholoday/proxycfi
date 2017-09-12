@@ -10,8 +10,10 @@ cdi_flags="-g --save-temps -fno-jump-tables"
 tools_dir="$SCRIPT_DIR/../../../tools"
 gen_sl="$tools_dir/gen_sl.bash"
 
-cdi-gcc --make-sl=libcaller.so.1.0.0 caller.c
-cdi-gcc --use-sl=libcaller.so main.c -o out
+"$gen_sl" libcaller.so caller.c
+
+cdi-gcc $cdi_flags main.c -L. libcaller.so -o out \
+    -Wl,-rpath="$SCRIPT_DIR" 
 
 if [ "$?" != 0 ]; then
     echo ERROR: Compilation failed!
