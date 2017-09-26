@@ -1,15 +1,20 @@
 !<arch>
-print.o/        1494524421  1000  1000  100664  11545     `
+print.o/        1506451172  1000  1000  100664  12105     `
 #<deff>
 # as_spec --64 -o print.o print.s
 # as_spec_no_io --64 
-# source_directory /home/colton/research/cdi/tests/archives/obj_collision/test_creation_tools
-# dependencies print.c
+# source_directory /home/colton/research/cdi/tests/build_system/obj_collision
+# dependencies print.c /home/colton/research/cdi/cdi-gcc/dest/lib/gcc/x86_64-pc-linux-gnu/6.1.0/include/stddef.h /usr/include/x86_64-linux-gnu/bits/types.h /usr/include/libio.h /usr/include/stdio.h /usr/include/x86_64-linux-gnu/bits/sys_errlist.h
 # typeinfo print.c.ftypes
-# print.c:3:6:print2 _CDIv_Z6print2Pc
+# print.c:3:6:print2 v_Pc
 
 # typeinfo print.c.fptypes
 
+# warning no_type_info /home/colton/research/cdi/cdi-gcc/dest/lib/gcc/x86_64-pc-linux-gnu/6.1.0/include/stddef.h
+# warning no_type_info /usr/include/x86_64-linux-gnu/bits/types.h
+# warning no_type_info /usr/include/libio.h
+# warning no_type_info /usr/include/stdio.h
+# warning no_type_info /usr/include/x86_64-linux-gnu/bits/sys_errlist.h
 # assembly
 	.file	"print.c"
 	.text
@@ -704,8 +709,8 @@ print2:
 	.string	"_IO_save_end"
 .LASF5:
 	.string	"short int"
-.LASF7:
-	.string	"size_t"
+.LASF56:
+	.string	"/home/colton/research/cdi/tests/build_system/obj_collision"
 .LASF10:
 	.string	"sizetype"
 .LASF33:
@@ -718,14 +723,16 @@ print2:
 	.string	"print2"
 .LASF19:
 	.string	"_IO_buf_base"
+.LASF32:
+	.string	"_lock"
 .LASF24:
 	.string	"_markers"
 .LASF14:
 	.string	"_IO_read_end"
 .LASF51:
 	.string	"stderr"
-.LASF32:
-	.string	"_lock"
+.LASF11:
+	.string	"char"
 .LASF6:
 	.string	"long int"
 .LASF29:
@@ -740,8 +747,6 @@ print2:
 	.string	"_sbuf"
 .LASF41:
 	.string	"_IO_FILE"
-.LASF50:
-	.string	"stdout"
 .LASF1:
 	.string	"unsigned char"
 .LASF4:
@@ -754,6 +759,8 @@ print2:
 	.string	"_IO_marker"
 .LASF31:
 	.string	"_shortbuf"
+.LASF35:
+	.string	"__pad2"
 .LASF16:
 	.string	"_IO_write_base"
 .LASF40:
@@ -762,14 +769,14 @@ print2:
 	.string	"_IO_read_ptr"
 .LASF2:
 	.string	"short unsigned int"
-.LASF11:
-	.string	"char"
+.LASF54:
+	.string	"GNU C11 6.1.0 -mtune=generic -march=x86-64 -g -fno-jump-tables -fno-omit-frame-pointer"
 .LASF43:
 	.string	"_next"
 .LASF34:
 	.string	"__pad1"
-.LASF35:
-	.string	"__pad2"
+.LASF7:
+	.string	"size_t"
 .LASF36:
 	.string	"__pad3"
 .LASF37:
@@ -792,8 +799,6 @@ print2:
 	.string	"stdin"
 .LASF27:
 	.string	"_flags2"
-.LASF56:
-	.string	"/home/colton/research/cdi/tests/archives/obj_collision/test_creation_tools"
 .LASF39:
 	.string	"_mode"
 .LASF15:
@@ -808,8 +813,8 @@ print2:
 	.string	"sys_errlist"
 .LASF26:
 	.string	"_fileno"
-.LASF54:
-	.string	"GNU C11 6.1.0 -mtune=generic -march=x86-64 -g"
+.LASF50:
+	.string	"stdout"
 .LASF47:
 	.string	"_IO_2_1_stdout_"
 .LASF57:

@@ -1,15 +1,20 @@
 !<arch>
-print.o/        1494279537  1000  1000  100664  11416     `
+print.o/        1506451171  1000  1000  100664  12004     `
 #<deff>
 # as_spec --64 -o print.o print.s
 # as_spec_no_io --64 
-# source_directory /home/colton/research/cdi/tests/archives/basic
-# dependencies print.c
+# source_directory /home/colton/research/cdi/tests/build_system/libstem
+# dependencies print.c /home/colton/research/cdi/cdi-gcc/dest/lib/gcc/x86_64-pc-linux-gnu/6.1.0/include/stddef.h /usr/include/x86_64-linux-gnu/bits/types.h /usr/include/libio.h /usr/include/stdio.h /usr/include/x86_64-linux-gnu/bits/sys_errlist.h
 # typeinfo print.c.ftypes
-# print.c:3:6:print _CDIv_Z5printPc
+# print.c:3:6:print v_Pc
 
 # typeinfo print.c.fptypes
 
+# warning no_type_info /home/colton/research/cdi/cdi-gcc/dest/lib/gcc/x86_64-pc-linux-gnu/6.1.0/include/stddef.h
+# warning no_type_info /usr/include/x86_64-linux-gnu/bits/types.h
+# warning no_type_info /usr/include/libio.h
+# warning no_type_info /usr/include/stdio.h
+# warning no_type_info /usr/include/x86_64-linux-gnu/bits/sys_errlist.h
 # assembly
 	.file	"print.c"
 	.text
@@ -704,24 +709,22 @@ print:
 	.string	"sizetype"
 .LASF33:
 	.string	"_offset"
-.LASF54:
-	.string	"GNU C11 6.1.0 -mtune=generic -march=x86-64 -g -fno-jump-tables"
 .LASF17:
 	.string	"_IO_write_ptr"
 .LASF12:
 	.string	"_flags"
 .LASF19:
 	.string	"_IO_buf_base"
+.LASF32:
+	.string	"_lock"
 .LASF24:
 	.string	"_markers"
 .LASF14:
 	.string	"_IO_read_end"
 .LASF51:
 	.string	"stderr"
-.LASF56:
-	.string	"/home/colton/research/cdi/tests/archives/basic"
-.LASF32:
-	.string	"_lock"
+.LASF11:
+	.string	"char"
 .LASF6:
 	.string	"long int"
 .LASF29:
@@ -756,8 +759,8 @@ print:
 	.string	"_IO_read_ptr"
 .LASF2:
 	.string	"short unsigned int"
-.LASF11:
-	.string	"char"
+.LASF54:
+	.string	"GNU C11 6.1.0 -mtune=generic -march=x86-64 -g -fno-jump-tables -fno-omit-frame-pointer"
 .LASF43:
 	.string	"_next"
 .LASF34:
@@ -770,6 +773,8 @@ print:
 	.string	"__pad4"
 .LASF38:
 	.string	"__pad5"
+.LASF56:
+	.string	"/home/colton/research/cdi/tests/build_system/libstem"
 .LASF0:
 	.string	"long unsigned int"
 .LASF18:

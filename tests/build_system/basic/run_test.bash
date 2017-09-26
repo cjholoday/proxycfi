@@ -1,9 +1,9 @@
 #!/bin/bash
 
-rm -f *.o *.s *.json *.i *.ftypes *.fptypes output out
+cdi-gcc print.c -c
+ar rcs libprint.a print.o
 
-cdi_flags="-g --save-temps -fno-jump-tables"
-cdi-gcc $cdi_flags main.c libprint.a -o out
+cdi-gcc main.c libprint.a -o out
 
 if [ "$?" != 0 ]; then
     echo ERROR: Compilation failed!

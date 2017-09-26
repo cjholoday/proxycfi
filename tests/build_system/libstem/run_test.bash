@@ -2,10 +2,11 @@
 
 # purpose: test "-lprint" as opposed to libprint.a
 
-rm -f *.o *.s *.json *.i *.ftypes *.fptypes out output
 
-cdi_flags="-g --save-temps -fno-jump-tables"
-cdi-gcc $cdi_flags main.c -L. -lprint -o out
+cdi-gcc print.c -c
+ar rcs libprint.a print.o
+
+cdi-gcc main.c -L. -lprint -o out
 
 if [ "$?" != 0 ]; then
     echo ERROR: Compilation failed!

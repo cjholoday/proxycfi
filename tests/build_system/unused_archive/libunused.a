@@ -1,12 +1,12 @@
 !<arch>
-unused.o/       1498855850  1000  1000  100664  2155      `
+unused.o/       1506451166  1000  1000  100664  2160      `
 #<deff>
 # as_spec --64 -o unused.o unused.s
 # as_spec_no_io --64 
 # source_directory /home/colton/research/cdi/tests/build_system/unused_archive
 # dependencies unused.c 
 # typeinfo unused.c.ftypes
-# unused.c:1:6:unused_funct _CDIv_Z12unused_functv
+# unused.c:1:6:unused_funct v_v
 
 # assembly
 	.file	"unused.c"
@@ -115,13 +115,12 @@ unused_funct:
 .Ldebug_line0:
 	.section	.debug_str,"MS",@progbits,1
 .LASF0:
-	.string	"GNU C11 6.1.0 -mtune=generic -march=x86-64 -g -fno-jump-tables"
-.LASF2:
-	.string	"/home/colton/research/cdi/tests/build_system/unused_archive"
-.LASF1:
-	.string	"unused.c"
+	.string	"GNU C11 6.1.0 -mtune=generic -march=x86-64 -g -fno-jump-tables -fno-omit-frame-pointer"
 .LASF3:
 	.string	"unused_funct"
+.LASF1:
+	.string	"unused.c"
+.LASF2:
+	.string	"/home/colton/research/cdi/tests/build_system/unused_archive"
 	.ident	"GCC: (GNU) 6.1.0"
 	.section	.note.GNU-stack,"",@progbits
-
