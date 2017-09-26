@@ -1,14 +1,11 @@
 #!/bin/bash
 
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"                  
+. "$SCRIPT_DIR/test_env.bash"
+
 test_suite="$1"
 if [ ! -z "$test_suite" ]; then
     # we were called to run all tests in $test_suite
-    SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"                  
-    . "$SCRIPT_DIR/test_env.bash"
-
-    if [ -z "$ROOT" ]; then
-        exit 1
-    fi
 
     cd "$test_suite"
     test_dirs=$(find . -maxdepth 1 -type d -not -name .)
@@ -37,6 +34,10 @@ if [ ! -z "$test_suite" ]; then
     done
 else
     # we were called to run all tests in ALL test suites
+
+    SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"                  
+    cd "$SCRIPT_DIR"
+
     test_categories=$(find . -maxdepth 1 -type d -not -name .)
 
     for category in $test_categories; do
