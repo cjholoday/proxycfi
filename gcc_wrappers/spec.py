@@ -186,6 +186,7 @@ class LinkerSpec():
             except IOError:
                 try:
                     # this might capture an unintended library?
+                    print entry
                     find_lib(entry, self)
                     return 'libstem' # could check that it is archive/sharedlib
                 except NoMatchingLibrary:
@@ -290,9 +291,13 @@ def find_lib(libstem, lspec):
         libstem = libstem[2:]
     elif libstem.startswith('lib') and (libstem.endswith('.a')
             or lib_utils.sl_chop_versioning(libstem).endswith('.so')):
+        # print path
+        # print find_lib.search_dirs
         for path in find_lib.search_dirs:
             candidate = '{}/{}'.format(path, libstem)
+            print candidate
             if os.path.isfile(candidate):
+                # print "found"
                 return os.path.abspath(candidate)
         else:
             raise NoMatchingLibrary(libstem)
@@ -313,9 +318,16 @@ def chop_suffix(string, cutoff = ''):
 
 def gen_lib_search_dirs(linker_spec):
     # first find directories in which libraries are searched for
-    builtin_search_dirs = subprocess.check_output(
+    builtin_search_dirs_t = subprocess.check_output(
             '''$(which ld) --verbose | grep SEARCH_DIR | tr -s ' ;' '''
             ''' '\\n' | sed 's/^[^"]*"//g' | sed 's/".*$//g' ''', shell=True).split()
+    builtin_search_dirs = []
+    # fix paths strating with '='
+    for b in builtin_search_dirs_t:
+        if b[0] == '=':
+            builtin_search_dirs.append(b[1:])
+        else:
+            builtin_search_dirs.append(b)
     added_search_dirs = []
     prev = ''
     for word in linker_spec.raw():
