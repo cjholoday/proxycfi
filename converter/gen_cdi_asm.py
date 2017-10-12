@@ -234,8 +234,13 @@ def convert_call_site(site, cfg, funct, asm_line, asm_dest,
         if funct.asm_filename != site.targets[0].asm_filename and not options['--shared-library']:
             globl_decl = '.globl\t' + label + '\n'
 
-        call = asm_line
-        if options['--shared-library']:
+        call = ''
+        if not options['--shared-library']:
+            proxy_ptr = site.targets[0].proxy_for(label.strip('"'))
+            call = '\tpushq ${}\n'.format(hex(proxy_ptr))
+            call += asm_line.replace('call', 'jmp', 1)
+        else:
+            # TODO: use proxy pointers with shared libraries
             target = cfg.funct(site.targets[0].uniq_label)
             if not hasattr(target, 'rel_id_faucet'):
                 target.rel_id_faucet = 0
@@ -257,6 +262,7 @@ def convert_call_site(site, cfg, funct, asm_line, asm_dest,
         eprint('gen_cdi: warning: indirect call sled is empty on line {} of {} in function {}'
                 .format(site.asm_line_num, funct.asm_filename, site.enclosing_funct_uniq_label))
 
+    # TODO: use proxy pointers with function pointers
     call_operand = arg_str.replace('*', '')
     for target in site.targets:
         target_name = fix_label(target.uniq_label)
@@ -356,6 +362,7 @@ def convert_return_site(site, funct, asm_line, asm_dest, cfg,
             sled_label = '_CDIX_FROM_{}_TO_{}_{}'.format(fix_label(funct.uniq_label),
                     fix_label(target_label), str(i))
             if options['--shared-library']:
+                # TODO: use proxy pointers with shared libraries
                 ret_sled += '\t.byte 0x4c\n'
                 ret_sled += '\t.byte 0x8d\n'
                 ret_sled += '\t.byte 0x1d\n'
@@ -370,7 +377,8 @@ def convert_return_site(site, funct, asm_line, asm_dest, cfg,
                 ret_sled += '"_CDIX_RREL32_{}_{}":\n'.format(
                         '1', sled_label)
             else:
-                ret_sled += '\tcmpq\t$"' + sled_label + '", -8(%rsp)\n'
+                proxy_ptr = funct.proxy_for(sled_label.strip("'"))
+                ret_sled += '\tcmpq\t${}, -8(%rsp)\n'.format(hex(proxy_ptr))
                 ret_sled += '\tje\t"' + sled_label + '"\n'
             i += 1
 
@@ -380,7 +388,7 @@ def convert_return_site(site, funct, asm_line, asm_dest, cfg,
     #
     # Even if this we're looking at the executable, we must include the extra
     # add in case this sled is linked to a fp ret sled
-    ret_sled += '\taddq $8, %rsp\n'
+    ret_sled += '\taddq $8, %rsp\n' # TODO: fix this for proxies
 
     code, data = cdi_abort(sled_id_faucet(), funct.asm_filename,
             dwarf_loc, True, options)
