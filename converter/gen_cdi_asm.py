@@ -299,7 +299,8 @@ def convert_call_site(site, cfg, funct, asm_line, asm_dest,
         else:
             call_sled += '\tcmpq\t$"_CDIX_F_{}", {}\n'.format(target_name, call_operand)
             call_sled += '\tjne\t1f\n'
-            call_sled += '\tcall\t"_CDIX_F_{}"\n'.format(target_name)
+            call_sled += '\tpushq ${}\n'.format(hex(target.proxy_for(return_label)))
+            call_sled += '\tjmp\t"_CDIX_F_{}"\n'.format(target_name)
         call_sled += globl_decl
         call_sled += '"{}":\n'.format(return_label)
         call_sled += '\tjmp\t2f\n'
