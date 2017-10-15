@@ -1,7 +1,8 @@
 import __init__
 import sys
 
-import common.eprint
+
+from common.eprint import eprint
 
 class AsmFileDescription:
     def __init__(self, name):

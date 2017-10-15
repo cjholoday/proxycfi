@@ -38,9 +38,15 @@ def main():
 
     lspec = spec.LinkerSpec(raw_ld_spec, fatal_error)
     if lspec.cdi_options:
-        if '--spec' in lspec.cdi_options:
+        if '--cdi-spec' in lspec.cdi_options:
             print ' '.join(lspec.raw())
             sys.exit(0)
+
+    # filter out the converter options
+    lspec.converter_options = []
+    for opt in lspec.cdi_options:
+        if opt.startswith('--cdi-converter-'):
+            lspec.converter_options.append('--' + opt[len('--cdi-converter-'):])
 
     archives = []
     for i, path in enumerate(lspec.ar_paths):
@@ -229,20 +235,17 @@ def main():
     converter_path = cdi_ld_real_path + '/../converter/gen_cdi.py'
     fake_obj_paths = [fake_obj.path for fake_obj in fake_objs]
 
-    converter_options = []
     if lspec.target_is_shared: 
-        converter_options.append('--shared-library')
-    if '--no-mystery-types' in lspec.cdi_options:
-        converter_options.append('--no-mystery-types')
+        lspec.converter_options.append('--shared-library')
 
     print 'Converting fake objects to cdi-asm files: ' + ' '.join(fake_obj_paths)
 
 
     if sl_load_addrs:
-        converter_options.append('--sl-fptr-addrs')
-        converter_options.append('.cdi/sl_callback_table')
+        lspec.converter_options.append('--sl-fptr-addrs')
+        lspec.converter_options.append('.cdi/sl_callback_table')
 
-    converter_command = [converter_path] + converter_options + fake_obj_paths
+    converter_command = [converter_path] + lspec.converter_options + fake_obj_paths
     try:
         subprocess.check_call(converter_command)
     except subprocess.CalledProcessError:

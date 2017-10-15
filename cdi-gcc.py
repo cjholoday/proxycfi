@@ -21,9 +21,9 @@ SCRIPT_PATH = os.path.dirname(os.path.realpath(__file__))
 def make_sl(gcc_opts, libname):
     """Create a shared library named 'libname', which may have versioning
 
-    opts_idx should be the index of the --make-sl option
-    make_sl assumes that '--use-sl' has been handled if it exists
-    '-o' is not supported for --make-sl
+    opts_idx should be the index of the --cdi-make-sl option
+    make_sl assumes that '--cdi-use-sl' has been handled if it exists
+    '-o' is not supported for --cdi-make-sl
     """
 
     try:
@@ -58,9 +58,9 @@ def make_sl(gcc_opts, libname):
 def prepare_to_use_sls(gcc_opts, opts_idx):
     """Returns gcc_opts prepared to use 1 or more libs specified at opts_idx
 
-    opts_idx should be the index of the --use-sl option
+    opts_idx should be the index of the --cdi-use-sl option
     """
-    lib_paths = gcc_opts[opts_idx][len('--use-sl='):].split(',')
+    lib_paths = gcc_opts[opts_idx][len('--cdi-use-sl='):].split(',')
     del gcc_opts[opts_idx]
 
     lib_search_options = []
@@ -73,6 +73,22 @@ def prepare_to_use_sls(gcc_opts, opts_idx):
         gcc_opts.append('-l' + 
                 common.elf.strip_sl_versioning(os.path.basename(lib_path))[3:-3])
     return lib_search_options + gcc_opts
+
+
+def print_cdi_help():
+    print 'cdi options' 
+    print '----------------------------------------------------------\n'
+
+    print '--cdi-spec'
+    print 'Prints out the linker spec and immediately terminates at linker stage'
+    print ''
+
+    print '--cdi-converter-[converter_option]'
+    print '--cdi-converter-[converter_option=VALUE]'
+    print ('Passes converter_option to the converter as --converter_option '
+            ' or as --converter_optoin=VALUE, depending on which is used. ')
+    print ''
+
 
 if __name__ == '__main__':
     gcc_opts = sys.argv[1:]
@@ -97,35 +113,49 @@ if __name__ == '__main__':
 
     gcc_opts.append('-rdynamic')
 
+    cdi_options = []
+    for idx, opt in enumerate(gcc_opts):
+        if (opt.startswith('--cdi-') 
+                and not opt.startswith('--cdi-make-sl=')
+                and not opt.startswith('--cdi-use-sl=')):
+            cdi_options.append(opt)
+            gcc_opts[idx] = '-g' # void this option
+    if cdi_options:
+        gcc_opts.append("-Wl,--cdi-options={}".format(','.join(cdi_options)))
+
+    if '--cdi-help' in cdi_options:
+        print_cdi_help()
+        sys.exit(0)
+
     # Add convenience options for constructing and using shared libraries
     #
-    # --make-sl=SHARED_LIB_NAME: the shared library is placed in the current working directory
+    # --cdi-make-sl=SHARED_LIB_NAME: the shared library is placed in the current working directory
     #
-    # --use-sl=PATH,PATH2,...: used to compile against a shared library at PATH. The base directory
+    # --cdi-use-sl=PATH,PATH2,...: used to compile against a shared library at PATH. The base directory
     #                of PATH is added as search path for linking. PATH's base 
     #                directory is also added as a runtime library search path. The 
     #                side effects are undesirable but fine for testing purposes
     #                If multiple shared libraries are to be used, they should be separated
     #                by commas.
     #
-    # At most, only one option of each --make-sl and --use-sl should be present
+    # At most, only one option of each --cdi-make-sl and --cdi-use-sl should be present
     # in the optoins passed 
     make_sl_idx = -1
     use_sl_idx = -1
     for idx, opt in enumerate(gcc_opts):
-        if opt.startswith('--make-sl='):
+        if opt.startswith('--cdi-make-sl='):
             if make_sl_idx != -1:
-                eprint("cdi-gcc wrapper: error: '--make-sl' can only be specified once")
+                eprint("cdi-gcc wrapper: error: '--cdi-make-sl' can only be specified once")
             if '-o' in gcc_opts:
-                eprint("cdi-gcc wrapper: error: '-o' is not supported with use of '--make-sl'")
+                eprint("cdi-gcc wrapper: error: '-o' is not supported with use of '--cdi-make-sl'")
             make_sl_idx = idx
-        elif opt.startswith('--use-sl='):
+        elif opt.startswith('--cdi-use-sl='):
             if use_sl_idx != -1:
-                eprint("cdi-gcc wrapper: error: '--use-sl' can only be specified once")
+                eprint("cdi-gcc wrapper: error: '--cdi-use-sl' can only be specified once")
             use_sl_idx = idx
 
     if make_sl_idx != -1:
-        make_sl_libname = gcc_opts[make_sl_idx][len('--make-sl='):]
+        make_sl_libname = gcc_opts[make_sl_idx][len('--cdi-make-sl='):]
         del gcc_opts[make_sl_idx]
         if use_sl_idx != -1:
             if use_sl_idx > make_sl_idx:
