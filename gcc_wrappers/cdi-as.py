@@ -56,9 +56,8 @@ def get_dependencies(fname):
                     source_fnames.append(fname)
 
     if not is_debug_mode:
-        eprint("cdi-as: error: debug mode is disabled. Use '--save-temps', '-g',"
+        eprint("cdi-as: warning: debug mode is disabled. Use '--save-temps', '-g',"
                 " and '-fno-jump-tables' when compiling with CDI")
-        sys.exit(1)
 
     return (source_fnames, header_fnames)
 
