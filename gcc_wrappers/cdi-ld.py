@@ -63,6 +63,8 @@ def main():
     #
     # This is called on error or at the end of cdi-ld
     def restore_original_objects():
+        eprint("restoring objects: {}".format(' '.join(
+            list(map(lambda obj: obj.path, explicit_fake_objs)))))
         for i, fake_obj in enumerate(explicit_fake_objs):
             subprocess.check_call(['mv', fake_obj.path, lspec.obj_paths[i]])
 

@@ -13,6 +13,7 @@ def fatal_error(message):
     easy debugging. For this to work, error.restore_original_objects_fptr
     must be set
     """
+    global restore_original_objects_fptr
     eprint('\n----------------------------------------------\n'
             'cdi-ld: error: {}'.format(message))
     eprint('\nSpec passed to cdi-ld.py: {}'.format(' '.join(raw_ld_spec)))
@@ -22,4 +23,5 @@ def fatal_error(message):
     if file_deleted_on_error:
         subprocess.check_call(['rm', file_deleted_on_error])
 
+    restore_original_objects_fptr = None
     sys.exit(1)
