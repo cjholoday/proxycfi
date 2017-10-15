@@ -4,8 +4,8 @@ rm -f *.o *.s *.json *.i *.ftypes *.out *.fptypes output out *.so
 
 verify="../../../verifier/verify.py"
 
-cdi-gcc --make-sl=libhello.so hello.c
-cdi-gcc --use-sl=libhello.so main.c -o out
+cdi-gcc --cdi-make-sl=libhello.so hello.c
+cdi-gcc --cdi-use-sl=libhello.so main.c -o out
 
 if [ "$?" != 0 ]; then
     echo ERROR: Compilation failed!

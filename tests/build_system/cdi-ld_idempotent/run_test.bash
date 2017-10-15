@@ -10,7 +10,7 @@ cdi-gcc print.c -c
 ar rcs libprint.a print.o
 
 ld_spec=$(cdi-gcc main.c libcall_print.a libprint.a -o out \
-    -Wl,--cdi-options="--spec"  | tail -1 | sed 's/--cdi-options=--spec//g')
+    --cdi-spec | tail -1 | sed 's/--cdi-spec//g')
 
 cdi-gcc main.c libcall_print.a libprint.a -o out
 check "compilation failed" || exit 1

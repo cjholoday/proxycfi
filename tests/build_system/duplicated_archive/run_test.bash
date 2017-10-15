@@ -6,7 +6,7 @@ cdi-gcc print.c -c
 ar rcs libprint.a print.o
 
 ld_spec=$(cdi-gcc main.c libprint.a -o out \
-    -Wl,--cdi-options="--spec" | tail -1 | sed 's/--cdi-options=--spec//g')
+    --cdi-spec | tail -1 | sed 's/--cdi-spec//g')
 
 echo $ld_spec
 ld_spec_with_dups="$ld_spec -L. -lprint libprint.a -l print"

@@ -7,8 +7,8 @@ rm -f *.so.[0-9]*  *.so.[0-9]*.[0-9]*
 
 verify="../../../verifier/verify.py"
 
-cdi-gcc --make-sl=libcalc.so calc.c formulas.c
-cdi-gcc --use-sl=libcalc.so main.c -o out
+cdi-gcc --cdi-make-sl=libcalc.so calc.c formulas.c
+cdi-gcc --cdi-use-sl=libcalc.so main.c -o out
 
 # Verify that the executable is CDI compliant
 "$verify" -i out
