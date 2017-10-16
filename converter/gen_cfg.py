@@ -180,11 +180,25 @@ def build_indir_targets(cfg, asm_file_descrs, options):
 
     for descr in asm_file_descrs:
         try:
-            parse_cdi_metadata(cfg, descr, options)
+            dangling_metadata = parse_cdi_metadata(cfg, descr, options)
         except:
             eprint("gen_cdi: error: parsing CDI metadata from file '{}' failed. Aborting..."
                     .format(descr.filename))
             raise
+
+    failed = False
+    for funct in cfg:
+        if funct.ftype == None:
+            eprint("gen_cdi: error: function with uniq_label '{}' has no ftype"
+                    .format(funct.uniq_label))
+            failed = True
+    if failed:
+        eprint("gen_cdi: dangling (uniq_label, ftype) pairs:")
+        for md_pair in dangling_metadata:
+            eprint("{} : {}".format(md_pair[0], md_pair[1]))
+        cfg.print_uniq_labels()
+        sys.exit(1)
+
 
     for funct in cfg:
         # TODO: what about object files with the same name?
@@ -273,6 +287,14 @@ def build_ret_dicts(cfg):
                 eprint("warning: function cannot be found: " + target_label )
 
 def parse_cdi_metadata(cfg, asm_descr, options):
+    """Fills the cfg with ftypes and fptypes using info from asm_descr
+
+    returns and list of pairs (uniq_label, ftype) that describe function types
+    which were unable to be attached to any function in the cfg. This is 
+    possible when functions are inlined
+    """
+
+    dangling_metadata = []
     optimized_functs_children = []
     with open(asm_descr.filename, 'r') as asm_file:
         state = 'normal'
@@ -296,7 +318,7 @@ def parse_cdi_metadata(cfg, asm_descr, options):
 
                 if '?' in type_sig:
                     eprint("gen_cdi: warning: type signature '{}' from '{}' contains unknown type"
-                            .format(mangled_str, asm_descr.filename))
+                            .format(type_sig, asm_descr.filename))
                     if options['--no-mystery-types']:
                         eprint("gen_cdi: error: '--no-mystery-types' disallows unknown types")
                         sys.exit(1)
@@ -305,6 +327,15 @@ def parse_cdi_metadata(cfg, asm_descr, options):
                     uniq_label = asm_descr.filename + '.' + funct_name
                     cfg.funct(uniq_label).ftype = type_sig
                 except KeyError:
+                    eprint("warning: no function found with uniq_label '{}'"
+                            .format(uniq_label))
+
+                    dangling_metadata.append((uniq_label, type_sig))
+                    continue
+
+                    # The code below handles optimizations, but is incomplete
+                    # For now, we exit with error above
+
                     # gcc may optimize functions by splitting, cloning, or otherwise
                     # modifying them. In all cases (it seems), gcc appends 
                     # '.[optimization name].[number]' to the original function

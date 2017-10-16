@@ -1,6 +1,10 @@
+import __init__
+
 import types
 import jsonpickle
 import random
+
+from common.eprint import eprint
 
 class FunctControlFlowGraph:
     """A CFG class with functions as vertices instead of basic blocks
@@ -47,6 +51,12 @@ class FunctControlFlowGraph:
 
     def __contains__(self, item):
         return item in self._funct_vertices
+
+    def print_uniq_labels(self):
+        eprint("cfg unique labels:")
+        for uniq_label in sorted(self._funct_vertices.keys()):
+            eprint('\t' + uniq_label)
+
 
 class FunctControlFlowGraphIterator:
     def __init__(self, cfg):

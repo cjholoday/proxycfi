@@ -330,7 +330,7 @@ def convert_call_site(site, cfg, funct, asm_line, asm_dest,
         # The call will be relocated to point at a call trampoline
         call_sled += '\t.byte 0xe8\n'
         call_sled += '\t.long 0x00\n'
-        call_sled += '_CDIX_RREL32_{}__CDIX_TRAM_C_{}:\n'.format(
+        call_sled += '"_CDIX_RREL32_{}__CDIX_TRAM_C_{}":\n'.format(
                 convert_call_site.fptr_id_faucet, site.fptype)
         convert_call_site.fptr_id_faucet += 1
 
@@ -428,7 +428,7 @@ def convert_return_site(site, funct, asm_line, asm_dest, cfg,
         # The jmp will be relocated to point at a return trampoline
         ret_sled += '\t.byte 0xe9\n'
         ret_sled += '\t.long 0x00\n'
-        ret_sled += '_CDIX_RREL32_{}__CDIX_TRAM_R_{}:\n'.format(
+        ret_sled += '"_CDIX_RREL32_{}__CDIX_TRAM_R_{}":\n'.format(
                 funct.rel_id_faucet, fix_label(funct.uniq_label))
         funct.rel_id_faucet += 1
 
