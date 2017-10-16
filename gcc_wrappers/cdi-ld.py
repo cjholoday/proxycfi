@@ -19,6 +19,7 @@ import elf_fixup
 from error import fatal_error
 from common.eprint import eprint
 import common.elf
+import run_profile
 
 def chop_suffix(string, cutoff = ''):
     if cutoff == '':
@@ -300,6 +301,8 @@ def main():
     if not lspec.target_is_shared:
         pass
 
+
+
         # disable these checks for now. They'll be turned on again once the CDI 
         # loader accepts non-CDI code
 
@@ -324,11 +327,80 @@ def main():
         #    fatal_error("__restore_rt address '{}' is different than all predicted addrs: {}"
         #            .format(lib_utils.get_vaddr('__restore_rt', lspec.target), ', '.join(restore_rt_vaddrs)))
 
-    restore_original_objects()
-    error.restore_original_objects_fptr = None
-
     # fix up the ELF file for loading with shared libraries
     elf_fixup.cdi_fixup_elf(lspec)
+
+
+    # PROFILE:
+    # calls run_profiler.py on the object file generated to generate execution profile
+    # re-runs gen_cdi.py with the profiled file.
+    if not lspec.target_is_shared:
+        profiler_command = run_profile.run_profile(lspec.target)
+        profiled_file = lspec.target + '.profile'
+        converter_options.append('--profile-use')
+        converter_options.append(profiled_file)
+        converter_command = [converter_path] + converter_options + fake_obj_paths
+        try:
+            subprocess.check_call(converter_command)
+        except subprocess.CalledProcessError:
+            fatal_error("conversion to CDI assembly failed with command: '{}'".format(
+                ' '.join(converter_command)))
+
+
+        print 'Assembling cdi asm files...'
+        sys.stdout.flush()
+
+        for fake_obj in fake_objs:
+            cdi_asm_fname = chop_suffix(fake_obj.path, '.fake.o') + '.cdi.s'
+            cdi_obj_fname = chop_suffix(fake_obj.path, '.fake.o') + '.cdi.o'
+            gcc_as_command = (['as'] + fake_obj.as_spec_no_io + 
+                    [cdi_asm_fname, '-o', cdi_obj_fname])
+            try:
+                subprocess.check_call(gcc_as_command)
+            except subprocess.CalledProcessError:
+                fatal_error("assembling '{}' failed with command '{}'".format(
+                    cdi_asm_fname, ' '.join(gcc_as_command)))
+
+        target_type = ''
+        if lspec.target_is_shared:
+            target_type = 'shared library'
+        else:
+            target_type = 'executable'
+
+        print "Linking {} '{}'\n".format(target_type, lspec.target)
+        sys.stdout.flush()
+
+        # assemble cdi_abort.cdi.s every time to avoid using a stale version
+        subprocess.check_call(['as', 
+            lib_utils.get_script_dir() + '/../converter/cdi_abort.cdi.s', '-o',
+            '.cdi/cdi_abort.cdi.o'])
+
+        subprocess.check_call(['as',
+            lib_utils.get_script_dir() + '/cdi_sections.cdi.s', '-o',
+            '.cdi/cdi_sections.cdi.o'])
+
+        # put cdi_abort.cdi.o and cdi_sections.cdi.o with the other obj files
+        cdi_obj_fixups[-1].replacement = [
+                cdi_obj_fixups[-1].replacement, '.cdi/cdi_abort.cdi.o', '.cdi/cdi_sections.cdi.o']
+
+        cdi_fixups = ar_fixups + cdi_obj_fixups + sl_fixups
+
+
+        try:
+            cdi_spec = lspec.fixup(cdi_fixups)
+            subprocess.check_call(['ld'] + cdi_spec)
+        except subprocess.CalledProcessError:
+            fatal_error("calling 'ld' with the following spec failed:\n\n{}"
+                    .format(' '.join(cdi_spec)))
+
+        error.file_deleted_on_error = lspec.target
+
+
+        restore_original_objects()
+        error.restore_original_objects_fptr = None
+
+        # fix up the ELF file for loading with shared libraries
+        elf_fixup.cdi_fixup_elf(lspec)
 
 if __name__ == "__main__":
     try:

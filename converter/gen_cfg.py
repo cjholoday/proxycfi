@@ -197,9 +197,9 @@ def assign_targets(cfg, funct, options):
     fptr_sites is a list of sites in funct that have indirect calls
     """
 
-    if options['--profile-use']:
-        assign_targets_profiled(fptr_sites, funct, cfg, options)
-        return
+    # if options['--profile-use']:
+    #     assign_targets_profiled(fptr_sites, funct, cfg, options)
+    #     return
 
     funct.fptr_sites.sort(key=operator.attrgetter('src_line_num'))
     funct.fptr_calls.sort(key=operator.attrgetter('src_line_num'))

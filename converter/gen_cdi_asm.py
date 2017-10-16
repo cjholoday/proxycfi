@@ -13,6 +13,8 @@ import re
 import os
 import struct
 
+import obj_parse
+
 from common.eprint import eprint
 from cdi_abort import cdi_abort
 
@@ -355,34 +357,54 @@ def convert_return_site(site, funct, asm_line, asm_dest, cfg,
     if funct.ftype == '(CON/DE)STRUCTOR':
         asm_dest.write(asm_line)
         return
+    # PROFILE: Extract sled execution counts
+    # If '--profile_use' is supplied sorted_sled is sleds sorted in descending order of execution count
+    # Else sorted_sleds is just list of generated sled labels
+    if options['--profile-use']:
+        profile_file = options.get('--profile-use')
+        sled_profile = obj_parse.load_obj(profile_file)
 
     ret_sled = '\taddq $8, %rsp\n'
-    for target_label, multiplicity in site.targets.iteritems():
+
+    sled_count = {}
+    sled_labels = []
+    for target_label, multiplicity in site.targets.iteritems(): # PROFILE: generate all sleds of the return site
         i = 1
         while i <= multiplicity:
             sled_label = '_CDIX_FROM_{}_TO_{}_{}'.format(fix_label(funct.uniq_label),
                     fix_label(target_label), str(i))
-            if options['--shared-library']:
-                # TODO: use proxy pointers with shared libraries
-                ret_sled += '\t.byte 0x4c\n'
-                ret_sled += '\t.byte 0x8d\n'
-                ret_sled += '\t.byte 0x1d\n'
-                ret_sled += '\t.long 0x00\n'
-                ret_sled += '"_CDIX_RREL32_{}_{}":\n'.format(
-                        '0', sled_label)
-                ret_sled += '\tcmpq\t%r11, -8(%rsp)\n'
-
-                ret_sled += '\t.byte 0x0f\n'
-                ret_sled += '\t.byte 0x84\n'
-                ret_sled += '\t.long 0x00\n'
-                ret_sled += '"_CDIX_RREL32_{}_{}":\n'.format(
-                        '1', sled_label)
-            else:
-                proxy_ptr = funct.proxy_for(sled_label.strip("'"))
-                ret_sled += '\tcmpq\t${}, -8(%rsp)\n'.format(hex(proxy_ptr))
-                ret_sled += '\tje\t"' + sled_label + '"\n'
             i += 1
+            if options['--profile-use']:
+                sled_count[sled_label] = sled_profile[sled_label]
+            else:
+                sled_labels.append(sled_label)
 
+    # PROFILE: sort sled labels on decreasing order of excution count
+    if options['--profile-use']:
+        sorted_sleds = sorted(sled_count, key=sled_count.get, reverse=True)
+    else:
+        sorted_sleds = sled_labels
+
+    for sled_label in sorted_sleds:
+        if options['--shared-library']:
+            # TODO: use proxy pointers with shared libraries
+            ret_sled += '\t.byte 0x4c\n'
+            ret_sled += '\t.byte 0x8d\n'
+            ret_sled += '\t.byte 0x1d\n'
+            ret_sled += '\t.long 0x00\n'
+            ret_sled += '"_CDIX_RREL32_{}_{}":\n'.format(
+                    '0', sled_label)
+            ret_sled += '\tcmpq\t%r11, -8(%rsp)\n'
+
+            ret_sled += '\t.byte 0x0f\n'
+            ret_sled += '\t.byte 0x84\n'
+            ret_sled += '\t.long 0x00\n'
+            ret_sled += '"_CDIX_RREL32_{}_{}":\n'.format(
+                    '1', sled_label)
+        else:
+            proxy_ptr = funct.proxy_for(sled_label.strip("'"))
+            ret_sled += '\tcmpq\t${}, -8(%rsp)\n'.format(hex(proxy_ptr))
+            ret_sled += '\tje\t"' + sled_label + '"\n'
     # subtract another 8 bytes off the stack pointer since we'll be 
     # using two return address on the way back: one to get from the SLT
     # to the RLT and another to get from the RLT to the executable code
