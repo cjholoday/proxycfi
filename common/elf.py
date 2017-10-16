@@ -55,6 +55,7 @@ class Elf64:
             try:
                 return self.sect_headers_dict[wanted_sect]
             except KeyError:
+                eprint(self.sect_headers_dict)
                 raise Elf64.MissingSection
 
         self.sect_headers_dict = dict()
@@ -78,6 +79,7 @@ class Elf64:
             if num_sect_headers == 0:
                 self.error_callback("elf file '{}' has no section headers in its "
                         "section header table".format(self.path))
+            eprint('num sect headers', num_sect_headers)
 
             # get the section header table index of the section header strtab
             elf.seek(64 - 2)
@@ -91,6 +93,7 @@ class Elf64:
             # load the strtab for ourselves
             elf.seek(shstrtab_offset)
             shstrtab = elf.read(shstrtab_size)
+            eprint('shstrtab:', shstrtab)
 
             # now build a dictionary of section headers
             elf.seek(sh_table_offset)

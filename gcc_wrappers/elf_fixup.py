@@ -169,7 +169,12 @@ def get_rlt_fixups(elf):
     return rlt_fixups
 
 def fixup_plt_loc_metadata(target_elf):
-    plt_sh = target_elf.find_section('.plt')
+    try:
+        plt_sh = target_elf.find_section('.plt')
+    except common.elf.Elf64.MissingSection:
+        eprint("cdi-ld: warning: no plt found")
+        return dict()
+
     fast_plt_sh = target_elf.find_section('.plt.got')
     plt_ranges_sh = target_elf.find_section('.cdi_plt_ranges')
 
@@ -228,7 +233,11 @@ def get_rrel32_fixups(elf):
     return list(itertools.chain.from_iterable(rrel32_fixup_dict.values()))
 
 def fixup_plt(elf):
-    fast_plt_sh = elf.find_section('.plt.got')
+    try:
+        fast_plt_sh = elf.find_section('.plt.got')
+    except common.elf.Elf64.MissingSection:
+        return # there are no fast plts, so we need not fix anything
+
     slow_plt_sh = elf.find_section('.slow_plt')
     got_sh = elf.find_section('.got')
 
@@ -299,7 +308,12 @@ def extract_plt_ret_addrs(elf):
         # it's possibel there are no regular PLT entries
         pass 
 
-    plt_sh = elf.find_section('.plt')
+    try:
+        plt_sh = elf.find_section('.plt')
+    except common.elf.Elf64.MissingSection:
+        eprint("cdi-ld: warning: no plt found")
+        return dict()
+
     got_sh = elf.find_section('.got')
     slow_plt_sh = elf.find_section('.slow_plt')
     for sym in elf.get_symbols('.dynsym'):
