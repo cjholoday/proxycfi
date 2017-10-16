@@ -6,10 +6,10 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 # purpose: generate an unsafe (non-CDI) shared library and link with it
 
-cdi-gcc --make-sl=libcaller.so caller.c
+cdi-gcc --cdi-make-sl=libcaller.so caller.c
 
 
-cdi-gcc --use-sl=libcaller.so main.c -o out
+cdi-gcc --cdi-use-sl=libcaller.so main.c -o out
 
 if [ "$?" != 0 ]; then
     echo ERROR: Compilation failed!

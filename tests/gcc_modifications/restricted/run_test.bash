@@ -6,8 +6,7 @@ rm -f *.o *.s *.json *.i *.ftypes *.out *.fptypes output out
 
 verify="../../../verifier/verify.py"
 
-cdi_flags="-g --save-temps -fno-jump-tables"
-cdi-gcc $cdi_flags -Wl,--cdi-options="--no-mystery-types" main.c -o out
+cdi-gcc  --cdi-converter-no-mystery-types main.c -o out
 
 if [ "$?" != 0 ]; then
     echo ERROR: Compilation failed

@@ -16,8 +16,8 @@ fi
 rm out
 
 # now compile the ctors and dtors into a shared library 
-cdi-gcc --make-sl=libcdtors.so.1.0.0 cdtors.c
-cdi-gcc --use-sl=libcdtors.so main.c -o out
+cdi-gcc --cdi-make-sl=libcdtors.so.1.0.0 cdtors.c
+cdi-gcc --cdi-use-sl=libcdtors.so main.c -o out
 
 ./out > output
 diff output correct_output
