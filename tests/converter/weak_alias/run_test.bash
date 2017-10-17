@@ -2,7 +2,7 @@
 
 clean
 
-cdi-gcc main.c -o out
+cdi-gcc main.c other.c -o out
 check "compilation failed" || exit 1
 
 # Check that the output is correct
