@@ -18,11 +18,18 @@ class FunctControlFlowGraph:
     """
 
     def __init__(self):
-        # don't touch this attribute; it's internal
+        # don't touch these attributes; they're internal
         self._funct_vertices = dict()
+        self._aliases = dict()
 
     def add_funct(self, funct):
         uniq_label = funct.asm_filename + '.' + funct.asm_name
+
+        if uniq_label in self._aliases:
+            eprint("gen_cdi: error: adding function to cfg whose uniq_label "
+                    "collides with an alias")
+            sys.exit(1)
+
         self._funct_vertices[uniq_label] = funct
 
     def size(self):
@@ -30,7 +37,10 @@ class FunctControlFlowGraph:
         return len(self._funct_vertices)
 
     def funct(self, uniq_label):
-        return self._funct_vertices[uniq_label]
+        if uniq_label in self._aliases:
+            return self._funct_vertices[self._aliases[uniq_label]]
+        else:
+            return self._funct_vertices[uniq_label]
 
     def __iter__(self):
         return iter(FunctControlFlowGraphIterator(self))
@@ -51,6 +61,26 @@ class FunctControlFlowGraph:
 
     def __contains__(self, item):
         return item in self._funct_vertices
+
+    def set_global(self, uniq_label):
+        """Create an alias mapping [bare funct name] -> [funct]
+
+        This allows the function to be obtained using only its name rather than
+        the uniq_label. The function will remain accessible by its uniq_label
+        """
+        self.add_alias(uniq_label.split('.')[-1], uniq_label)
+
+
+    def add_alias(self, alias, uniq_label):
+        if alias in self._aliases:
+            eprint("gen_cdi: warning: overwriting alias: '{}' -> [old: '{}', new: '{}']"
+                    .format(alias, self._aliases[alias], uniq_label))
+
+        if alias in self._funct_vertices:
+            eprint("gen_cdi: error: alias ['{}' -> '{}'] will hide function with uniq_label '{}'"
+                    .format(alias, uniq_label, self._funct_vertices[alias]))
+            sys.exit(1)
+        self._aliases[alias] = uniq_label
 
     def print_uniq_labels(self):
         eprint("cfg unique labels:")

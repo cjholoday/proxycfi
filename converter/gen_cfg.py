@@ -18,8 +18,6 @@ def gen_cfg(asm_file_descrs, plt_sites, options):
 
     """
 
-    global_functs = []
-
     cfg = funct_cfg.FunctControlFlowGraph()
     for descr in asm_file_descrs:
         dwarf_loc = asm_parsing.DwarfSourceLoc()
@@ -28,8 +26,10 @@ def gen_cfg(asm_file_descrs, plt_sites, options):
         line_num = 0
 
         is_global = False
-        funct_name, line_num, is_global, symbol_tuples = (
+        funct_name, line_num, is_global, set_cmds = (
                 asm_parsing.goto_next_funct(asm_file, line_num, dwarf_loc))
+
+        descr.set_cmds += set_cmds
         
         dirname = os.path.dirname(descr.filename) + '/'
         if dirname == '/':
@@ -41,36 +41,58 @@ def gen_cfg(asm_file_descrs, plt_sites, options):
             funct.is_global = is_global
             funct.src_filename = dirname + funct.src_filename
 
-            if funct.is_global:
-                global_functs.append(funct)
 
             cfg.add_funct(funct)
+            if funct.is_global:
+                cfg.set_global(funct.uniq_label)
+
             descr.funct_names.append(funct.asm_name)
 
-            funct_name, line_num, is_global, symbol_tuples = (
+            funct_name, line_num, is_global, set_cmds = (
                     asm_parsing.goto_next_funct(asm_file, line_num, dwarf_loc))
+            descr.set_cmds += set_cmds
 
         asm_file.close()
 
+    # Add aliases to the cfg with all the set commands
+    for descr in asm_file_descrs:
+        eprint(descr.filename)
+        eprint(descr.set_cmds)
+        for set_cmd in descr.set_cmds:
+            from_ul = descr.ul(set_cmd[0])
+            to_ul = descr.ul(set_cmd[1])
+            eprint('ul alias:', from_ul, to_ul)
+
+            if to_ul in cfg:
+                eprint('adding alias {} -> {}'.format(from_ul, to_ul))
+                cfg.add_alias(from_ul, to_ul)
+    
+
     # fix the direct calls so that they point to functions instead of strings
     for descr in asm_file_descrs:
-        descr_functs = [cfg.funct(descr.filename + '.' + n) for n in descr.funct_names]
+        descr_functs = [cfg.funct(descr.ul(n)) for n in descr.funct_names]
         for funct in descr_functs:
             for dir_call_site in funct.direct_call_sites:
                 target_name = dir_call_site.targets[0].replace('@PLT', '')
-                if target_name in descr.funct_names:
-                    dir_call_site.targets[0] = cfg.funct(descr.filename + '.' + target_name)
-                else:
-                    for glob_funct in global_functs:
-                        if glob_funct.asm_name == target_name:
-                            dir_call_site.targets[0] = (
-                                    cfg.funct(glob_funct.asm_filename + '.' + target_name))
-                            break
-                    else:
-                        # the function is not defined in the source files
-                        # so it must be from a shared library
-                        dir_call_site.group = dir_call_site.PLT_SITE
-                        plt_sites.append(dir_call_site)
+                eprint(target_name)
+
+                # Three cases: The function target is... 
+                #   1. local to this assembly file
+                #   2. globally visible from all assembly files
+                #   3. outside this code object (in another shared library/obj)
+
+                try:
+                    dir_call_site.targets[0] = cfg.funct(descr.ul(target_name))
+                    continue
+                except KeyError:
+                    pass
+                
+                try:
+                    dir_call_site.targets[0] = cfg.funct(target_name)
+                except KeyError:
+                    dir_call_site.group = dir_call_site.PLT_SITE
+                    plt_sites.append(dir_call_site)
+                
 
     # the direct call lists shouldn't be used because they are polluted with the
     # PLT calls, for which only the plt function name is known
