@@ -1,3 +1,3 @@
 #!/bin/bash
 
-cdi-gcc -specs="/home/colton/research/cdi/musl/dest/lib/musl-gcc.specs" formulas.c calc.c main.c -o out -static
+cdi-gcc -specs="/home/colton/research/cdi/musl/dest/lib/musl-gcc.specs" formulas.c calc.c main.c -o out -static --cdi-converter-verbose

@@ -56,17 +56,18 @@ def gen_cfg(asm_file_descrs, plt_sites, options):
 
     # Add aliases to the cfg with all the set commands
     for descr in asm_file_descrs:
-        eprint(descr.filename)
-        eprint(descr.set_cmds)
         for set_cmd in descr.set_cmds:
             from_ul = descr.ul(set_cmd[0])
             to_ul = descr.ul(set_cmd[1])
-            eprint('ul alias:', from_ul, to_ul)
 
             if to_ul in cfg:
-                eprint('adding alias {} -> {}'.format(from_ul, to_ul))
                 cfg.add_alias(from_ul, to_ul)
+                # all set commands are seen globally as well
+                cfg.add_alias(set_cmd[0], to_ul)
     
+    if options['--verbose']:
+        cfg.print_aliases()
+        cfg.print_uniq_labels()
 
     # fix the direct calls so that they point to functions instead of strings
     for descr in asm_file_descrs:
@@ -74,7 +75,6 @@ def gen_cfg(asm_file_descrs, plt_sites, options):
         for funct in descr_functs:
             for dir_call_site in funct.direct_call_sites:
                 target_name = dir_call_site.targets[0].replace('@PLT', '')
-                eprint(target_name)
 
                 # Three cases: The function target is... 
                 #   1. local to this assembly file
@@ -92,6 +92,8 @@ def gen_cfg(asm_file_descrs, plt_sites, options):
                 except KeyError:
                     dir_call_site.group = dir_call_site.PLT_SITE
                     plt_sites.append(dir_call_site)
+                    if options['--verbose']:
+                        eprint("Found PLT target '{}".format(dir_call_site.targets[0]))
                 
 
     # the direct call lists shouldn't be used because they are polluted with the
@@ -99,12 +101,8 @@ def gen_cfg(asm_file_descrs, plt_sites, options):
     for funct in cfg:
         del(funct.direct_call_sites)
 
-    # try:
     build_indir_targets(cfg, asm_file_descrs, options)
     build_ret_dicts(cfg)
-    # except NoTypeFile as warning:
-    # build_ret_dicts(cfg, True)
-    # eprint(warning)
 
     return cfg
 
@@ -389,8 +387,8 @@ def parse_cdi_metadata(cfg, asm_descr, options):
 
                 uniq_label = asm_descr.filename + '.' + enclosing_funct_name
                 cfg.funct(uniq_label).fptr_calls.append(fptr_call)
-                if options['--verbose']:
-                    print 'In ' + fp_type.enclosing_funct_name + ': ' + str(fp_type)
+                #if options['--verbose']:
+                #print 'In ' + fp_type.enclosing_funct_name + ': ' + str(fp_type)
 
     # the following is code attempted to deal with tricky gcc optimizations
     # it's commented out for now because shared libraries / the verifier are

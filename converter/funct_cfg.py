@@ -87,6 +87,11 @@ class FunctControlFlowGraph:
         for uniq_label in sorted(self._funct_vertices.keys()):
             eprint('\t' + uniq_label)
 
+    def print_aliases(self):
+        eprint("cfg aliases:")
+        for alias_pair in self._aliases.iteritems():
+            eprint("{:<40} -> {:>40}".format(alias_pair[0], alias_pair[1]))
+
 
 class FunctControlFlowGraphIterator:
     def __init__(self, cfg):
