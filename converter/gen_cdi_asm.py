@@ -415,7 +415,7 @@ def convert_return_site(site, funct, asm_line, asm_dest, cfg,
                     '1', sled_label)
         else:
             if options['--profile-gen']:
-                ret_sled += '\tcmpq\t${}, -8(%rsp)\n'.format(sled_label)
+                ret_sled += '\tcmpq\t$"{}", -8(%rsp)\n'.format(sled_label)
             else:
                 proxy_ptr = funct.proxy_for(sled_label.strip("'"))
                 ret_sled += '\tcmpq\t${}, -8(%rsp)\n'.format(hex(proxy_ptr))
