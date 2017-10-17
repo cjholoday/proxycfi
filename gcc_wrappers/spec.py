@@ -162,7 +162,7 @@ class LinkerSpec():
                 self.fatal_error("Unknown spec entry type '{}'".format(entry_type))
 
             if entry_type == 'cdi_options':
-                self.cdi_options = entry[len('--cdi-options='):].split(' ')
+                self.cdi_options = entry[len('--cdi-options='):].split('|')
             elif entry_type == 'misc':
                 if prev_entry == '-o':
                     self.target = entry

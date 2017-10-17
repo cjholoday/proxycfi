@@ -124,7 +124,7 @@ if __name__ == '__main__':
             cdi_options.append(opt)
             gcc_opts[idx] = '-g' # void this option
     if cdi_options:
-        gcc_opts.append("-Wl,--cdi-options={}".format(','.join(cdi_options)))
+        gcc_opts.append("-Wl,--cdi-options={}".format('|'.join(cdi_options)))
 
     if '--cdi-help' in cdi_options:
         print_cdi_help()

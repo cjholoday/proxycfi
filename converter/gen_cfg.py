@@ -367,8 +367,8 @@ def parse_cdi_metadata(cfg, asm_descr, options):
 
                 uniq_label = asm_descr.filename + '.' + enclosing_funct_name
                 cfg.funct(uniq_label).fptr_calls.append(fptr_call)
-                if options['--verbose']:
-                    print 'In ' + fp_type.enclosing_funct_name + ': ' + str(fp_type)
+                #if options['--verbose']:
+                #print 'In ' + fp_type.enclosing_funct_name + ': ' + str(fp_type)
 
     # the following is code attempted to deal with tricky gcc optimizations
     # it's commented out for now because shared libraries / the verifier are
