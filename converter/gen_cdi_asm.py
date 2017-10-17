@@ -233,14 +233,19 @@ def convert_call_site(site, cfg, funct, asm_line, asm_dest,
         # we do relocations ourselves if we're in a shared library, so don't
         # make it global for shared libraries either
         globl_decl = ''
-        if funct.asm_filename != site.targets[0].asm_filename and not options['--shared-library']:
-            globl_decl = '.globl\t' + label + '\n'
+        # if funct.asm_filename != site.targets[0].asm_filename and not options['--shared-library']:
+        if not options['--shared-library']:
+            if funct.asm_filename != site.targets[0].asm_filename or options['--profile-gen']:
+                globl_decl = '.globl\t' + label + '\n'
 
         call = ''
         if not options['--shared-library']:
-            proxy_ptr = site.targets[0].proxy_for(label.strip('"'))
-            call = '\tpushq ${}\n'.format(hex(proxy_ptr))
-            call += asm_line.replace('call', 'jmp', 1)
+            if options['--profile-gen']:
+                call = asm_line
+            else:
+                proxy_ptr = site.targets[0].proxy_for(label.strip('"'))
+                call = '\tpushq ${}\n'.format(hex(proxy_ptr))
+                call += asm_line.replace('call', 'jmp', 1)
         else:
             # TODO: use proxy pointers with shared libraries
             target = cfg.funct(site.targets[0].uniq_label)
@@ -275,7 +280,8 @@ def convert_call_site(site, cfg, funct, asm_line, asm_dest,
                 str(times_fixed))
 
         globl_decl = ''
-        if funct.asm_filename != target.asm_filename:
+        # if funct.asm_filename != target.asm_filename:
+        if funct.asm_filename != site.targets[0].asm_filename or options['--profile-gen']:
             globl_decl = '.globl\t"{}"\n'.format(return_label)
 
         call_sled += '1:\n'
@@ -301,8 +307,11 @@ def convert_call_site(site, cfg, funct, asm_line, asm_dest,
         else:
             call_sled += '\tcmpq\t$"_CDIX_F_{}", {}\n'.format(target_name, call_operand)
             call_sled += '\tjne\t1f\n'
-            call_sled += '\tpushq ${}\n'.format(hex(target.proxy_for(return_label)))
-            call_sled += '\tjmp\t"_CDIX_F_{}"\n'.format(target_name)
+            if options['--profile-gen']:
+                call_sled += '\tcall\t"_CDIX_F_{}"\n'.format(target_name)
+            else:
+                call_sled += '\tpushq ${}\n'.format(hex(target.proxy_for(return_label)))
+                call_sled += '\tjmp\t"_CDIX_F_{}"\n'.format(target_name)
         call_sled += globl_decl
         call_sled += '"{}":\n'.format(return_label)
         call_sled += '\tjmp\t2f\n'
@@ -375,7 +384,10 @@ def convert_return_site(site, funct, asm_line, asm_dest, cfg,
                     fix_label(target_label), str(i))
             i += 1
             if options['--profile-use']:
-                sled_count[sled_label] = sled_profile[sled_label]
+                if sled_label in sled_profile.keys():
+                    sled_count[sled_label] = sled_profile[sled_label]
+                else:
+                    sled_count[sled_label] = 0
             else:
                 sled_labels.append(sled_label)
 
@@ -402,8 +414,11 @@ def convert_return_site(site, funct, asm_line, asm_dest, cfg,
             ret_sled += '"_CDIX_RREL32_{}_{}":\n'.format(
                     '1', sled_label)
         else:
-            proxy_ptr = funct.proxy_for(sled_label.strip("'"))
-            ret_sled += '\tcmpq\t${}, -8(%rsp)\n'.format(hex(proxy_ptr))
+            if options['--profile-gen']:
+                ret_sled += '\tcmpq\t${}, -8(%rsp)\n'.format(sled_label)
+            else:
+                proxy_ptr = funct.proxy_for(sled_label.strip("'"))
+                ret_sled += '\tcmpq\t${}, -8(%rsp)\n'.format(hex(proxy_ptr))
             ret_sled += '\tje\t"' + sled_label + '"\n'
     # subtract another 8 bytes off the stack pointer since we'll be 
     # using two return address on the way back: one to get from the SLT

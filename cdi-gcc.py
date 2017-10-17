@@ -99,6 +99,9 @@ if __name__ == '__main__':
     # assembly files need to be outputted for the converter
     gcc_opts.append('--save-temps')
 
+    # testing cdi-profile flag
+    gcc_opts.append('--cdi-profile')
+
     # jump tables use indirect jumps
     gcc_opts.append('-fno-jump-tables')
 

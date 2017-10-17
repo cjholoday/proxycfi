@@ -160,6 +160,7 @@ def main():
 
     try:
         normified_spec = lspec.fixup(normification_fixups)
+        eprint("normified_spec", normified_spec)
         ld_command = ['ld'] + normified_spec + ['--verbose']
         verbose_linker_output = subprocess.check_output(ld_command)
     except subprocess.CalledProcessError:
@@ -245,6 +246,8 @@ def main():
     if sl_load_addrs:
         lspec.converter_options.append('--sl-fptr-addrs')
         lspec.converter_options.append('.cdi/sl_callback_table')
+    if '--cdi-profile' in lspec.cdi_options:
+        lspec.converter_options.append('--profile-gen')
 
     converter_command = [converter_path] + lspec.converter_options + fake_obj_paths
     try:
@@ -295,6 +298,7 @@ def main():
 
     try:
         cdi_spec = lspec.fixup(cdi_fixups)
+        eprint("cdi_spec: ", cdi_spec)
         subprocess.check_call(['ld'] + cdi_spec)
     except subprocess.CalledProcessError:
         fatal_error("calling 'ld' with the following spec failed:\n\n{}"
@@ -334,17 +338,17 @@ def main():
 
     # fix up the ELF file for loading with shared libraries
     elf_fixup.cdi_fixup_elf(lspec)
-
-
     # PROFILE:
     # calls run_profiler.py on the object file generated to generate execution profile
     # re-runs gen_cdi.py with the profiled file.
-    if not lspec.target_is_shared:
+    if not lspec.target_is_shared and '--cdi-profile' in lspec.cdi_options:
+        print "doingggggggggggggggggg profiling"
         profiler_command = run_profile.run_profile(lspec.target)
         profiled_file = lspec.target + '.profile'
-        converter_options.append('--profile-use')
-        converter_options.append(profiled_file)
-        converter_command = [converter_path] + converter_options + fake_obj_paths
+        lspec.converter_options.remove('--profile-gen')
+        lspec.converter_options.append('--profile-use')
+        lspec.converter_options.append(profiled_file)
+        converter_command = [converter_path] + lspec.converter_options + fake_obj_paths
         try:
             subprocess.check_call(converter_command)
         except subprocess.CalledProcessError:
@@ -352,7 +356,7 @@ def main():
                 ' '.join(converter_command)))
 
 
-        print 'Assembling cdi asm files...'
+            print 'Assembling cdi asm files...'
         sys.stdout.flush()
 
         for fake_obj in fake_objs:
@@ -392,20 +396,23 @@ def main():
 
 
         try:
-            cdi_spec = lspec.fixup(cdi_fixups)
+            # cdi_spec = lspec.fixup(cdi_fixups)
             subprocess.check_call(['ld'] + cdi_spec)
         except subprocess.CalledProcessError:
             fatal_error("calling 'ld' with the following spec failed:\n\n{}"
                     .format(' '.join(cdi_spec)))
 
         error.file_deleted_on_error = lspec.target
+            # do some sanity checks for executables
+        if not lspec.target_is_shared:
+            pass
 
-
-        restore_original_objects()
-        error.restore_original_objects_fptr = None
-
-        # fix up the ELF file for loading with shared libraries
         elf_fixup.cdi_fixup_elf(lspec)
+
+    restore_original_objects()
+    error.restore_original_objects_fptr = None
+
+
 
 if __name__ == "__main__":
     try:

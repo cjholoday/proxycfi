@@ -23,11 +23,11 @@ if __name__ == "__main__":
             help='filenames of assembly files to be converted to CDI')
     parser.add_argument('-v', '--verbose', action='store_true',
             help='prints out extra information', dest='--verbose')
-    parser.add_argument('-pg', '--profile-gen', metavar='PROFILE',
-            help='generates a profile for use next time in compilation. TODO',
-            dest='--profile-gen', default='')
+    parser.add_argument('-pg', '--profile-gen', action='store_true',
+            help='generates a profile for use next time in compilation.',
+            dest='--profile-gen')
     parser.add_argument('-pu', '--profile-use', type=str, metavar='PROFILE',
-            help='uses profile data to optimize the CDI sleds. TODO',
+            help='uses profile data to optimize the CDI sleds.',
             dest='--profile-use', default='')
     parser.add_argument('-sl', '--shared-library', action='store_true',
             help='if set, generate code for use as a CDI shared library',
@@ -54,6 +54,7 @@ if __name__ == "__main__":
     asm_filenames = options['asm_filenames']
     asm_file_descrs = []
     for filename in asm_filenames:
+        print filename
         asm_file_descrs.append(asm_parsing.AsmFileDescription(filename))
         asm_file_descrs[-1].check_filename()
 

@@ -32,26 +32,27 @@ def get_map(objdump_file): # Extracts all the (Ip,sled mapping) for a given objd
     ip_sled = []
     with open(objdump_file) as f:
         for line in f:
-            if "_CDIX_" in line and "_TO_" in line and line[-2] == (':'):
+            if ".symtab"in line:
+                break
+            if "_CDIX_FROM_" in line and "_TO_" in line:
                 l = line.split()
-                ip = int(l[0], 16)
-                sled = l[1][1:-2]
-                ip_sled.append((ip, '"'+ sled +'"'))
+                ip = int(l[1], 16)
+                sled = l[7]
+                ip_sled.append((ip, sled))
     return ip_sled
 
 
 def run_profile(program):
     
     # Get Ip to sled mapping using gdb
-    objdump_file = program + '.objdump'
-    objdump_cmd = []
-    objdump_cmd.append('objdump')
-    objdump_cmd.append('-D')
-    objdump_cmd.append(program)
-    # objdump_cmd.append('>')
-    # objdump_cmd.append(objdump_file)
+    objdump_file = program + '.readelf'
+    readelf_cmd = []
+    readelf_cmd.append('readelf')
+    readelf_cmd.append('-s')
+    readelf_cmd.append('--wide')
+    readelf_cmd.append(program)
     f = open(objdump_file,'w')
-    subprocess.call(objdump_cmd,stdout=f)
+    subprocess.call(readelf_cmd,stdout=f)
     ip_sled = get_map(objdump_file)
 
     # Generate Execution trace using pin
@@ -62,7 +63,7 @@ def run_profile(program):
     pin_cmdline = []
     pin_cmd = pin_dir +"pin"
     pin_cmdline.append(pin_cmd)
-    pin_cmdline += ['-ifeellucky']
+    pin_cmdline += ['-ifeellucky'] # work around bug in pin
     pin_cmdline += ['-injection','child']
     pin_cmdline += ['-t',pin_tool]
     pin_cmdline += ['-i',itrace_file]
@@ -86,7 +87,8 @@ def run_profile(program):
     for ip,sled in ip_sled:
         count = exec_iptrs.count(ip)
         sled_count[sled] = count
-
+    for sl,cnt in sled_count.iteritems():
+        print sl,cnt
     obj_parse.save_obj(sled_count,output_file )
     return output_file
 
