@@ -44,7 +44,11 @@ class Elf64:
         self.error_callback = error_callback
 
     class MissingSection(Exception):
-        pass
+        def __init__(self, section):
+            self.section = section
+
+        def show(self):
+            eprint("Missing section:", self.section)
 
     def find_section(self, wanted_sect):
         """Returns a section header with name 'wanted_sect'
@@ -55,7 +59,7 @@ class Elf64:
             try:
                 return self.sect_headers_dict[wanted_sect]
             except KeyError:
-                raise Elf64.MissingSection
+                raise Elf64.MissingSection(wanted_sect)
 
         self.sect_headers_dict = dict()
         self.sect_headers = []
@@ -118,7 +122,13 @@ class Elf64:
             return
 
         with open(self.path, 'rb') as elf:
-            sh = self.find_section(strtab_name)
+            try:
+                sh = self.find_section(strtab_name)
+            except Elf64.MissingSection:
+                # implicitly set the strtab to empty string when we can't find it
+                setattr(self, strtab_name[1:], '')
+                return
+
             elf.seek(sh.sh_offset)
             setattr(self, strtab_name[1:], elf.read(sh.sh_size))
 
@@ -129,7 +139,12 @@ class Elf64:
             self.init_strtab('.dynstr')
 
         with open(self.path, 'rb') as elf:
-            symtab_header = self.find_section(symtab_name)
+            try:
+                symtab_header = self.find_section(symtab_name)
+            except Elf64.MissingSection as err:
+                err.show()
+                raise
+
             elf.seek(symtab_header.sh_offset)
 
             num_symtab_entries = symtab_header.sh_size / 24
@@ -151,7 +166,11 @@ class Elf64:
 
     def get_needed_sls(self):
         self.init_strtab('.dynstr')
-        dyn_sh = self.find_section('.dynamic')
+        try:
+            dyn_sh = self.find_section('.dynamic')
+        except Elf64.MissingSection as err:
+            # this elf file is statically compiled
+            return []
 
         sonames = []
         with open(self.path, 'rb') as elf:

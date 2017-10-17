@@ -239,16 +239,23 @@ def sl_trace_bin(binary, is_shared):
     library load addresses
     """
 
+    # short circuit if there are no sl dependencies at all. We use ldd for
+    # checking this because it doesn't run the exe if there are no dependencies
+    try:
+        ldd_trace = subprocess.check_output(['ldd', binary])
+        if ldd_trace.strip() in ['statically linked', 'not a dynamic executable']:
+            return []
+    except subprocess.CalledProcessError:
+        # ldd may also exit with failure
+        return []
+
     traced_output = None
     if is_shared:
-        traced_output = subprocess.check_output(['ldd', binary])
+        traced_output = ldd_trace
     else:
         traced_output = subprocess.check_output(['./' + binary], 
                 env=dict(os.environ, **{'LD_TRACE_LOADED_OBJECTS':'1'}))
 
-    # short circuit if there are no sl dependencies at all
-    if traced_output.strip() == 'statically linked':
-        return []
 
     lib_addr_pairs = []
     eprint("traced output:", traced_output)
@@ -302,8 +309,9 @@ def get_cdi_runtime_search_path_fixup(lspec):
     to the runtime path list at the start of the spec
     """
 
-    replacement = [lspec.entry_lists[lspec.entry_types[0]][0], 
-            '-rpath=/usr/local/cdi/lib', '-rpath=/usr/local/cdi/ulib']
+    replacement = ['-rpath=/usr/local/cdi/lib', '-rpath=/usr/local/cdi/ulib',
+            lspec.entry_lists[lspec.entry_types[0]][0]]
+
     return spec.LinkerSpec.Fixup(lspec.entry_types[0], 0, replacement)
 
 def st_vaddr(symbol, elf):

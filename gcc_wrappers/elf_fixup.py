@@ -26,10 +26,14 @@ def cdi_fixup_elf(lspec):
     if '_CDI_abort' in globl_funct_mults:
         del globl_funct_mults['_CDI_abort']
 
-    ftypetab_size = target_elf.find_section('.cdi_ftypetab').sh_size
-    fptypetab_size = target_elf.find_section('.cdi_fptypetab').sh_size
-    floctab_size = target_elf.find_section('.cdi_floctab').sh_size
-    fploctab_size = target_elf.find_section('.cdi_fploctab').sh_size
+    try:
+        ftypetab_size = target_elf.find_section('.cdi_ftypetab').sh_size
+        fptypetab_size = target_elf.find_section('.cdi_fptypetab').sh_size
+        floctab_size = target_elf.find_section('.cdi_floctab').sh_size
+        fploctab_size = target_elf.find_section('.cdi_fploctab').sh_size
+    except common.elf.Elf64.MissingSection as err:
+        err.show()
+        raise
 
     # put the floctab and fploctab sections first to mirror the linker script
     type_sect_strs  = ['.cdi_floctab', '.cdi_fploctab', '.cdi_ftypetab', '.cdi_fptypetab']
@@ -169,9 +173,18 @@ def get_rlt_fixups(elf):
     return rlt_fixups
 
 def fixup_plt_loc_metadata(target_elf):
-    plt_sh = target_elf.find_section('.plt')
-    fast_plt_sh = target_elf.find_section('.plt.got')
-    plt_ranges_sh = target_elf.find_section('.cdi_plt_ranges')
+    try:
+        plt_sh = target_elf.find_section('.plt')
+    except common.elf.Elf64.MissingSection:
+        eprint("cdi-ld: warning: no plt found")
+        return dict()
+
+    try:
+        fast_plt_sh = target_elf.find_section('.plt.got')
+        plt_ranges_sh = target_elf.find_section('.cdi_plt_ranges')
+    except common.elf.Elf64.MissingSection as err:
+        err.show()
+        raise
 
     with open(target_elf.path, 'r+b') as elf:
         elf.seek(plt_ranges_sh.sh_offset)
@@ -228,9 +241,17 @@ def get_rrel32_fixups(elf):
     return list(itertools.chain.from_iterable(rrel32_fixup_dict.values()))
 
 def fixup_plt(elf):
-    fast_plt_sh = elf.find_section('.plt.got')
-    slow_plt_sh = elf.find_section('.slow_plt')
-    got_sh = elf.find_section('.got')
+    try:
+        fast_plt_sh = elf.find_section('.plt.got')
+    except common.elf.Elf64.MissingSection:
+        return # there are no fast plts, so we need not fix anything
+
+    try:
+        slow_plt_sh = elf.find_section('.slow_plt')
+        got_sh = elf.find_section('.got')
+    except common.elf.Elf64.MissingSection as err:
+        err.show()
+        raise
 
     # __cxa_finalize goes through the fast plt, but it is part of the 
     # startup/cleanup code that will not be made CDI compliant in this 
@@ -296,10 +317,15 @@ def extract_plt_ret_addrs(elf):
     try:
         plt_relocs = elf.get_rela_relocs('.rela.plt')
     except common.elf.Elf64.MissingSection:
-        # it's possibel there are no regular PLT entries
+        # it's possible there are no regular PLT entries
         pass 
 
-    plt_sh = elf.find_section('.plt')
+    try:
+        plt_sh = elf.find_section('.plt')
+    except common.elf.Elf64.MissingSection:
+        eprint("cdi-ld: warning: no plt found")
+        return dict()
+
     got_sh = elf.find_section('.got')
     slow_plt_sh = elf.find_section('.slow_plt')
     for sym in elf.get_symbols('.dynsym'):
