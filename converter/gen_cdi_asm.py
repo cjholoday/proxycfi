@@ -235,8 +235,8 @@ def convert_call_site(site, cfg, funct, asm_line, asm_dest,
         globl_decl = ''
         # if funct.asm_filename != site.targets[0].asm_filename and not options['--shared-library']:
         if not options['--shared-library']:
-            if funct.asm_filename != site.targets[0].asm_filename or options['--profile-gen']:
-                globl_decl = '.globl\t' + label + '\n'
+            # if funct.asm_filename != site.targets[0].asm_filename or options['--profile-gen']:
+            globl_decl = '.globl\t' + label + '\n'
 
         call = ''
         if not options['--shared-library']:
@@ -281,8 +281,8 @@ def convert_call_site(site, cfg, funct, asm_line, asm_dest,
 
         globl_decl = ''
         # if funct.asm_filename != target.asm_filename:
-        if funct.asm_filename != site.targets[0].asm_filename or options['--profile-gen']:
-            globl_decl = '.globl\t"{}"\n'.format(return_label)
+        # if funct.asm_filename != site.targets[0].asm_filename or options['--profile-gen']:
+        globl_decl = '.globl\t"{}"\n'.format(return_label)
 
         call_sled += '1:\n'
         if options['--shared-library']:

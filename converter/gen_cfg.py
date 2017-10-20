@@ -242,10 +242,10 @@ def assign_targets(cfg, funct, options):
 
     i = j = 0
     def print_fptr_type_unmatched_msg():
-        eprint(funct.src_filename + ':' + str(funct.fptr_types[i].src_line_num)
+        eprint(funct.src_filename + ':' + str(funct.fptr_calls[i].src_line_num)
                 + ': warning: fptr type not associated with any indirect '
-                + 'call. The fptr call may have been inlined. '
-                + 'fptr type: ' + str(funct.fptr_types[i]))
+                + 'call. The fptr call may have been inlined. ')
+                # + 'fptr type: ' + str(funct.fptr_types[i]))
     def print_fptr_site_unmatched_msg():
         eprint(funct.src_filename + ':' + str(funct.fptr_sites[j].src_line_num) + ':'
                 + funct.asm_filename + ':' + str(funct.fptr_sites[j].asm_line_num)
