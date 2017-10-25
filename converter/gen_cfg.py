@@ -54,16 +54,17 @@ def gen_cfg(asm_file_descrs, plt_sites, options):
 
         asm_file.close()
 
-    # Add aliases to the cfg with all the set commands
+    # Add aliases to the cfg with all the set commands (XXX: all set cmds are weak)
     for descr in asm_file_descrs:
         for set_cmd in descr.set_cmds:
             from_ul = descr.ul(set_cmd[0])
             to_ul = descr.ul(set_cmd[1])
 
             if to_ul in cfg:
-                cfg.add_alias(from_ul, to_ul)
+                funct_cfg.descr_path = descr.filename
+                cfg.add_alias(from_ul, to_ul, weak=True)
                 # all set commands are seen globally as well
-                cfg.add_alias(set_cmd[0], to_ul)
+                cfg.add_alias(set_cmd[0], to_ul, weak=True)
     
     if options['--verbose']:
         cfg.print_aliases()
@@ -77,18 +78,26 @@ def gen_cfg(asm_file_descrs, plt_sites, options):
                 target_name = dir_call_site.targets[0].replace('@PLT', '')
 
                 # Three cases: The function target is... 
-                #   1. local to this assembly file
-                #   2. globally visible from all assembly files
+                #   1. globally visible from all assembly files
+                #   2. local to this assembly file
                 #   3. outside this code object (in another shared library/obj)
-
+                # 
+                # Potential targets are evaluated in that order
+                
                 try:
-                    dir_call_site.targets[0] = cfg.funct(descr.ul(target_name))
+                    eprint('flow: {} -> {} (name: {})'.format(
+                        funct.uniq_label, cfg.funct(target_name).uniq_label,
+                        target_name))
+                    dir_call_site.targets[0] = cfg.funct(target_name)
                     continue
                 except KeyError:
                     pass
-                
+
                 try:
-                    dir_call_site.targets[0] = cfg.funct(target_name)
+                    dir_call_site.targets[0] = cfg.funct(descr.ul(target_name))
+                    eprint('flow: {} -> {} (name: {})'.format(
+                        funct.uniq_label, cfg.funct(descr.ul(target_name)).uniq_label,
+                        descr.ul(target_name)))
                 except KeyError:
                     dir_call_site.group = dir_call_site.PLT_SITE
                     plt_sites.append(dir_call_site)
@@ -298,10 +307,13 @@ def build_ret_dicts(cfg):
         for site in funct.sites:
             if site.group == site.CALL_SITE:
                 for target in site.targets:
+                    eprint('fflow: {} -> {}'.format(funct.uniq_label, target.uniq_label))
                     increment_dict(call_dict, target.uniq_label, beg_multiplicity)
 
         for target_label, multiplicity in call_dict.iteritems():
             try:
+                eprint('rflow: {} <- {}'
+                       .format(funct.uniq_label, cfg.funct(target_label).uniq_label))
                 cfg.funct(target_label).ret_dict[funct.uniq_label] = multiplicity
             except KeyError:
                 eprint("warning: function cannot be found: " + target_label )

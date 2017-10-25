@@ -6,6 +6,8 @@ import random
 
 from common.eprint import eprint
 
+descr_path = ""
+
 class FunctControlFlowGraph:
     """A CFG class with functions as vertices instead of basic blocks
 
@@ -21,22 +23,49 @@ class FunctControlFlowGraph:
         # don't touch these attributes; they're internal
         self._funct_vertices = dict()
         self._aliases = dict()
+        # used to 
+        self._alias_is_weak = dict()
+
+        # These functions are non cdi. This is useful for some edge case functions
+        # that libc uses on startup. Allowing these to be non-cdi does not
+        # compromise our threat model. Example '_init'
+        self.non_cdi_functs = set()
 
     def add_funct(self, funct):
         uniq_label = funct.asm_filename + '.' + funct.asm_name
 
         if uniq_label in self._aliases:
-            eprint("gen_cdi: error: adding function to cfg whose uniq_label "
-                    "collides with an alias")
-            sys.exit(1)
+            if self._alias_is_weak[uniq_label]:
+                del(self._aliases[uniq_label])
+                del(self._alias_is_weak[uniq_label])
+            else:
+                eprint("gen_cdi: error: adding function to cfg whose uniq_label "
+                        "collides with a non-weak alias")
+                sys.exit(1)
 
         self._funct_vertices[uniq_label] = funct
+
+    def ul_is_cdi(self, uniq_label):
+        try:
+            # note that this handles aliases as well
+            funct = self.funct(uniq_label)
+            eprint("funct id: ", funct)
+            eprint("non cdi ids: ", self.non_cdi_functs)
+            return funct not in self.non_cdi_functs
+        except KeyError:
+            eprint("KEYERROR")
+            return True
 
     def size(self):
         """Returns the number of functions in the CFG"""
         return len(self._funct_vertices)
 
     def funct(self, uniq_label):
+        if uniq_label in self._aliases and uniq_label in self._funct_vertices:
+            eprint("gen_cdi: error: uniq_label '{}' is not unique: "
+                    "it has both an alias ('{}' -> '{}') and a regular definition"
+                    .format(uniq_label, uniq_label, self._aliases(uniq_label)))
+            sys.exit(1)
         if uniq_label in self._aliases:
             return self._funct_vertices[self._aliases[uniq_label]]
         else:
@@ -68,19 +97,42 @@ class FunctControlFlowGraph:
         This allows the function to be obtained using only its name rather than
         the uniq_label. The function will remain accessible by its uniq_label
         """
-        self.add_alias(uniq_label.split('.')[-1], uniq_label)
+        bare_name = uniq_label.split('.')[-1]
+        self.add_alias(bare_name, uniq_label)
 
 
-    def add_alias(self, alias, uniq_label):
+    def add_alias(self, alias, uniq_label, weak=False):
         if alias in self._aliases:
-            eprint("gen_cdi: warning: overwriting alias: '{}' -> [old: '{}', new: '{}']"
-                    .format(alias, self._aliases[alias], uniq_label))
+            # XXX Does it matter which version we take?
+            if weak:
+                return # stick with the already defined weak alias
+            elif not self._alias_is_weak[alias]:
+                eprint("gen_cdi: error: attempted overwriting a non-weak alias: '{}' -> [old: '{}', new: '{}']"
+                        .format(alias, self._aliases[alias], uniq_label))
+                sys.exit(1)
+                
 
         if alias in self._funct_vertices:
-            eprint("gen_cdi: error: alias ['{}' -> '{}'] will hide function with uniq_label '{}'"
-                    .format(alias, uniq_label, self._funct_vertices[alias]))
-            sys.exit(1)
+            if weak:
+                return # stick with the already defined function, weak or not
+            else:
+                # XXX This may be possible: override a function with a non weak alias. Forbid it for now
+                eprint("gen_cdi: error: alias ['{}' -> '{}'] will hide function with uniq_label '{}'"
+                        .format(alias, uniq_label, self._funct_vertices[alias]))
+                sys.exit(1)
+        
+        global descr_path # XXX debugging
+        eprint("\nadding alias: {} -> {} [{}]\n"
+                .format(alias, uniq_label, descr_path))
+        descr_path = ""
+
+        if alias in ['_init', 'libc_start_init']:
+            eprint("\nadding function with alias [{} -> {}] to non cdi functs"
+                    .format(alias, uniq_label))
+            self.non_cdi_functs.add(self.funct(uniq_label))
+
         self._aliases[alias] = uniq_label
+        self._alias_is_weak[alias] = weak
 
     def print_uniq_labels(self):
         eprint("cfg unique labels:")

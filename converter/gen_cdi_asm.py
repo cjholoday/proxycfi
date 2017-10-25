@@ -239,13 +239,28 @@ def convert_call_site(site, cfg, funct, asm_line, asm_dest,
             globl_decl = '.globl\t' + label + '\n'
 
         call = ''
-        if not options['--shared-library']:
-            if options['--profile-gen']:
+        if funct.asm_name == 'libc_exit_fini':
+            eprint('XXXXXXXXXXXXXX _fini:', target_name)
+
+        try:
+            libc_exit_fini = cfg.funct('__libc_exit_fini')
+        except KeyError:
+            libc_exit_fini = None
+
+        if funct is libc_exit_fini:
+            call = asm_line
+            globl_decl = ''
+        elif not options['--shared-library']:
+            eprint("inserting call for ", target_name)
+            if options['--profile-gen'] or not cfg.ul_is_cdi(site.targets[0].uniq_label):
+                eprint("chose no proxy")
                 call = asm_line
             else:
+                eprint("chose proxy")
                 proxy_ptr = site.targets[0].proxy_for(label.strip('"'))
                 call = '\tpushq ${}\n'.format(hex(proxy_ptr))
                 call += asm_line.replace('call', 'jmp', 1)
+            eprint("")
         else:
             # TODO: use proxy pointers with shared libraries
             target = cfg.funct(site.targets[0].uniq_label)
@@ -269,7 +284,10 @@ def convert_call_site(site, cfg, funct, asm_line, asm_dest,
         eprint('gen_cdi: warning: indirect call sled is empty on line {} of {} in function {}'
                 .format(site.asm_line_num, funct.asm_filename, site.enclosing_funct_uniq_label))
 
-    # TODO: use proxy pointers with function pointers
+    if not cfg.ul_is_cdi(funct.uniq_label):
+        asm_dest.write(asm_line)
+        return
+
     call_operand = arg_str.replace('*', '')
     for target in site.targets:
         target_name = fix_label(target.uniq_label)
@@ -307,14 +325,43 @@ def convert_call_site(site, cfg, funct, asm_line, asm_dest,
         else:
             call_sled += '\tcmpq\t$"_CDIX_F_{}", {}\n'.format(target_name, call_operand)
             call_sled += '\tjne\t1f\n'
-            if options['--profile-gen']:
+            # eprint("inserting call for ", target_name)
+            if options['--profile-gen'] or not cfg.ul_is_cdi(target_name):
+                # eprint("chose 'no proxy'")
                 call_sled += '\tcall\t"_CDIX_F_{}"\n'.format(target_name)
             else:
+                # eprint("chose 'proxy'")
                 call_sled += '\tpushq ${}\n'.format(hex(target.proxy_for(return_label)))
                 call_sled += '\tjmp\t"_CDIX_F_{}"\n'.format(target_name)
+            # eprint("")
+
         call_sled += globl_decl
         call_sled += '"{}":\n'.format(return_label)
         call_sled += '\tjmp\t2f\n'
+
+    try:
+        init_libc = cfg.funct('__libc_start_init')
+    except KeyError:
+        init_libc = None
+
+    try:
+        libc_start_main = cfg.funct('__libc_start_main')
+    except KeyError:
+        libc_start_main = None
+
+    try:
+        libc_exit_fini = cfg.funct('__libc_exit_fini')
+    except KeyError:
+        libc_exit_fini = None
+
+    #eprint("init_libc cmp: {} (init libc) vs {} (*)"
+    #        .format(init_libc.uniq_label, funct.uniq_label))
+
+    if funct in [init_libc, libc_start_main, libc_exit_fini]:
+        call_sled += '1:\n'
+        call_sled += asm_line
+        call_sled += '\tjmp\t2f\n'
+
 
     call_sled += '1:\n'
 

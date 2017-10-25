@@ -168,7 +168,7 @@ def main():
                 .format(' '.join(ld_command)))
 
 
-    if '--abandon-cdi' in lspec.cdi_options:
+    if '--cdi-abandon-cdi' in lspec.cdi_options:
         print 'WARNING: CREATING NON CDI EXECUTABLE AS REQUESTED'
         sys.exit(0)
 

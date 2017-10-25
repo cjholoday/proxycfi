@@ -89,6 +89,10 @@ def print_cdi_help():
             ' or as --converter_optoin=VALUE, depending on which is used. ')
     print ''
 
+    print '--cdi-abandon-cdi'
+    print ('Intercept assembler and linker calls as normal but generate a'
+            ' non-cdi executable/shared library instead. Useful for debugging')
+    print ''
 
 if __name__ == '__main__':
     gcc_opts = sys.argv[1:]
