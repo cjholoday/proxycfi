@@ -94,6 +94,10 @@ def print_cdi_help():
             ' non-cdi executable/shared library instead. Useful for debugging')
     print ''
 
+    print '--cdi-musl-static'
+    print 'Compile statically with musl libc'
+    print ''
+
 if __name__ == '__main__':
     gcc_opts = sys.argv[1:]
 
@@ -130,6 +134,15 @@ if __name__ == '__main__':
     if '--cdi-help' in cdi_options:
         print_cdi_help()
         sys.exit(0)
+
+    try:
+        # allow access to musl static compilation via command or the env
+        if '--cdi-musl-static' in cdi_options or os.environ['CDI_MUSL_STATIC'] != '0':
+            gcc_opts.append('--static')
+            gcc_opts.append('-specs={}/musl/cdi-musl-gcc.specs'.format(SCRIPT_PATH))
+    except KeyError:
+        pass
+
 
     # Add convenience options for constructing and using shared libraries
     #
