@@ -402,6 +402,8 @@ def parse_cdi_metadata(cfg, asm_descr, options):
                 #if options['--verbose']:
                 #print 'In ' + fp_type.enclosing_funct_name + ': ' + str(fp_type)
 
+    return dangling_metadata
+
     # the following is code attempted to deal with tricky gcc optimizations
     # it's commented out for now because shared libraries / the verifier are
     # top priority and the code's correctness is questionable/incompatible with
