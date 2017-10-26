@@ -14,6 +14,36 @@ from getopt import getopt
 
 IGNORE_RET_FROM_MAIN = False
 
+
+STARTUP_FUNCTIONS = [
+        'start_c',
+        '__libc_start_main',
+        'libc_start_main',
+        '__init_libc',
+        'static_init_tls',
+        '__copy_tls',
+        '__init_tp',
+        '__set_thread_area',
+        'dummy1',
+        '__libc_start_init',
+        'libc_start_init',
+        '_init',
+        'frame_dummy',
+        'register_tm_clones',
+        '__libc_csu_init'  # GLIBC only
+]
+CLEANUP_FUNCTIONS = [
+        'exit',
+        'dummy',
+        '__libc_exit_fini',
+        'libc_exit_fini',
+        '__do_global_dtors_aux',
+        'deregister_tm_clones',
+        '_fini',
+        '__libc_csu_fini' # GLIBC only
+]
+WHITELIST = STARTUP_FUNCTIONS + CLEANUP_FUNCTIONS
+
 # functor used to avoid excessive parameter passing
 class Verifier:
     def __init__(self, file_object, exec_sections, function_list, rlts, plt_start_addr,
@@ -39,7 +69,15 @@ class Verifier:
 
         function.verified = True
 
+        # If we see a function on the whitelist, then a non-whitelisted function
+        # calls a whitelisted function. This should never happen because the 
+        # whitelisted functions should be disjointly used compared to normal functions
+        if function in WHITELIST:
+            eprint("verifier: error: attempting to verify function on whitelist")
+            sys.exit(1)
+
         try:
+
             functions_called = []
             calls, jumps, loops, instruction_addresses = self.inspect(function,
                     self.plt_start_addr, self.plt_size, self.plt_entry_size)
@@ -105,11 +143,10 @@ class Verifier:
         Wrapper for Verifier.verify 
         """
 
-        whitelist = ['__libc_csu_init', '__libc_csu_fini']
         for funct in self.function_list:
             # sections must have size > 0 to be considered
             # NOTE: _fini and company have size 0 so they are not verified
-            if funct.name not in whitelist:
+            if funct.name not in WHITELIST:
                 self.verify(funct)
 
         # check that incoming "return" jumps are valid
