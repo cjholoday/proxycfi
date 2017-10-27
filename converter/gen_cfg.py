@@ -234,6 +234,7 @@ def build_indir_targets(cfg, asm_file_descrs, options):
         assign_targets(cfg, funct, options)
 
 
+FP_PUNT_WHITELIST = ['libc_start_init', 'libc_exit_fini']
 def assign_targets(cfg, funct, options):
     """Assigns each fptr site a target list filled with function references
     
@@ -254,12 +255,17 @@ def assign_targets(cfg, funct, options):
         eprint(funct.src_filename + ':' + str(funct.fptr_calls[i].src_line_num)
                 + ': warning: fptr type not associated with any indirect '
                 + 'call. The fptr call may have been inlined. ')
-                # + 'fptr type: ' + str(funct.fptr_types[i]))
+        if options['--no-fp-punt'] and not funct.asm_name in FP_PUNT_WHITELIST:
+            eprint("gen_cdi: error: '--no-fp-punt' forbids an unmatched fp type")
+            sys.exit(1)
     def print_fptr_site_unmatched_msg():
         eprint(funct.src_filename + ':' + str(funct.fptr_sites[j].src_line_num) + ':'
                 + funct.asm_filename + ':' + str(funct.fptr_sites[j].asm_line_num)
                 + ': warning: no type for indirect call site in function '
                 'named \'' + funct.asm_name + '\'') # fix for C++
+        if options['--no-fp-punt'] and not funct.asm_name in FP_PUNT_WHITELIST:
+            eprint("gen_cdi: error: '--no-fp-punt' forbids an unmatched fp site")
+            sys.exit(1)
 
     # associate each fptr type with a site
     while (i < len(funct.fptr_calls) and j < len(funct.fptr_sites)):

@@ -6,7 +6,7 @@ mv add.s add.s.dont_clean || true
 clean
 mv add.s.dont_clean add.s
 
-cdi-gcc main.c add.s -o out --cdi-converter-verbose
+cdi-gcc main.c add.s -o out --cdi-converter-verbose --cdi-converter-no-mystery-types --cdi-converter-no-fp-punt
 check "failed to compile" || exit 1
 
 # Check that the output is correct
