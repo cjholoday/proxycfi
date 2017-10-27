@@ -102,7 +102,7 @@ def gen_cfg(asm_file_descrs, plt_sites, options):
                     dir_call_site.group = dir_call_site.PLT_SITE
                     plt_sites.append(dir_call_site)
                     if options['--verbose']:
-                        eprint("Found PLT target '{}".format(dir_call_site.targets[0]))
+                        eprint("Found PLT target '{}'".format(dir_call_site.targets[0]))
                 
 
     # the direct call lists shouldn't be used because they are polluted with the
@@ -111,7 +111,7 @@ def gen_cfg(asm_file_descrs, plt_sites, options):
         del(funct.direct_call_sites)
 
     build_indir_targets(cfg, asm_file_descrs, options)
-    build_ret_dicts(cfg)
+    build_ret_dicts(cfg, options)
 
     return cfg
 
@@ -292,7 +292,7 @@ def increment_dict(dictionary, key, start = 1):
     dictionary[key] = dictionary.get(key, start - 1) + 1
     return dictionary[key]
 
-def build_ret_dicts(cfg):
+def build_ret_dicts(cfg, options):
     """Builds return dictionaries of all functions in the CFG
 
     Notice that when a given function is being examined, it is all the other
@@ -307,16 +307,26 @@ def build_ret_dicts(cfg):
         for site in funct.sites:
             if site.group == site.CALL_SITE:
                 for target in site.targets:
-                    eprint('fflow: {} -> {}'.format(funct.uniq_label, target.uniq_label))
+                    if options['--verbose']:
+                        indirect_indicator = ''
+                        if len(site.targets) > 1:
+                            indirect_indicator = '*'
+
+                        # Print a star if this site can go to more than one target
+                        eprint('fflow: {} -{}> {}'
+                                .format(funct.uniq_label, indirect_indicator,  target.uniq_label))
                     increment_dict(call_dict, target.uniq_label, beg_multiplicity)
 
         for target_label, multiplicity in call_dict.iteritems():
             try:
-                eprint('rflow: {} <- {}'
-                       .format(funct.uniq_label, cfg.funct(target_label).uniq_label))
+                if options['--verbose']:
+                    eprint('rflow: {} <- {}'
+                           .format(funct.uniq_label, cfg.funct(target_label).uniq_label))
                 cfg.funct(target_label).ret_dict[funct.uniq_label] = multiplicity
             except KeyError:
-                eprint("warning: function cannot be found: " + target_label )
+                eprint("warning: function cannot be found: " + target_label)
+        if options['--verbose']:
+            eprint("")
 
 def parse_cdi_metadata(cfg, asm_descr, options):
     """Fills the cfg with ftypes and fptypes using info from asm_descr
