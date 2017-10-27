@@ -128,6 +128,10 @@ if __name__ == '__main__':
                 and not opt.startswith('--cdi-use-sl=')):
             cdi_options.append(opt)
             gcc_opts[idx] = '-g' # void this option
+
+    if 'CDI_NO_PLT' in os.environ and os.environ['CDI_NO_PLT'] != '0':
+        cdi_options.append("--cdi-converter-no-plt")
+
     if cdi_options:
         gcc_opts.append("-Wl,--cdi-options={}".format('|'.join(cdi_options)))
 
@@ -142,6 +146,7 @@ if __name__ == '__main__':
             gcc_opts.append('-specs={}/musl/dest/lib/musl-gcc.specs'.format(SCRIPT_PATH))
     except KeyError:
         pass
+
 
 
     # Add convenience options for constructing and using shared libraries

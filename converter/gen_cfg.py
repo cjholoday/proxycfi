@@ -103,6 +103,9 @@ def gen_cfg(asm_file_descrs, plt_sites, options):
                     plt_sites.append(dir_call_site)
                     if options['--verbose']:
                         eprint("Found PLT target '{}'".format(dir_call_site.targets[0]))
+                    if options['--no-plt']:
+                        eprint("gen_cdi: error: '--no-plt' forbids PLT functions")
+                        sys.exit(1)
                 
 
     # the direct call lists shouldn't be used because they are polluted with the
