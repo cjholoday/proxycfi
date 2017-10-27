@@ -3,6 +3,7 @@ from common.eprint import eprint
 import sys
 import subprocess
 
+original_path = ''
 restore_original_objects_fptr = None
 raw_ld_spec = None
 file_deleted_on_error = None
