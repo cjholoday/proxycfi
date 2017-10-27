@@ -102,7 +102,8 @@ def gen_cfg(asm_file_descrs, plt_sites, options):
                     dir_call_site.group = dir_call_site.PLT_SITE
                     plt_sites.append(dir_call_site)
                     if options['--verbose']:
-                        eprint("Found PLT target '{}'".format(dir_call_site.targets[0]))
+                        eprint("Found PLT target '{}' in function '{}'"
+                                .format(dir_call_site.targets[0], funct.uniq_label))
                     if options['--no-plt']:
                         eprint("gen_cdi: error: '--no-plt' forbids PLT functions")
                         sys.exit(1)
