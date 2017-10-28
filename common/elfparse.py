@@ -33,14 +33,14 @@ class Function:
         # stored as integers. Use hex() to get a hex string representation
         self.size = size
         self.file_offset = file_offset
-        self.virtual_address = virtual_address
+        self.addr = virtual_address
 
         # virtual addresses of all "return" jumps to this function
         self.incoming_returns = []
 
         assert type(self.size) is types.IntType
         assert type(self.file_offset) is types.IntType
-        assert type(self.virtual_address) is types.IntType
+        assert type(self.addr) is types.IntType
     
     def contains_address(self, virtual_address):
         assert type(virtual_address) is types.IntType

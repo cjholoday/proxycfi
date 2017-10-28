@@ -46,7 +46,7 @@ WHITELIST = STARTUP_FUNCTIONS + CLEANUP_FUNCTIONS
 
 # functor used to avoid excessive parameter passing
 class Verifier:
-    def __init__(self, file_object, exec_sections, function_list, rlts, plt_start_addr,
+    def __init__(self, file_object, exec_sections, functions, rlts, plt_start_addr,
             plt_size, plt_entry_size, tramtab_start_addr, tramtab_size, exit_on_insecurity,
              print_instr_as_decoded):
         self.binary = file_object
@@ -58,8 +58,9 @@ class Verifier:
         self.exit_on_insecurity = exit_on_insecurity
         self.print_instr_as_decoded = print_instr_as_decoded
         
-        self.function_list = sorted(function_list, 
-                key=attrgetter('virtual_address'))
+        self.functions = sorted(functions, 
+                key=attrgetter('addr'))
+        self.funct_addrs = map(lambda f: f.addr, self.functions)
         self.rlts = rlts
         self.tramtab_start_addr = tramtab_start_addr
         self.tramtab_size = tramtab_size
@@ -83,13 +84,13 @@ class Verifier:
                     self.plt_start_addr, self.plt_size, self.plt_entry_size)
 
             for addr in calls:
-                target_function = self.target_function(addr)
+                target_function = self.target_funct(addr)
                 if target_function == None:
                     raise InvalidFunctionCall(self.target_section(addr), function,
                             '', addr, 'call targets no function but '
                             'may point to whitespace between functions')
 
-                if target_function.virtual_address != addr:
+                if target_function.addr != addr:
                     raise InvalidFunctionCall(self.target_section(addr),
                             function, '', addr)
 
@@ -107,7 +108,7 @@ class Verifier:
                             function, '', addr)
 
             for addr in jumps:
-                target_function = self.target_function(addr)
+                target_function = self.target_funct(addr)
 
                 if target_function == None:
                     raise OutOfObjectJump(self.target_section(addr), function,
@@ -143,14 +144,14 @@ class Verifier:
         Wrapper for Verifier.verify 
         """
 
-        for funct in self.function_list:
+        for funct in self.functions:
             # sections must have size > 0 to be considered
             # NOTE: _fini and company have size 0 so they are not verified
             if funct.name not in WHITELIST:
                 self.verify(funct)
 
         # check that incoming "return" jumps are valid
-        for funct in self.function_list:
+        for funct in self.functions:
             try:
                 self.check_return_jumps_are_valid(funct)
             except InsecureJump as insecurity:
@@ -193,12 +194,12 @@ class Verifier:
                         valid_addr = valid_addr_iter.next()
                     except StopIteration:
                         raise MiddleOfInstructionJump(
-                                self.target_section(funct.virtual_address),
+                                self.target_section(funct.addr),
                                 elfparse.Function('Unknown', 0, 0, 0), 'Unknown',
                                 return_addr, 'Jump goes to ' + funct.name)
                 elif valid_addr > return_addr:
                         raise MiddleOfInstructionJump(
-                                self.target_section(funct.virtual_address),
+                                self.target_section(funct.addr),
                                 elfparse.Function('Unknown', 0, 0, 0), 'Unknown',
                                 return_addr, 'Jump goes to ' + funct.name)
                 else: # valid_addr == return_addr
@@ -206,70 +207,31 @@ class Verifier:
         except StopIteration:
             pass 
 
-    def target_function(self, virtual_address):
+    def target_funct(self, addr):
         """Returns a function that contains the address. Otherwise, None
         
-        Assumes the function list is sorted by virtual_address
-            (it's sorted in __init__)
+        Assumes that self.functions is sorted by addr
+        Assumes that self.funct_addrs is sorted and corresponds to self.functions
+        """
+        funct = self.enclosing_funct(addr)
+        if funct and funct.addr != addr:
+            funct = None
+        return funct
+
+    def enclosing_funct(self, addr):
+        """Returns the function in which the address belongs
+
         Note that addresses can be in whitespace between functions, if addr
         is in one of these whitespace areas, None will be returned
-
-        There really is no standard library function for this purpose"""
-
-        # candidate function found by modified binary search
-        candidate = None 
-        address = virtual_address
-        
-        left = 0
-        right = len(self.function_list) - 1
-        
-        # modified binary search: 
-        #   invariant: left_address <= max({f | function f contains address})
-        #   'larger' functions have larger addresses
-        #   invariant only makes sense if there is a function that contains address
-
-        # while size 3 subarray or larger
-        while (right - left >= 2):
-            middle = (right + left) / 2 
-
-            if address < self.function_list[middle].virtual_address:
-                right = middle - 1
-            elif address > self.function_list[middle].virtual_address:
-                # maintains invariant
-                left = middle 
-            else:
-                candidate = self.function_list[middle]
-                break
-
-        # case subarray of size 0
-        if left > right:
-            candidate = None
-
-        # case subarray of size 1
-        elif left == right:
-            if address >= self.function_list[left].virtual_address:
-                candidate = self.function_list[left]
-            else:
-                candidate = None
-
-        # case subarray size 2
-        elif left == right - 1:
-            if address >= self.function_list[right].virtual_address:
-                candidate = self.function_list[right]
-            elif address >= self.function_list[left].virtual_address:
-                candidate = self.function_list[left]
-            else:
-                candidate = None
-
-        # check that the address is in candidate's address range 
-        # address might be in the whitespace between functions!
-        if candidate == None:
-            # no candidate even found in the search so no containing function exists
+        """
+        idx = bisect.bisect_right(self.funct_addrs, addr)
+        if idx == 0:
             return None
-        elif address < candidate.virtual_address + candidate.size:
-            return candidate
+
+        cand = self.functions[idx - 1]
+        if addr >= cand.addr and addr < (cand.addr + cand.size):
+            return cand
         else:
-            # address in whitespace between functions
             return None
     
     def target_section(self, virtual_address):
@@ -312,7 +274,7 @@ class Verifier:
         if self.print_instr_as_decoded:
             print '--------------:  ' + function.name
         prev_instruction = None
-        for i in md.disasm(buff, function.virtual_address):
+        for i in md.disasm(buff, function.addr):
             addresses.append(int(i.address))
             if self.print_instr_as_decoded:
                 print("0x%x:\t%s\t%s" %(i.address, i.mnemonic, i.op_str))
@@ -323,12 +285,12 @@ class Verifier:
                     addr = int(i.op_str,16)
                     if addr >= plt_start_addr and addr <= plt_start_addr + plt_size:
                         if (addr - plt_start_addr) % plt_entry_size != 0:
-                            raise MiddleOfPltEntryJump(target_section(function.virtual_address),
+                            raise MiddleOfPltEntryJump(target_section(function.addr),
                                     function, '', addr, 'plt starts at ' + hex(plt_start_addr))
 
                     elif addr > self.tramtab_start_addr and addr <= tramtab_start_addr + tramtab_size:
                         if (addr - self.tramtab_start_addr) % 0x10 != 0:
-                            raise MiddleOfTramtabEntryJump(target_section(function.virtual_address),
+                            raise MiddleOfTramtabEntryJump(target_section(function.addr),
                                     function, '', addr, 'tramtab starts at ' + hex(tramtab_start_addr))
                     else:
                         jmps.append(addr)
@@ -341,27 +303,27 @@ class Verifier:
                             prev_instruction = i
                             continue
                     if self.exit_on_insecurity:
-                        raise IndirectJump(self.target_section(function.virtual_address),
+                        raise IndirectJump(self.target_section(function.addr),
                                 function, hex(int(i.address)), i.op_str, 'Indirect Jmp/Jcc')
                     else:
-                        IndirectJump(self.target_section(function.virtual_address),
+                        IndirectJump(self.target_section(function.addr),
                                 function, hex(int(i.address)), i.op_str, 'Indirect Jmp/Jcc').print_debug_info()
             elif i.mnemonic in call_list:
                 try:
                     addr = int(i.op_str,16)
                     if addr >= plt_start_addr and addr <= plt_start_addr + plt_size:
                         if (addr - plt_start_addr) % plt_entry_size != 0:
-                            raise MiddleOfPltEntryJump(target_section(function.virtual_address),
+                            raise MiddleOfPltEntryJump(target_section(function.addr),
                                     function, '', addr, 'plt starts at ' + hex(plt_start_addr))
 
                     else:
                         calls.append(addr)
                 except ValueError:
                     if self.exit_on_insecurity:
-                        raise IndirectCall(self.target_section(function.virtual_address),
+                        raise IndirectCall(self.target_section(function.addr),
                                 function, hex(int(i.address)), i.op_str, 'Indirect Call')
                     else:
-                        IndirectCall(self.target_section(function.virtual_address), 
+                        IndirectCall(self.target_section(function.addr), 
                                 function, hex(int(i.address)), i.op_str, 'Indirect Call').print_debug_info()
 
             elif i.mnemonic in returns:
@@ -370,10 +332,10 @@ class Verifier:
                     pass
 
                 elif self.exit_on_insecurity:
-                    raise IndirectJump(self.target_section(function.virtual_address), 
+                    raise IndirectJump(self.target_section(function.addr), 
                             function, hex(int(i.address)), i.op_str, 'Return Instruction')
                 else:
-                    IndirectJump(self.target_section(function.virtual_address),
+                    IndirectJump(self.target_section(function.addr),
                             function, hex(int(i.address)), i.op_str, 'Return Instruction').print_debug_info()
 
 
@@ -395,7 +357,7 @@ class Verifier:
         file.seek(function.file_offset)
         buff = file.read(int(function.size))
         md = Cs(CS_ARCH_X86, CS_MODE_64)
-        for i in md.disasm(buff, function.virtual_address):
+        for i in md.disasm(buff, function.addr):
             addresses.append(int(i.address))
             
         return addresses
@@ -416,9 +378,9 @@ class Verifier:
             if i.mnemonic == 'je':
             	# op = i.op_str.split(',') # if we are checking the 'cmp'
                 addr_to_chk = int(i.op_str,16)
-                for f in self.function_list:
+                for f in self.functions:
                     if f.contains_address(addr_to_chk):
-                        chk_offset = (addr_to_chk - f.virtual_address) + f.file_offset - 5
+                        chk_offset = (addr_to_chk - f.addr) + f.file_offset - 5
 
                         file.seek(0)
                         file.seek(chk_offset)
@@ -581,6 +543,8 @@ if __name__ == "__main__":
     plt_start_addr, plt_size, plt_entry_size, tramtab_start_addr, tramtab_size = elfparse.gather_plts_tram(binary)
 
     functions =  elfparse.gather_functions (binary.name, exec_sections)
+    for funct in functions:
+        print(funct.name, hex(funct.addr))
     rlts = elfparse.gather_rlts (binary.name, exec_sections, rlt_start_addr, rlt_start_offset, rlt_section_size)
     
     verifier = Verifier(binary, exec_sections, functions, rlts, plt_start_addr, 
