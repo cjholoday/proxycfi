@@ -20,8 +20,7 @@ def ar_normify(archives):
 
     os.chdir('.cdi')
     for archive in archives:
-        ar_fixups.append(spec.LinkerSpec.Fixup('ar', archive.fixup_idx, 
-            '.cdi/' + os.path.basename(archive.path)))
+
 
         ar_effective_path = ''
         if archive.path.startswith('/'):
@@ -31,16 +30,38 @@ def ar_normify(archives):
 
         lines = subprocess.check_output(['ar', 'xv', ar_effective_path]).strip().split('\n')
         obj_fnames = map(lambda x: x[len('x - '):], lines)
+        print "CWD: ", os.getcwd()
+        print "Archive Info:"
+        print archive.path
+        print archive.fake_objs
+        print archive.thin
+        print obj_fnames
+        print "--------------"
+
+        if not obj_fnames:
+            continue
+        empty = 0
         for obj_fname in obj_fnames:
-            with open(obj_fname, 'r') as fake_obj:
-                elf_signature = '\x7FELF'
-                is_elf = fake_obj.read(4) == elf_signature
-            if is_elf:
-                continue # already real object file
-            else:
-                correct_obj_fname = chop_suffix(obj_fname, '.') + '.fake.o'
-                subprocess.check_call(['mv', obj_fname, correct_obj_fname])
-                subprocess.check_call(['as', correct_obj_fname, '-o', obj_fname])
+            if obj_fname == '':
+                print "archive %s has an obj file with obj_fname = ''" % (archive.path)
+                empty = 1
+                break
+        if empty:
+            continue
+        ar_fixups.append(spec.LinkerSpec.Fixup('ar', archive.fixup_idx, 
+            '.cdi/' + os.path.basename(archive.path)))
+        for obj_fname in obj_fnames:
+            print "obj_fname ", obj_fname
+            if os.path.isfile(obj_fname):
+                with open(obj_fname, 'r') as fake_obj:
+                    elf_signature = '\x7FELF'
+                    is_elf = fake_obj.read(4) == elf_signature
+                if is_elf:
+                    continue # already real object file
+                else:
+                    correct_obj_fname = chop_suffix(obj_fname, '.') + '.fake.o'
+                    subprocess.check_call(['mv', obj_fname, correct_obj_fname])
+                    subprocess.check_call(['as', correct_obj_fname, '-o', obj_fname])
 
 
         # TODO handle case where two archives have diff path but same names
