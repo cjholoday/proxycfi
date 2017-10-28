@@ -133,7 +133,7 @@ def gen_cdi_asm(cfg, asm_file_descrs, plt_sites, options):
         # write the rest of the normal asm lines over, including the linkage
         # tables but only once. Write sled abort info in the debug section
         stack_section_decl_matcher = re.compile(r'^\s*\.section\s+\.note\.GNU-stack,')
-        debug_section_matcher = re.compile(r'^\t\.section\t\.debug_info.+')
+        debug_section_matcher = re.compile(r'^\s*\.section\s+\.debug_info.+')
 
         stack_section_decl = ''
         src_line = asm_src.readline()

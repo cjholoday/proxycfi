@@ -1,0 +1,3 @@
+[submodule "musl/musl"]
+	path = musl/musl
+	url = git@bitbucket.org:michigancdi/musl.git

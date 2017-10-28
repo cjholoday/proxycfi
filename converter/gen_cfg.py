@@ -102,7 +102,11 @@ def gen_cfg(asm_file_descrs, plt_sites, options):
                     dir_call_site.group = dir_call_site.PLT_SITE
                     plt_sites.append(dir_call_site)
                     if options['--verbose']:
-                        eprint("Found PLT target '{}".format(dir_call_site.targets[0]))
+                        eprint("Found PLT target '{}' in function '{}'"
+                                .format(dir_call_site.targets[0], funct.uniq_label))
+                    if options['--no-plt']:
+                        eprint("gen_cdi: error: '--no-plt' forbids PLT functions")
+                        sys.exit(1)
                 
 
     # the direct call lists shouldn't be used because they are polluted with the
@@ -111,7 +115,7 @@ def gen_cfg(asm_file_descrs, plt_sites, options):
         del(funct.direct_call_sites)
 
     build_indir_targets(cfg, asm_file_descrs, options)
-    build_ret_dicts(cfg)
+    build_ret_dicts(cfg, options)
 
     return cfg
 
@@ -234,6 +238,7 @@ def build_indir_targets(cfg, asm_file_descrs, options):
         assign_targets(cfg, funct, options)
 
 
+FP_PUNT_WHITELIST = ['libc_start_init', 'libc_exit_fini']
 def assign_targets(cfg, funct, options):
     """Assigns each fptr site a target list filled with function references
     
@@ -254,12 +259,17 @@ def assign_targets(cfg, funct, options):
         eprint(funct.src_filename + ':' + str(funct.fptr_calls[i].src_line_num)
                 + ': warning: fptr type not associated with any indirect '
                 + 'call. The fptr call may have been inlined. ')
-                # + 'fptr type: ' + str(funct.fptr_types[i]))
+        if options['--no-fp-punt'] and not funct.asm_name in FP_PUNT_WHITELIST:
+            eprint("gen_cdi: error: '--no-fp-punt' forbids an unmatched fp type")
+            sys.exit(1)
     def print_fptr_site_unmatched_msg():
         eprint(funct.src_filename + ':' + str(funct.fptr_sites[j].src_line_num) + ':'
                 + funct.asm_filename + ':' + str(funct.fptr_sites[j].asm_line_num)
                 + ': warning: no type for indirect call site in function '
                 'named \'' + funct.asm_name + '\'') # fix for C++
+        if options['--no-fp-punt'] and not funct.asm_name in FP_PUNT_WHITELIST:
+            eprint("gen_cdi: error: '--no-fp-punt' forbids an unmatched fp site")
+            sys.exit(1)
 
     # associate each fptr type with a site
     while (i < len(funct.fptr_calls) and j < len(funct.fptr_sites)):
@@ -292,7 +302,7 @@ def increment_dict(dictionary, key, start = 1):
     dictionary[key] = dictionary.get(key, start - 1) + 1
     return dictionary[key]
 
-def build_ret_dicts(cfg):
+def build_ret_dicts(cfg, options):
     """Builds return dictionaries of all functions in the CFG
 
     Notice that when a given function is being examined, it is all the other
@@ -307,16 +317,26 @@ def build_ret_dicts(cfg):
         for site in funct.sites:
             if site.group == site.CALL_SITE:
                 for target in site.targets:
-                    eprint('fflow: {} -> {}'.format(funct.uniq_label, target.uniq_label))
+                    if options['--verbose']:
+                        indirect_indicator = ''
+                        if len(site.targets) > 1:
+                            indirect_indicator = '*'
+
+                        # Print a star if this site can go to more than one target
+                        eprint('fflow: {} -{}> {}'
+                                .format(funct.uniq_label, indirect_indicator,  target.uniq_label))
                     increment_dict(call_dict, target.uniq_label, beg_multiplicity)
 
         for target_label, multiplicity in call_dict.iteritems():
             try:
-                eprint('rflow: {} <- {}'
-                       .format(funct.uniq_label, cfg.funct(target_label).uniq_label))
+                if options['--verbose']:
+                    eprint('rflow: {} <- {}'
+                           .format(funct.uniq_label, cfg.funct(target_label).uniq_label))
                 cfg.funct(target_label).ret_dict[funct.uniq_label] = multiplicity
             except KeyError:
-                eprint("warning: function cannot be found: " + target_label )
+                eprint("warning: function cannot be found: " + target_label)
+        if options['--verbose']:
+            eprint("")
 
 def parse_cdi_metadata(cfg, asm_descr, options):
     """Fills the cfg with ftypes and fptypes using info from asm_descr

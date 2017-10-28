@@ -46,6 +46,12 @@ if __name__ == "__main__":
     parser.add_argument('-nm', '--no-mystery-types', action='store_true',
             help='if set, manglings must not contain unknown types',
             dest='--no-mystery-types')
+    parser.add_argument('-np', '--no-fp-punt', action='store_true',
+            help='if set, function pointers must associated witha a type',
+            dest='--no-fp-punt')
+    parser.add_argument('--no-plt', action='store_true',
+            help='if set, all functions must be static',
+            dest='--no-plt')
 
     options = vars(parser.parse_args(sys.argv[1:]))
     if options.get('--help'):

@@ -4,6 +4,7 @@ import subprocess
 import os
 import re
 import sys
+import pipes
 
 import spec
 import fake_types
@@ -78,14 +79,14 @@ def ar_extract_req_objs(verbose_output, archives):
             else:
                 ar_effective_path = '../' + archive.path
 
-            os.chdir('.cdi')
             try:
-                subprocess.check_call(['ar', 'x', ar_effective_path] + obj_fnames)
+                quoted_objs = map(lambda fn: pipes.quote('.cdi/' + fn), obj_fnames)
+                subprocess.check_call('cd .cdi; ar x {} {}'
+                        .format(pipes.quote(ar_effective_path), ' '.join(quoted_objs)), shell=True)
             except subprocess.CalledProcessError:
                 fatal_error("cannot extract '{}' from non-thin archive '{}'"
                         .format( "' '".join(obj_fnames), archive.path))
 
-            os.chdir('..')
             for fname in obj_fnames:
                 qualified_fname = '{}__{}'.format(os.path.basename(archive.path), fname)
                 if not qualified_fname.endswith('.fake.o'):

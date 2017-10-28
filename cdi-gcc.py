@@ -128,6 +128,10 @@ if __name__ == '__main__':
                 and not opt.startswith('--cdi-use-sl=')):
             cdi_options.append(opt)
             gcc_opts[idx] = '-g' # void this option
+
+    if 'CDI_NO_PLT' in os.environ and os.environ['CDI_NO_PLT'] != '0':
+        cdi_options.append("--cdi-converter-no-plt")
+
     if cdi_options:
         gcc_opts.append("-Wl,--cdi-options={}".format('|'.join(cdi_options)))
 
@@ -139,9 +143,10 @@ if __name__ == '__main__':
         # allow access to musl static compilation via command or the env
         if '--cdi-musl-static' in cdi_options or os.environ['CDI_MUSL_STATIC'] != '0':
             gcc_opts.append('--static')
-            gcc_opts.append('-specs={}/musl/cdi-musl-gcc.specs'.format(SCRIPT_PATH))
+            gcc_opts.append('-specs={}/musl/dest/lib/musl-gcc.specs'.format(SCRIPT_PATH))
     except KeyError:
         pass
+
 
 
     # Add convenience options for constructing and using shared libraries

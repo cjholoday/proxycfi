@@ -36,6 +36,7 @@ def chop_suffix(string, cutoff = ''):
 
 def main():
     error.raw_ld_spec = raw_ld_spec = sys.argv[1:]
+    error.original_path = os.getcwd()
 
     lspec = spec.LinkerSpec(raw_ld_spec, fatal_error)
     if lspec.cdi_options:
@@ -70,9 +71,11 @@ def main():
     #
     # This is called on error or at the end of cdi-ld
     def restore_original_objects():
-        eprint("restoring objects: {}".format(' '.join(
+        os.chdir(error.original_path)
+        eprint("restoring objects: {}\n".format(' '.join(
             list(map(lambda obj: obj.path, explicit_fake_objs)))))
         for i, fake_obj in enumerate(explicit_fake_objs):
+            eprint("restoring: {} -> {}".format(fake_obj.path, lspec.obj_paths[i]))
             subprocess.check_call(['mv', fake_obj.path, lspec.obj_paths[i]])
 
     # used by fatal_error()
