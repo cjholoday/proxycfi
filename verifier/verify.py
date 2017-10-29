@@ -102,79 +102,22 @@ class Verifier:
             eprint("verifier: error: attempting to verify function on whitelist")
             sys.exit(1)
 
-        #functions_called = []
-        #calls, jumps, loops, instruction_addresses = self.inspect(function,
-        #        self.plt_start_addr, self.plt_size, self.plt_entry_size)
-
         instr_addrs = self.instr_addrs(function)
         for flow in self.inspect(function, self.plt_start_addr, 
                 self.plt_size, self.plt_entry_size):
             self.verification_handlers[flow.type](flow, instr_addrs)
-            
-
-
-            #for addr in calls:
-            #    target_function = self.target_funct(addr)
-            #    if target_function == None:
-            #        raise InvalidFunctionCall(self.enclosing_sect(addr), function,
-            #                '', addr, 'call targets no function but '
-            #                'may point to whitespace between functions')
-
-            #    if target_function.addr != addr:
-            #        raise InvalidFunctionCall(self.enclosing_sect(addr),
-            #                function, '', addr)
-
-            #    functions_called.append(target_function)
-
-            #for addr in loops:
-            #    if not function.contains_address(addr):
-            #        raise LoopOutOfFunction(self.enclosing_sect(addr),
-            #                function, '', addr)
-
-            #    candidate_idx = bisect_left(instruction_addreses, addr)
-            #    if (candidate_idx == len(instruction_addresses) or 
-            #            instruction_addresses[candidate_idx] != addr):
-            #        raise MiddleOfInstructionLoopJump(self.enclosing_sect(addr),
-            #                function, '', addr)
-
-            #for addr in jumps: 
-            #    target_function = self.target_funct(addr)
-
-            #    if target_function == None:
-            #        raise OutOfObjectJump(self.enclosing_sect(addr), function,
-            #                '', addr, 'jump may target whitespace '
-            #                'between functions')
-
-            #    # check that jumps back into function don't go to middle of instrs
-            #    elif target_function == function:
-            #        candidate_idx = bisect.bisect_left(instruction_addresses, addr)
-            #        if (candidate_idx == len(instruction_addresses) or 
-            #                instruction_addresses[candidate_idx] != addr):
-            #            raise MiddleOfInstructionJump(self.enclosing_sect(addr),
-            #                    function, '', addr, 'the rogue jump '
-            #                    'goes back into ' + function.name)
-
-            #    # handle jumps to other functions at end of depth first search
-            #    else:
-            #        target_function.incoming_returns.append(addr)
-
-        #except InsecureFlow as insecurity:
-        #    self.set_insecure(
-        #    self.secure = False
-        #    insecurity.print_debug_info()
-        #    if self.exit_on_insecurity:
-        #        raise
-
-        #for funct in functions_called:
-        #    if not funct.verified:
-        #        self.verify(funct)
 
     def verify_jump(self, flow, instr_addrs):
         target_funct = self.enclosing_funct(flow.dst)
         src_funct = self.enclosing_funct(flow.src)
 
         if target_funct == None:
-            self.set_insecure(OutOfObjectJump(self, flow, None))
+            sect = self.enclosing_sect(flow.dst).name
+            if sect != '.text':
+                self.verify_sl_flow(flow, sect)
+                return
+            else:
+                self.set_insecure(OutOfObjectJump(self, flow, None))
 
         # check that jumps back into this funct don't go to middle of instrs
         if target_funct == src_funct:
@@ -189,15 +132,29 @@ class Verifier:
                 self.funct_q.append(target_funct)
                 target_funct.verified = True
 
-        # keep track of the incoming returns so that we can check if they go
+        # keep track of the returns so that we can check if they go
         # to the middle of instructions later on, after the breadth first search
         target_funct.incoming_returns.append(flow)
+
+    def verify_sl_flow(self, flow, sect):
+        if sect == '.plt':
+            if (flow.dst - self.plt_start_addr) % self.plt_entry_size != 0:
+                self.set_insecure(MiddleOfPltEntryJump(self, flow,
+                        'plt starts at ' + hex(self.plt_start_addr)))
+        elif sect == '.cdi_tramtab':
+            if (flow.dst - self.tramtab_start_addr) % 0x10 != 0:
+                self.set_insecure(MiddleOfTramtabEntryJump(self, flow, 
+                        'tramtab starts at ' + hex(self.tramtab_start_addr)))
 
     def verify_call(self, flow, instr_addrs):
         target_funct = self.target_funct(flow.dst)
         if target_funct == None:
-            self.set_insecure(InvalidFunctionCall(self, flow,
-                "call doesn't target a function"))
+            sect = self.enclosing_sect(flow.dst).name
+            if sect != '.text':
+                self.verify_sl_flow(flow, sect)
+            else:
+                self.set_insecure(InvalidFunctionCall(self, flow,
+                    "call doesn't target a function"))
 
         # TODO enable this
         #if target_funct.name in WHITELIST:
@@ -222,8 +179,6 @@ class Verifier:
         """
 
         for funct in self.functions:
-            # sections must have size > 0 to be considered
-            # NOTE: _fini and company have size 0 so they are not verified
             if funct.name not in WHITELIST:
                 self.funct_q.append(funct)
                 funct.verified = True
@@ -369,16 +324,6 @@ class Verifier:
                     addr = int(i.op_str,16)
                     yield Flow(i.address, addr, 'jump')
 
-                    # TODO: move to jump handler
-                    if addr >= plt_start_addr and addr <= plt_start_addr + plt_size:
-                        if (addr - plt_start_addr) % plt_entry_size != 0:
-                            raise MiddleOfPltEntryJump(enclosing_sect(function.addr),
-                                    function, '', addr, 'plt starts at ' + hex(plt_start_addr))
-
-                    elif addr > self.tramtab_start_addr and addr <= tramtab_start_addr + tramtab_size:
-                        if (addr - self.tramtab_start_addr) % 0x10 != 0:
-                            raise MiddleOfTramtabEntryJump(enclosing_sect(function.addr),
-                                    function, '', addr, 'tramtab starts at ' + hex(tramtab_start_addr))
                 except ValueError:
                     if prev_instr and prev_instr.mnemonic == 'movabs':
                         register = prev_instr.op_str.split(', ')[0]
@@ -465,9 +410,6 @@ class Verifier:
 
 class Error(Exception):
     pass
-
-# old args:
-# section, function, site_address, jump_address, message = ''):
 
 class InsecureFlow(Error):
     def __init__(self, verifier, flow, msg):

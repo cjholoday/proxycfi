@@ -36,7 +36,7 @@ def get_fptr_sites(binary_path, funct):
     binary.seek(funct.file_offset)
     buff = binary.read(int(funct.size))
     md = Cs(CS_ARCH_X86, CS_MODE_64)
-    instrs = md.disasm(buff, funct.virtual_address)
+    instrs = md.disasm(buff, funct.addr)
 
     is_missing_funct_prologue = False
     try:
@@ -50,10 +50,10 @@ def get_fptr_sites(binary_path, funct):
     except StopIteration:
         is_missing_funct_prologue = True
 
-    for i in md.disasm(buff, funct.virtual_address):
+    for i in md.disasm(buff, funct.addr):
         if is_indirect_call(i):
             ret_addr = hex(i.address + i.size).rstrip('L')
-            funct_offset = hex(i.address - funct.virtual_address).rstrip('L')
+            funct_offset = hex(i.address - funct.addr).rstrip('L')
             print ('{} : {} + {} + {}'
                     .format(ret_addr, funct.name, funct_offset, hex(i.size)))
         elif is_missing_funct_prologue and is_indirect_jmp(i):
