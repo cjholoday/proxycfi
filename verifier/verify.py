@@ -243,7 +243,6 @@ class Verifier:
         for sect in self.exec_sections:
             if sect.contains_address(virtual_address):
                 return sect
-        return None
  
     def inspect(self, function, plt_start_addr, plt_size, plt_entry_size):
         """Returns a list of calls, jumps, loop addresses, and valid instr addresses as tuple
@@ -294,8 +293,8 @@ class Verifier:
                             yield Flow(i.address, addr, 'jump')
                             prev_instr = i
                             continue
-                    self.set_insecure(IndirectJump(self, Flow(i.address, 0, 'jump')),
-                            "indirect jmp/jcc")
+                    self.set_insecure(IndirectJump(self, Flow(i.address, 0, 'jump'),
+                            "indirect jmp/jcc"))
             elif i.mnemonic in call_list:
                 try:
                     addr = int(i.op_str,16)
@@ -365,8 +364,16 @@ class Error(Exception):
 
 class InsecureFlow(Error):
     def __init__(self, verifier, flow, msg):
-        self.src_sect = verifier.enclosing_sect(flow.src)
-        self.dst_sect = verifier.enclosing_sect(flow.dst)
+        src_sect = verifier.enclosing_sect(flow.src)
+        dst_sect = verifier.enclosing_sect(flow.dst)
+
+        self.src_sect_name = '?'
+        if src_sect:
+            self.src_sect_name = src_sect.name
+
+        self.dst_sect_name = '?'
+        if dst_sect:
+            self.dst_sect_name = dst_sect.name
 
         src_funct = verifier.enclosing_funct(flow.src)
         dst_funct = verifier.enclosing_funct(flow.dst)
@@ -381,15 +388,22 @@ class InsecureFlow(Error):
         self.flow_dst = get_funct_loc(dst_funct, flow.dst)
 
         self.msg = msg
+        if self.msg == None:
+            self.msg = ''
+
         self.flow = flow
 
     def print_debug_info(self):
         print 'Insecure Flow Details:'
-        print '\tsections:  {} -> {}'.format(self.src_sect.name, self.dst_sect.name)
-        print '\taddrs:     0x{:x} -> 0x{:x}'.format(self.flow.src, self.flow.dst)
+        if self.flow.dst == 0:
+            print '\tsections:  {} -> *'.format(self.src_sect_name)
+            print '\taddrs:     0x{:x} -> *'.format(self.flow.src)
+        else:
+            print '\tsections:  {} -> {}'.format(self.src_sect_name, self.dst_sect_name)
+            print '\taddrs:     0x{:x} -> 0x{:x}'.format(self.flow.src, self.flow.dst)
         print '\tflow src:  {}'.format(self.flow_src)
         print '\tflow dst:  {}'.format(self.flow_dst)
-        print '\tmessage:   ' + self.msg
+        print '\tmessage:   {}'.format(self.msg)
         print ''
 
 class ReturnUsed(InsecureFlow):
