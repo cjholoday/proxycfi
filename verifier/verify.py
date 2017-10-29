@@ -6,6 +6,7 @@ import bisect
 import sys
 import binascii
 import types
+import collections
 from common import elfparse
 from common.eprint import eprint
 from capstone import *
@@ -44,6 +45,14 @@ CLEANUP_FUNCTIONS = [
 ]
 WHITELIST = STARTUP_FUNCTIONS + CLEANUP_FUNCTIONS
 
+class Flow:
+    def __init__(self, src, dst, type):
+        self.src = src
+        self.dst = dst
+
+        # Should be 'call', 'jump', 'loop', 'ret', or 'plt'
+        self.type = type
+
 # functor used to avoid excessive parameter passing
 class Verifier:
     def __init__(self, file_object, exec_sections, functions, rlts, plt_start_addr,
@@ -65,6 +74,22 @@ class Verifier:
         self.tramtab_start_addr = tramtab_start_addr
         self.tramtab_size = tramtab_size
 
+        # functions are processed breadth first
+        self.funct_q = collections.deque()
+
+        self.verification_handlers = {
+                'jump': self.verify_jump,
+                'call': self.verify_call,
+                'loop': self.verify_loop
+        }
+
+    def set_insecure(self, insecure_flow):
+        self.secure = False
+        insecure_flow.print_debug_info()
+        if self.exit_on_insecurity:
+            raise insecure_flow
+
+
     def verify(self, function):
         """Recursively verifies that function is CDI compliant"""
 
@@ -77,66 +102,118 @@ class Verifier:
             eprint("verifier: error: attempting to verify function on whitelist")
             sys.exit(1)
 
-        try:
+        #functions_called = []
+        #calls, jumps, loops, instruction_addresses = self.inspect(function,
+        #        self.plt_start_addr, self.plt_size, self.plt_entry_size)
 
-            functions_called = []
-            calls, jumps, loops, instruction_addresses = self.inspect(function,
-                    self.plt_start_addr, self.plt_size, self.plt_entry_size)
+        instr_addrs = self.instr_addrs(function)
+        for flow in self.inspect(function, self.plt_start_addr, 
+                self.plt_size, self.plt_entry_size):
+            self.verification_handlers[flow.type](flow, instr_addrs)
+            
 
-            for addr in calls:
-                target_function = self.target_funct(addr)
-                if target_function == None:
-                    raise InvalidFunctionCall(self.target_section(addr), function,
-                            '', addr, 'call targets no function but '
-                            'may point to whitespace between functions')
 
-                if target_function.addr != addr:
-                    raise InvalidFunctionCall(self.target_section(addr),
-                            function, '', addr)
+            #for addr in calls:
+            #    target_function = self.target_funct(addr)
+            #    if target_function == None:
+            #        raise InvalidFunctionCall(self.enclosing_sect(addr), function,
+            #                '', addr, 'call targets no function but '
+            #                'may point to whitespace between functions')
 
-                functions_called.append(target_function)
+            #    if target_function.addr != addr:
+            #        raise InvalidFunctionCall(self.enclosing_sect(addr),
+            #                function, '', addr)
 
-            for addr in loops:
-                if not function.contains_address(addr):
-                    raise LoopOutOfFunction(self.target_section(addr),
-                            function, '', addr)
+            #    functions_called.append(target_function)
 
-                candidate_idx = bisect_left(instruction_addreses, addr)
-                if (candidate_idx == len(instruction_addresses) or 
-                        instruction_addresses[candidate_idx] != addr):
-                    raise MiddleOfInstructionLoopJump(self.target_section(addr),
-                            function, '', addr)
+            #for addr in loops:
+            #    if not function.contains_address(addr):
+            #        raise LoopOutOfFunction(self.enclosing_sect(addr),
+            #                function, '', addr)
 
-            for addr in jumps:
-                target_function = self.target_funct(addr)
+            #    candidate_idx = bisect_left(instruction_addreses, addr)
+            #    if (candidate_idx == len(instruction_addresses) or 
+            #            instruction_addresses[candidate_idx] != addr):
+            #        raise MiddleOfInstructionLoopJump(self.enclosing_sect(addr),
+            #                function, '', addr)
 
-                if target_function == None:
-                    raise OutOfObjectJump(self.target_section(addr), function,
-                            '', addr, 'jump may target whitespace '
-                            'between functions')
+            #for addr in jumps: 
+            #    target_function = self.target_funct(addr)
 
-                # check that jumps back into function don't go to middle of instrs
-                elif target_function == function:
-                    candidate_idx = bisect.bisect_left(instruction_addresses, addr)
-                    if (candidate_idx == len(instruction_addresses) or 
-                            instruction_addresses[candidate_idx] != addr):
-                        raise MiddleOfInstructionJump(self.target_section(addr),
-                                function, '', addr, 'the rogue jump '
-                                'goes back into ' + function.name)
+            #    if target_function == None:
+            #        raise OutOfObjectJump(self.enclosing_sect(addr), function,
+            #                '', addr, 'jump may target whitespace '
+            #                'between functions')
 
-                # handle jumps to other functions at end of depth first search
-                else:
-                    target_function.incoming_returns.append(addr)
+            #    # check that jumps back into function don't go to middle of instrs
+            #    elif target_function == function:
+            #        candidate_idx = bisect.bisect_left(instruction_addresses, addr)
+            #        if (candidate_idx == len(instruction_addresses) or 
+            #                instruction_addresses[candidate_idx] != addr):
+            #            raise MiddleOfInstructionJump(self.enclosing_sect(addr),
+            #                    function, '', addr, 'the rogue jump '
+            #                    'goes back into ' + function.name)
 
-        except InsecureJump as insecurity:
-            self.secure = False
-            insecurity.print_debug_info()
-            if self.exit_on_insecurity:
-                raise
+            #    # handle jumps to other functions at end of depth first search
+            #    else:
+            #        target_function.incoming_returns.append(addr)
 
-        for funct in functions_called:
-            if not funct.verified:
-                self.verify(funct)
+        #except InsecureFlow as insecurity:
+        #    self.set_insecure(
+        #    self.secure = False
+        #    insecurity.print_debug_info()
+        #    if self.exit_on_insecurity:
+        #        raise
+
+        #for funct in functions_called:
+        #    if not funct.verified:
+        #        self.verify(funct)
+
+    def verify_jump(self, flow, instr_addrs):
+        target_funct = self.enclosing_funct(flow.dst)
+        src_funct = self.enclosing_funct(flow.src)
+
+        if target_funct == None:
+            self.set_insecure(OutOfObjectJump(self, flow, None))
+
+        # check that jumps back into this funct don't go to middle of instrs
+        if target_funct == src_funct:
+            if not in_sorted_list(instr_addrs, flow.dst):
+                self.set_insecure(MiddleOfInstructionJump(self, flow,
+                    "the rogue jump goes back into '{}'".format(src_funct)))
+
+        # check if this jump is acting like a function call
+        if target_funct.addr == flow.dst:
+            # TODO: check the whitelist
+            if target_funct and not target_funct.verified:
+                self.funct_q.append(target_funct)
+                target_funct.verified = True
+
+        # keep track of the incoming returns so that we can check if they go
+        # to the middle of instructions later on, after the breadth first search
+        target_funct.incoming_returns.append(flow)
+
+    def verify_call(self, flow, instr_addrs):
+        target_funct = self.target_funct(flow.dst)
+        if target_funct == None:
+            self.set_insecure(InvalidFunctionCall(self, flow,
+                "call doesn't target a function"))
+
+        # TODO enable this
+        #if target_funct.name in WHITELIST:
+        #    self.set_insecure(
+
+        if target_funct and target_funct.verified:
+            self.funct_q.append(target_funct)
+            target_funct.verified = True
+
+    def verify_loop(self, flow, instr_addrs):
+        src_funct = self.enclosing_funct(flow.src)
+        if not src_funct.contains_address(flow.dst):
+            raise LoopOutOfFunction(self, flow, None)
+
+        if not in_sorted_list(instr_addrs, flow.dst):
+            raise MiddleOfInstructionLoopJump(self, flow, None)
 
     def judge(self):
         """Returns true iff the file object is CDI compliant
@@ -148,21 +225,28 @@ class Verifier:
             # sections must have size > 0 to be considered
             # NOTE: _fini and company have size 0 so they are not verified
             if funct.name not in WHITELIST:
-                self.verify(funct)
+                self.funct_q.append(funct)
+                funct.verified = True
+        
+        while self.funct_q:
+            funct = self.funct_q.popleft()
+            print("verifying function '{}'".format(funct.name))
+            self.verify(funct)
+
+        # TODO: remove this
+        return self.secure
 
         # check that incoming "return" jumps are valid
         for funct in self.functions:
             try:
                 self.check_return_jumps_are_valid(funct)
-            except InsecureJump as insecurity:
+            except InsecureFlow as insecurity:
                 insecurity.print_debug_info()
                 self.secure = False
 
         # check rlts
         for r in self.rlts:
             verifier.check_rlt(r)
-        # verify shared library portion (TODO)
-        # verify .init, _start, etc. (TODO)
         
         return self.secure
 
@@ -194,12 +278,12 @@ class Verifier:
                         valid_addr = valid_addr_iter.next()
                     except StopIteration:
                         raise MiddleOfInstructionJump(
-                                self.target_section(funct.addr),
+                                self.enclosing_sect(funct.addr),
                                 elfparse.Function('Unknown', 0, 0, 0), 'Unknown',
                                 return_addr, 'Jump goes to ' + funct.name)
                 elif valid_addr > return_addr:
                         raise MiddleOfInstructionJump(
-                                self.target_section(funct.addr),
+                                self.enclosing_sect(funct.addr),
                                 elfparse.Function('Unknown', 0, 0, 0), 'Unknown',
                                 return_addr, 'Jump goes to ' + funct.name)
                 else: # valid_addr == return_addr
@@ -234,7 +318,7 @@ class Verifier:
         else:
             return None
     
-    def target_section(self, virtual_address):
+    def enclosing_sect(self, virtual_address):
         """Returns section that the virtual_address is in
         
         Inefficient, but suitable for our purposes"""
@@ -273,7 +357,7 @@ class Verifier:
         md = Cs(CS_ARCH_X86, CS_MODE_64)
         if self.print_instr_as_decoded:
             print '--------------:  ' + function.name
-        prev_instruction = None
+        prev_instr = None
         for i in md.disasm(buff, function.addr):
             addresses.append(int(i.address))
             if self.print_instr_as_decoded:
@@ -283,72 +367,54 @@ class Verifier:
                     # Indirect calls and jumps have a * after the instruction and before the location
                     # which raises a value error exception in the casting
                     addr = int(i.op_str,16)
+                    yield Flow(i.address, addr, 'jump')
+
+                    # TODO: move to jump handler
                     if addr >= plt_start_addr and addr <= plt_start_addr + plt_size:
                         if (addr - plt_start_addr) % plt_entry_size != 0:
-                            raise MiddleOfPltEntryJump(target_section(function.addr),
+                            raise MiddleOfPltEntryJump(enclosing_sect(function.addr),
                                     function, '', addr, 'plt starts at ' + hex(plt_start_addr))
 
                     elif addr > self.tramtab_start_addr and addr <= tramtab_start_addr + tramtab_size:
                         if (addr - self.tramtab_start_addr) % 0x10 != 0:
-                            raise MiddleOfTramtabEntryJump(target_section(function.addr),
+                            raise MiddleOfTramtabEntryJump(enclosing_sect(function.addr),
                                     function, '', addr, 'tramtab starts at ' + hex(tramtab_start_addr))
-                    else:
-                        jmps.append(addr)
                 except ValueError:
-                    if prev_instruction and prev_instruction.mnemonic == 'movabs':
-                        register = prev_instruction.op_str.split(', ')[0]
-                        mov_addr = prev_instruction.op_str.split(', ')[1]
+                    if prev_instr and prev_instr.mnemonic == 'movabs':
+                        register = prev_instr.op_str.split(', ')[0]
+                        mov_addr = prev_instr.op_str.split(', ')[1]
                         if i.op_str == register:
-                            jmps.append(addr)
-                            prev_instruction = i
+                            yield Flow(i.address, addr, 'jump')
+                            prev_instr = i
                             continue
-                    if self.exit_on_insecurity:
-                        raise IndirectJump(self.target_section(function.addr),
-                                function, hex(int(i.address)), i.op_str, 'Indirect Jmp/Jcc')
-                    else:
-                        IndirectJump(self.target_section(function.addr),
-                                function, hex(int(i.address)), i.op_str, 'Indirect Jmp/Jcc').print_debug_info()
+                    self.set_insecure(IndirectJump(self, Flow(i.address, 0, 'jump')),
+                            "indirect jmp/jcc")
             elif i.mnemonic in call_list:
                 try:
                     addr = int(i.op_str,16)
+                    yield Flow(i.address, addr, 'call')
+
+                    # TODO: move to call handler
                     if addr >= plt_start_addr and addr <= plt_start_addr + plt_size:
                         if (addr - plt_start_addr) % plt_entry_size != 0:
-                            raise MiddleOfPltEntryJump(target_section(function.addr),
+                            raise MiddleOfPltEntryJump(enclosing_sect(function.addr),
                                     function, '', addr, 'plt starts at ' + hex(plt_start_addr))
-
-                    else:
-                        calls.append(addr)
                 except ValueError:
-                    if self.exit_on_insecurity:
-                        raise IndirectCall(self.target_section(function.addr),
-                                function, hex(int(i.address)), i.op_str, 'Indirect Call')
-                    else:
-                        IndirectCall(self.target_section(function.addr), 
-                                function, hex(int(i.address)), i.op_str, 'Indirect Call').print_debug_info()
+                    self.set_insecure(IndirectCall(self, Flow(i.address, 0, 'call'), None))
 
             elif i.mnemonic in returns:
                 if function.name == 'main' and IGNORE_RET_FROM_MAIN:
-                    # ignore the return
-                    pass
-
-                elif self.exit_on_insecurity:
-                    raise IndirectJump(self.target_section(function.addr), 
-                            function, hex(int(i.address)), i.op_str, 'Return Instruction')
+                    pass # ignore the return
                 else:
-                    IndirectJump(self.target_section(function.addr),
-                            function, hex(int(i.address)), i.op_str, 'Return Instruction').print_debug_info()
-
-
+                    self.set_insecure(ReturnUsed(self, Flow(i.address, 0, 'ret'), None))
             elif i.mnemonic in loop_list:
-                loops.append(int(i.op_str, 16))
-            prev_instruction = i
+                yield Flow(i.address, int(i.op_str, 16), 'loop')
+            prev_instr = i
         if self.print_instr_as_decoded:
             print '--------------:  ' + function.name + '\n'
 
-        return calls, jmps, loops, addresses
 
-
-    def instr_addresses(self, function):
+    def instr_addrs(self, function):
         """Returns a list of valid instr addresses for a function
         
         """
@@ -390,7 +456,7 @@ class Verifier:
 
                         for inst in dis:
                             if (inst.mnemonic != 'call'):
-                                raise RltNotAfterDirectCall(self.target_section(addr_to_chk),
+                                raise RltNotAfterDirectCall(self.enclosing_sect(addr_to_chk),
                                      rlt, hex(int(i.address)), i.op_str, 'RLT_Inst.')
 
 #############################
@@ -400,102 +466,96 @@ class Verifier:
 class Error(Exception):
     pass
 
-class InsecureJump(Error):
-    def __init__(self, section, function, site_address, jump_address, message = ''):
-        self.section = section
-        self.function = function
-        self.site_address = site_address
-        self.jump_address = jump_address
-        self.message = message
+# old args:
+# section, function, site_address, jump_address, message = ''):
 
-        if type(self.site_address) is types.IntType:
-            self.site_address = hex(self.site_address)
-            
-        if type(self.jump_address) is types.IntType:
-            self.jump_address = hex(self.jump_address)
+class InsecureFlow(Error):
+    def __init__(self, verifier, flow, msg):
+        self.src_sect = verifier.enclosing_sect(flow.src)
+        self.dst_sect = verifier.enclosing_sect(flow.dst)
+
+        src_funct = verifier.enclosing_funct(flow.src)
+        dst_funct = verifier.enclosing_funct(flow.dst)
+
+        def get_funct_loc(funct, addr):
+            if funct == None:
+                return ''
+            else:
+                return '{} (0x{:x} + 0x{:x})'.format(funct.name,
+                        funct.addr, addr - funct.addr)
+        self.flow_src = get_funct_loc(src_funct, flow.src)
+        self.flow_dst = get_funct_loc(dst_funct, flow.dst)
+
+        self.msg = msg
+        self.flow = flow
 
     def print_debug_info(self):
-        print 'Insecure jump details: '
-        print '\tsection: \t' + self.section.name
-        print '\tfunction: \t' + self.function.name
-        print '\tsite address: \t' + self.site_address
-        print '\tjump address: \t' + self.jump_address
-        print '\tmessage: \t' + self.message + '\n'
+        print 'Insecure Flow Details:'
+        print '\tsections:  {} -> {}'.format(self.src_sect.name, self.dst_sect.name)
+        print '\taddrs:     0x{:x} -> 0x{:x}'.format(self.flow.src, self.flow.dst)
+        print '\tflow src:  {}'.format(self.flow_src)
+        print '\tflow dst:  {}'.format(self.flow_dst)
+        print '\tmessage:   ' + self.msg
+        print ''
 
-class Return(InsecureJump):
-    """Exception for return instruction"""
-
+class ReturnUsed(InsecureFlow):
     def print_debug_info(self):
         print '--RETURN INSTRUCTION--'
-        InsecureJump.print_debug_info(self)
+        InsecureFlow.print_debug_info(self)
 
-class MiddleOfPltEntryJump(InsecureJump):
-    """Exception for jump to middle of PLT"""
-
+class MiddleOfPltEntryJump(InsecureFlow):
     def print_debug_info(self):
         print '--JUMP TO MIDDLE OF PLT ENTRY--'
-        InsecureJump.print_debug_info(self)
-class MiddleOfTramtabEntryJump(InsecureJump):
-    """Exception for jump to middle of tramtab"""
-
+        InsecureFlow.print_debug_info(self)
+class MiddleOfTramtabEntryJump(InsecureFlow):
     def print_debug_info(self):
         print '--JUMP TO MIDDLE OF TRAMTAB ENTRY--'
-        InsecureJump.print_debug_info(self)
-class IndirectCall(InsecureJump):
-    """Exception for unconstrained indirect jump"""
-    
+        InsecureFlow.print_debug_info(self)
+class IndirectCall(InsecureFlow):
     def print_debug_info(self):
         print '--INDIRECT CALL--'
-        InsecureJump.print_debug_info(self)
+        InsecureFlow.print_debug_info(self)
 
-class IndirectJump(InsecureJump):
-    """Exception for unconstrained indirect jump"""
-    
+class IndirectJump(InsecureFlow):
     def print_debug_info(self):
         print '--INDIRECT JUMP--'
-        InsecureJump.print_debug_info(self)
+        InsecureFlow.print_debug_info(self)
 
-class MiddleOfInstructionJump(InsecureJump):
-    """Exception for jump pointing to the middle of an instruction"""
-    
+class MiddleOfInstructionJump(InsecureFlow):
     def print_debug_info(self):
         print '--MIDDLE OF INSTRUCTION JUMP--'
-        InsecureJump.print_debug_info(self)
+        InsecureFlow.print_debug_info(self)
 
-class InvalidFunctionCall(InsecureJump):
-    """Exception for a call instruction pointing anywhere but start of function"""
-    
+class InvalidFunctionCall(InsecureFlow):
     def print_debug_info(self):
         print '--CALL DOESN\'T POINT TO START OF FUNCTION--'
-        InsecureJump.print_debug_info(self)
+        InsecureFlow.print_debug_info(self)
 
-class OutOfObjectJump(InsecureJump):
-    """Exception for a jump out of the same code object"""
-    
+class OutOfObjectJump(InsecureFlow):
     def print_debug_info(self):
         print '--JUMP TO OUTSIDE OF OBJECT--'
-        InsecureJump.print_debug_info(self)
+        InsecureFlow.print_debug_info(self)
 
-class LoopOutOfFunction(InsecureJump):
-    """Exception for a loop jump that points out of the function it's in"""
-
+class LoopOutOfFunction(InsecureFlow):
     def print_debug_info(self):
         print '--LOOP JUMP TO OUT OF FUNCTION--'
-        InsecureJump.print_debug_info(self)
+        InsecureFlow.print_debug_info(self)
 
-class MiddleOfInstructionLoopJump(InsecureJump):
-    """Exception for a loop jump that points to the middle of an instruction"""
-
+class MiddleOfInstructionLoopJump(InsecureFlow):
     def print_debug_info(self):
         print '--LOOP JUMP POINTS TO MIDDLE OF INSTRUCTION--'
-        InsecureJump.print_debug_info(self)
+        InsecureFlow.print_debug_info(self)
 
-class RltNotAfterDirectCall(InsecureJump):
-    """Exception for rlt not jmping back after a direct call"""
-
+class RltNotAfterDirectCall(InsecureFlow):
     def print_debug_info(self):
         print '--RLT JUMP DOESN"T POINT AFTER A DIRECT CALL--'
-        InsecureJump.print_debug_info(self)
+        InsecureFlow.print_debug_info(self)
+
+def in_sorted_list(l, val):
+    candidate_idx = bisect.bisect_left(l, val)
+    if candidate_idx == len(l):
+        return False
+    return l[candidate_idx] == val
 
 #############################
 # Script

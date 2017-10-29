@@ -20,8 +20,6 @@ class ExecSection:
         assert type(self.virtual_address) is types.IntType
 
     def contains_address(self, virtual_address):
-        assert type(virtual_address) is types.IntType
-        
         return (virtual_address >= self.virtual_address and 
                 virtual_address < self.virtual_address + self.size)
 
