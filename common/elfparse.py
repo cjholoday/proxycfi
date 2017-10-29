@@ -34,18 +34,15 @@ class Function:
         self.addr = virtual_address
 
         # virtual addresses of all "return" jumps to this function
-        self.incoming_returns = []
+        self.incoming_flow = []
 
         assert type(self.size) is types.IntType
         assert type(self.file_offset) is types.IntType
         assert type(self.addr) is types.IntType
     
     def contains_address(self, virtual_address):
-        assert type(virtual_address) is types.IntType
-        assert virtual_address > 0
-        
-        return (virtual_address >= self.virtual_address and 
-                virtual_address < self.virtual_address + self.size)
+        return (virtual_address >= self.addr and 
+                virtual_address < self.addr + self.size)
 class Rlt:
     def __init__(self, name, start_offset, virtual_address, size):
         self.name = name

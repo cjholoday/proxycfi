@@ -134,7 +134,7 @@ class Verifier:
 
         # keep track of the returns so that we can check if they go
         # to the middle of instructions later on, after the breadth first search
-        target_funct.incoming_returns.append(flow)
+        target_funct.incoming_flow.append(flow)
 
     def verify_sl_flow(self, flow, sect):
         if sect == '.plt':
@@ -188,63 +188,25 @@ class Verifier:
             print("verifying function '{}'".format(funct.name))
             self.verify(funct)
 
-        # TODO: remove this
-        return self.secure
-
-        # check that incoming "return" jumps are valid
-        for funct in self.functions:
-            try:
-                self.check_return_jumps_are_valid(funct)
-            except InsecureFlow as insecurity:
-                insecurity.print_debug_info()
-                self.secure = False
-
         # check rlts
         for r in self.rlts:
             verifier.check_rlt(r)
+
+        # check that incoming "return" jumps are valid
+        # this MUST be done last because it relies on other verifier parts
+        # to supply all cross function jumps to funct.incoming_flow instances
+        for funct in self.functions:
+            self.check_cross_funct_flow(funct)
         
         return self.secure
 
-    def check_return_jumps_are_valid(self, funct):
-        if funct.incoming_returns == []:
-            return # no returns to check!
+    def check_cross_funct_flow(self, funct):
+        instr_addrs = self.instr_addrs(funct)
+        for flow in funct.incoming_flow:
+            if not in_sorted_list(instr_addrs, flow.dst):
+                self.set_insecure(MiddleOfInstructionJump(self, flow, None))
 
-        instruction_addresses = self.instr_addresses(funct)
-
-        return_addr_iter = iter(sorted(funct.incoming_returns))
-        return_addr = return_addr_iter.next()
-
-        valid_addr_iter = '0'
-        valid_addr = '0'
-        try:
-            valid_addr_iter = iter(instruction_addresses)
-            valid_addr = valid_addr_iter.next()
-
-        except StopIteration:
-            sys.stderr.write('ERROR: A function wants to jump to ' +
-                    funct.name + ' but ' + funct.name + ' has no instructions!\n')
-            sys.exit(1)
-
-        try:
-            # python requires a while true for manual iterating...
-            while True:
-                if valid_addr < return_addr:
-                    try:
-                        valid_addr = valid_addr_iter.next()
-                    except StopIteration:
-                        raise MiddleOfInstructionJump(
-                                self.enclosing_sect(funct.addr),
-                                elfparse.Function('Unknown', 0, 0, 0), 'Unknown',
-                                return_addr, 'Jump goes to ' + funct.name)
-                elif valid_addr > return_addr:
-                        raise MiddleOfInstructionJump(
-                                self.enclosing_sect(funct.addr),
-                                elfparse.Function('Unknown', 0, 0, 0), 'Unknown',
-                                return_addr, 'Jump goes to ' + funct.name)
-                else: # valid_addr == return_addr
-                    return_addr = return_addr_iter.next()
-        except StopIteration:
-            pass 
+        return
 
     def target_funct(self, addr):
         """Returns a function that contains the address. Otherwise, None
@@ -388,21 +350,11 @@ class Verifier:
         for i in md.disasm(buff, rlt.virtual_address):
             if i.mnemonic == 'je':
             	# op = i.op_str.split(',') # if we are checking the 'cmp'
-                addr_to_chk = int(i.op_str,16)
-                for f in self.functions:
-                    if f.contains_address(addr_to_chk):
-                        chk_offset = (addr_to_chk - f.addr) + f.file_offset - 5
-
-                        file.seek(0)
-                        file.seek(chk_offset)
-                        bf = file.read(5)
-
-                        dis = md.disasm(bf, addr_to_chk - 5)
-
-                        for inst in dis:
-                            if (inst.mnemonic != 'call'):
-                                raise RltNotAfterDirectCall(self.enclosing_sect(addr_to_chk),
-                                     rlt, hex(int(i.address)), i.op_str, 'RLT_Inst.')
+                flow = Flow(i.address, int(i.op_str,16), 'jump')
+                funct = self.enclosing_funct(flow.dst)
+                if funct == None:
+                    self.set_insecure(OutOfObjectJump(self, flow, None))
+                funct.incoming_flow.append(flow)
 
 #############################
 # Exception Types
