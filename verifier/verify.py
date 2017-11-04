@@ -93,8 +93,6 @@ class Verifier:
     def verify(self, function):
         """Recursively verifies that function is CDI compliant"""
 
-        function.verified = True
-
         # If we see a function on the whitelist, then a non-whitelisted function
         # calls a whitelisted function. This should never happen because the 
         # whitelisted functions should be disjointly used compared to normal functions
@@ -111,7 +109,7 @@ class Verifier:
         target_funct = self.enclosing_funct(flow.dst)
         src_funct = self.enclosing_funct(flow.src)
 
-        if target_funct == None:
+        if target_funct is None:
             sect = self.enclosing_sect(flow.dst).name
             if sect != '.text':
                 self.verify_sl_flow(flow, sect)
@@ -127,10 +125,7 @@ class Verifier:
 
         # check if this jump is acting like a function call
         if target_funct.addr == flow.dst:
-            # TODO: check the whitelist
-            if target_funct and not target_funct.verified:
-                self.funct_q.append(target_funct)
-                target_funct.verified = True
+            assert target_funct.verified
 
         # keep track of the returns so that we can check if they go
         # to the middle of instructions later on, after the breadth first search
@@ -148,21 +143,15 @@ class Verifier:
 
     def verify_call(self, flow, instr_addrs):
         target_funct = self.target_funct(flow.dst)
-        if target_funct == None:
+        if target_funct is None:
             sect = self.enclosing_sect(flow.dst).name
             if sect != '.text':
                 self.verify_sl_flow(flow, sect)
             else:
                 self.set_insecure(InvalidFunctionCall(self, flow,
                     "call doesn't target a function"))
-
-        # TODO enable this
-        #if target_funct.name in WHITELIST:
-        #    self.set_insecure(
-
-        if target_funct and target_funct.verified:
-            self.funct_q.append(target_funct)
-            target_funct.verified = True
+        else:
+            assert target_funct.verified
 
     def verify_loop(self, flow, instr_addrs):
         src_funct = self.enclosing_funct(flow.src)
@@ -179,9 +168,9 @@ class Verifier:
         """
 
         for funct in self.functions:
+            funct.verified = True
             if funct.name not in WHITELIST:
                 self.funct_q.append(funct)
-                funct.verified = True
         
         while self.funct_q:
             funct = self.funct_q.popleft()
@@ -511,8 +500,9 @@ if __name__ == "__main__":
     plt_start_addr, plt_size, plt_entry_size, tramtab_start_addr, tramtab_size = elfparse.gather_plts_tram(binary)
 
     functions =  elfparse.gather_functions (binary.name, exec_sections)
+    print "Functions:"
     for funct in functions:
-        print(funct.name, hex(funct.addr))
+        print '   {:30} at {}'.format(funct.name, hex(funct.addr))
     rlts = elfparse.gather_rlts (binary.name, exec_sections, rlt_start_addr, rlt_start_offset, rlt_section_size)
     
     verifier = Verifier(binary, exec_sections, functions, rlts, plt_start_addr, 
