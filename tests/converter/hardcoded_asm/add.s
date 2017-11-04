@@ -8,6 +8,19 @@
 
 # assembly
 
+# hardcoding checklist:
+#	1. Begin and end with '#hardcoded_typeinfo\n' and '# assembly\n' respectively
+#	2. Add funct/fptr type info with dummy line numbers
+#	3. Add a dummy '.file' directive for this file
+#	4. Use '.loc' commands with the dummy line numbers to associate assembly with type info
+#	5. Begin and end each function .LFBX: and .LFEX: where X is a unique number to within this file
+#	6. Change all .global directives to .globl
+#	7. Add the debug_info and gnu stack sections EXACTLY as they are in this file
+#	8. Add '.size' directives so that function symbols have a size
+#	9. If you run into problems, you're probably doing something slight differnt
+#      and unfortunately the hardcoding process is currently brittle. Try to 
+#	   follow this example more closely
+
 .globl add
 .type add,@function
 .file 1 "add.s"
@@ -34,4 +47,3 @@ do_add:
 	.size do_add, .-do_add
 	.section    .debug_info,"",@progbits                                        
 	.section    .note.GNU-stack,"",@progbits           
-
