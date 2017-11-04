@@ -1,5 +1,7 @@
 #!/bin/bash
 
+export CDI_MUSL_STATIC=0
+
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"                  
 
 # sanity check on cwd
