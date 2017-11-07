@@ -21,20 +21,22 @@ check "verification failed" || exit 1
 diff output correct_output
 check "incorrect output" || exit 1
 
-# Get non-CDI trace
-gcc $cdi_flags -finstrument-functions main.c formulas.c calc.c -o out \
-    ../../../instrumentation/instrumentation.c
-./out > output
-"$ADDR_TRANSLATE" out trace_table.out > funct_table2.out
-mv trace.out trace2.out
+if [ "$CDI_MUSL_STATIC" != 1 ]; then
+    # Get non-CDI trace
+    gcc $cdi_flags -finstrument-functions main.c formulas.c calc.c -o out \
+        ../../../instrumentation/instrumentation.c
+    ./out > output
+    "$ADDR_TRANSLATE" out trace_table.out > funct_table2.out
+    mv trace.out trace2.out
 
-# Get CDI trace
-cdi-gcc $cdi_flags -finstrument-functions main.c formulas.c calc.c -o out \
-    ../../../instrumentation/instrumentation.c
-./out > output
-"$ADDR_TRANSLATE" out trace_table.out > funct_table1.out
-mv trace.out trace1.out
+    # Get CDI trace
+    cdi-gcc $cdi_flags -finstrument-functions main.c formulas.c calc.c -o out \
+        ../../../instrumentation/instrumentation.c
+    ./out > output
+    "$ADDR_TRANSLATE" out trace_table.out > funct_table1.out
+    mv trace.out trace1.out
 
-# Check that the traces are identical
-"$DIFF_TRACE" out trace1.out funct_table1.out trace2.out funct_table2.out
-check "the cdi trace is different than the non-cdi trace" || exit 1
+    # Check that the traces are identical
+    "$DIFF_TRACE" out trace1.out funct_table1.out trace2.out funct_table2.out
+    check "the cdi trace is different than the non-cdi trace" || exit 1
+fi
