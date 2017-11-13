@@ -264,10 +264,10 @@ elf_machine_rela (struct link_map *map, const ElfW(Rela) *reloc,
 		  void *const reloc_addr_arg, int skip_ifunc)
 {
   ElfW(Addr) *const reloc_addr = reloc_addr_arg;
-  if (map)
-  	if (map->l_name)
-  		_dl_debug_printf ("map->l_name = %s\n", map->l_name);
-  _dl_debug_printf ("elf_machine_rela s --> reloc_addr = 0x%lx, *reloc_addr = 0x%lx \n", (unsigned long int) reloc_addr, (((unsigned long int) *reloc_addr)));
+  //if (map)
+  //	if (map->l_name)
+  //		_dl_debug_printf ("map->l_name = %s\n", map->l_name);
+  //_dl_debug_printf ("elf_machine_rela s --> reloc_addr = 0x%lx, *reloc_addr = 0x%lx \n", (unsigned long int) reloc_addr, (((unsigned long int) *reloc_addr)));
    void *pre_relocation_value = (void*) *reloc_addr;
   // if ((((unsigned long int) *reloc_addr) - 6) > 0x400000 && (((unsigned long int) *reloc_addr) - 6) <0x4fffff)
   // _dl_debug_printf ("*reloc_addr = 0x%lx \n", *(unsigned long int *)(((unsigned long int) *reloc_addr) - 6));
@@ -507,7 +507,7 @@ elf_machine_rela (struct link_map *map, const ElfW(Rela) *reloc,
 # endif
 	}
     }
-  _dl_debug_printf ("elf_machine_rela e --> reloc_addr = 0x%lx, *reloc_addr = 0x%lx \n", (unsigned long int)reloc_addr, (((unsigned long int) *reloc_addr)));
+  //_dl_debug_printf ("elf_machine_rela e --> reloc_addr = 0x%lx, *reloc_addr = 0x%lx \n", (unsigned long int)reloc_addr, (((unsigned long int) *reloc_addr)));
   /* _CDI_: Modify the plt to a direct call to the actural relocated address. */
 
   if ((unsigned long int)pre_relocation_value > 0x400000) {
@@ -516,21 +516,21 @@ elf_machine_rela (struct link_map *map, const ElfW(Rela) *reloc,
       if (!clb && strcmp(map->l_name,"")){
           return;
       }
-      _dl_debug_printf ("**** CDI lib relocation :\n");
+      //_dl_debug_printf ("**** CDI lib relocation :\n");
       unsigned char *plt = 0;
       /*.plt.got since .got comes after .plt.got negative offset implies .plt.got */
       if ((unsigned long int)pre_relocation_value >  0xf000000000000000){
-          _dl_debug_printf ("****fixing a slow_plt ****:\n");
-          _dl_debug_printf ("pre_relocation_value = 0x%lx reloc_addr = 0x%lx\n", (unsigned long int)pre_relocation_value, (unsigned long int)reloc_addr);
-          _dl_debug_printf ("relocated_to = %lx \n", (unsigned long int) *reloc_addr);
+          //_dl_debug_printf ("****fixing a slow_plt ****:\n");
+          //_dl_debug_printf ("pre_relocation_value = 0x%lx reloc_addr = 0x%lx\n", (unsigned long int)pre_relocation_value, (unsigned long int)reloc_addr);
+          //_dl_debug_printf ("relocated_to = %lx \n", (unsigned long int) *reloc_addr);
           unsigned char *slow_plt = (unsigned char*)((unsigned long int)pre_relocation_value + (unsigned long int)reloc_addr);
           unsigned char *target = (unsigned char*) *reloc_addr;
           if (!target) {
               return;
           }
-          _dl_debug_printf_c("HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIT\n");
-          
-          _dl_debug_printf_c("bytes: %u, %u, %u, %u\n", target[0], target[1], target[6], target[11]);
+          //_dl_debug_printf_c("HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIT\n");
+          //
+          //_dl_debug_printf_c("bytes: %u, %u, %u, %u\n", target[0], target[1], target[6], target[11]);
 
           /* check for the format of a PLT */
           if (target[0] == 0xff && target[1] == 0x25
@@ -552,18 +552,18 @@ elf_machine_rela (struct link_map *map, const ElfW(Rela) *reloc,
                        * chained to slow plts. Start the chain */
 
                       *got_entry = (uintptr_t)slow_plt;
-                      _cdi_print_plt_bytes(slow_plt, "start chain before");
+                      //_cdi_print_plt_bytes(slow_plt, "start chain before");
                       _cdi_write_direct_plt(slow_plt, &target, 0);
-                      _cdi_print_plt_bytes(slow_plt, "start chain after");
+                      //_cdi_print_plt_bytes(slow_plt, "start chain after");
                   }
                   else if (*(unsigned char *)(*got_entry + 13) == 0x0f 
                           && *(unsigned char *)(*got_entry + 14) == 0x0b) {
                       /* the got entry points to a slow plt. Add ourselves to
                        * the chain */
 
-                      _cdi_print_plt_bytes(slow_plt, "chain before");
+                      //_cdi_print_plt_bytes(slow_plt, "chain before");
                       _cdi_write_direct_plt(slow_plt, got_entry, 0);
-                      _cdi_print_plt_bytes(slow_plt, "chain after");
+                      //_cdi_print_plt_bytes(slow_plt, "chain after");
                       *got_entry = (uintptr_t)slow_plt;
                   }
                   else {
@@ -577,7 +577,7 @@ elf_machine_rela (struct link_map *map, const ElfW(Rela) *reloc,
                        * just take the address from the got and go there
                        */
                       _cdi_write_direct_plt(slow_plt, (void*)*got_entry, !force_jump);
-                      _dl_debug_printf_c("FATAL ERROR: how did we get here?\n");
+                      //_dl_debug_printf_c("FATAL ERROR: how did we get here?\n");
                   }
                   return;
               }
@@ -588,9 +588,9 @@ elf_machine_rela (struct link_map *map, const ElfW(Rela) *reloc,
                   && target[12] == 0xd3 && target[13] == 0x0f) {
               /* the GOT has been relocated to point to a fixed up PLT */
               /* snatch the function's address from the CDI PLT */
-              _cdi_print_plt_bytes(slow_plt, "cdi direct before");
+              //_cdi_print_plt_bytes(slow_plt, "cdi direct before");
               _cdi_write_direct_plt(slow_plt, target + 2, 1);
-              _cdi_print_plt_bytes(slow_plt, "cdi direct after");
+              //_cdi_print_plt_bytes(slow_plt, "cdi direct after");
           }
           else {
               /* we're pointing directly to the function */
@@ -605,9 +605,9 @@ elf_machine_rela (struct link_map *map, const ElfW(Rela) *reloc,
               if (*(unsigned char*)(slow_plt + 15) == 0xcc) {
                   force_jump = 1;
               }
-              _cdi_print_plt_bytes(slow_plt, "direct before");
+              //_cdi_print_plt_bytes(slow_plt, "direct before");
               _cdi_write_direct_plt(slow_plt, &target, !force_jump);
-              _cdi_print_plt_bytes(slow_plt, "direct after");
+              //_cdi_print_plt_bytes(slow_plt, "direct after");
           }
 
           return;
@@ -616,7 +616,7 @@ elf_machine_rela (struct link_map *map, const ElfW(Rela) *reloc,
       /* check if it points to chain of slow plts*/
       if (*((unsigned char*)(pre_relocation_value + 13)) == 0x0f
               && *((unsigned char*)(pre_relocation_value + 14)) == 0x0b) {
-          _dl_debug_printf_c("-- fixing chain of slow plts: *pre_1 = %lx\n", *((unsigned long int*)pre_relocation_value + 2));
+          //_dl_debug_printf_c("-- fixing chain of slow plts: *pre_1 = %lx\n", *((unsigned long int*)pre_relocation_value + 2));
 
           /* check for chain of fast plts*/
           unsigned long int relocated_to = (unsigned long int) *reloc_addr;
@@ -630,10 +630,10 @@ elf_machine_rela (struct link_map *map, const ElfW(Rela) *reloc,
               force_jump = 1;
           }
 
-          _cdi_print_plt_bytes(pre_relocation_value, "resolve first before");
+          //_cdi_print_plt_bytes(pre_relocation_value, "resolve first before");
           _cdi_write_direct_plt(pre_relocation_value, &relocated_to, !force_jump);
-          _cdi_print_plt_bytes(pre_relocation_value, "resolve first after");
-          _dl_debug_printf_c ("c = %lx, *c1 = %lx \n", (unsigned long int)plt_chain, *(unsigned long int*)plt_chain );
+          //_cdi_print_plt_bytes(pre_relocation_value, "resolve first after");
+          //_dl_debug_printf_c ("c = %lx, *c1 = %lx \n", (unsigned long int)plt_chain, *(unsigned long int*)plt_chain );
           /*process all the fast plts in the chain*/
           while(*((unsigned char*)(plt_chain + 13)) == 0x0f && 
                   *((unsigned char*)(plt_chain + 14)) == 0x0b) {
@@ -642,17 +642,17 @@ elf_machine_rela (struct link_map *map, const ElfW(Rela) *reloc,
                   force_jump = 1;
               }
               ElfW(Addr) tmp = *((ElfW(Addr) *)((unsigned char *)plt_chain + 2));
-              _cdi_print_plt_bytes((void*)plt_chain, "resolve before");
+              //_cdi_print_plt_bytes((void*)plt_chain, "resolve before");
               _cdi_write_direct_plt((void *)plt_chain, &relocated_to, !force_jump);
-              _cdi_print_plt_bytes((void*)plt_chain, "resolve after");
+              //_cdi_print_plt_bytes((void*)plt_chain, "resolve after");
               plt_chain = tmp;
               _dl_debug_printf_c ("c = %lx, *c = %lx \n", (unsigned long int)plt_chain, *(unsigned long int*)plt_chain );
           }
 
           /*finally update the plt itself*/
-          _cdi_print_plt_bytes((void*)plt_chain, "resolve last before");
+          //_cdi_print_plt_bytes((void*)plt_chain, "resolve last before");
           _cdi_write_direct_plt((void *)plt_chain, &relocated_to, !force_jump);
-          _cdi_print_plt_bytes((void*)plt_chain, "resolve last after");
+          //_cdi_print_plt_bytes((void*)plt_chain, "resolve last after");
       }
       else {
           /*It points the second instruction in it's own plt*/
@@ -670,10 +670,10 @@ elf_machine_rela (struct link_map *map, const ElfW(Rela) *reloc,
               return;
           }
 
-          _dl_debug_printf ("***doing fixup\n");
-          _cdi_print_plt_bytes(plt, "overwrite before");
+          //_dl_debug_printf ("***doing fixup\n");
+          //_cdi_print_plt_bytes(plt, "overwrite before");
           _cdi_write_direct_plt(plt, &relocated_to, 1);
-          _cdi_print_plt_bytes(plt, "overwrite after");
+          //_cdi_print_plt_bytes(plt, "overwrite after");
       }  		
   }
 }
@@ -683,10 +683,10 @@ __attribute ((always_inline))
 elf_machine_rela_relative (ElfW(Addr) l_addr, const ElfW(Rela) *reloc,
 			   void *const reloc_addr_arg)
 {
-	_dl_debug_printf ("***elf_machine_rela_relative\n");
+	//_dl_debug_printf ("***elf_machine_rela_relative\n");
  
   ElfW(Addr) *const reloc_addr = reloc_addr_arg;
-  _dl_debug_printf ("--> reloc_addr = %lx, *reloc_addr = 0x%lx l_addr = %lx, reloc->r_addend = %lx\n", (unsigned long int) reloc_addr, (((unsigned long int) *reloc_addr)), (unsigned long int)l_addr, (unsigned long int)reloc->r_addend);
+  //_dl_debug_printf ("--> reloc_addr = %lx, *reloc_addr = 0x%lx l_addr = %lx, reloc->r_addend = %lx\n", (unsigned long int) reloc_addr, (((unsigned long int) *reloc_addr)), (unsigned long int)l_addr, (unsigned long int)reloc->r_addend);
 #if !defined RTLD_BOOTSTRAP
   /* l_addr + r_addend may be > 0xffffffff and R_X86_64_RELATIVE64
      relocation updates the whole 64-bit entry.  */
@@ -706,7 +706,7 @@ elf_machine_lazy_rel (struct link_map *map,
 		      ElfW(Addr) l_addr, const ElfW(Rela) *reloc,
 		      int skip_ifunc)
 {
-	_dl_debug_printf ("***elf_machine_lazy_rel\n");
+	//_dl_debug_printf ("***elf_machine_lazy_rel\n");
   ElfW(Addr) *const reloc_addr = (void *) (l_addr + reloc->r_offset);
   const unsigned long int r_type = ELFW(R_TYPE) (reloc->r_info);
 
