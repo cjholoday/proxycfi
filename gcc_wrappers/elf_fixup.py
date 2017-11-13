@@ -14,6 +14,7 @@ import multtab
 
 from common.eprint import eprint
 from common.eprint import vprint
+from common.eprint import vvprint
 from common.elf import strtab_grab
 from common.elf import strtab_startswith
 
@@ -338,8 +339,7 @@ def extract_plt_ret_addrs(elf):
             sym_str = strtab_grab(elf.dynstr, sym.st_name)
             entry_vaddr = plt_sh.sh_addr + plt_sh.sh_entsize * (len(ret_addrs) + 1)
             ret_addrs[sym_str] = entry_vaddr + 13 # after movabs, callq
-    vprint("len(ret_addrs) = %d, len(plt_relocs) = %d\n" % (len(ret_addrs), len(plt_relocs)))
-    # assert len(ret_addrs) == len(plt_relocs)
+    vvprint("len(ret_addrs) = %d, len(plt_relocs) = %d\n" % (len(ret_addrs), len(plt_relocs)))
 
     dyn_relocs = elf.get_rela_relocs('.rela.dyn')
     dyn_relocs_by_idx = {reloc.r_info >> 32 : reloc for reloc in dyn_relocs}

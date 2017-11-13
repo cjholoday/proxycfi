@@ -19,6 +19,7 @@ import elf_fixup
 from error import fatal_error
 from common.eprint import eprint
 from common.eprint import vprint
+from common.eprint import vvprint
 import common.elf
 import run_profile
 
@@ -59,7 +60,9 @@ def main():
             subprocess.check_call(['rm', '-f', log_fname])
             common.eprint.STDOUT = common.eprint.STDERR = open(log_fname, 'a')
     if '--cdi-quiet' in lspec.cdi_options:
-        common.eprint.VERBOSE = False
+        common.eprint.QUIET = True
+    if '--cdi-verbose' in lspec.cdi_options:
+        common.eprint.VERBOSE = True
 
 
     archives = []
@@ -84,10 +87,8 @@ def main():
     # This is called on error or at the end of cdi-ld
     def restore_original_objects():
         os.chdir(error.original_path)
-        eprint("restoring objects: {}\n".format(' '.join(
-            list(map(lambda obj: obj.path, explicit_fake_objs)))))
         for i, fake_obj in enumerate(explicit_fake_objs):
-            eprint("restoring: {} -> {}".format(fake_obj.path, lspec.obj_paths[i]))
+            vprint("restoring: {} -> {}".format(fake_obj.path, lspec.obj_paths[i]))
             subprocess.check_call(['mv', fake_obj.path, lspec.obj_paths[i]])
 
     # used by fatal_error()
@@ -175,19 +176,16 @@ def main():
 
     try:
         normified_spec = lspec.fixup(normification_fixups)
-        eprint("normified_spec", normified_spec)
+        vvprint("normified spec: ", ' '.join(normified_spec))
         ld_command = ['ld'] + normified_spec + ['--verbose']
         verbose_linker_output = subprocess.check_output(ld_command)
     except subprocess.CalledProcessError:
         fatal_error("Unable to compile without CDI using linker command '{}'"
                 .format(' '.join(ld_command)))
 
-
     if '--cdi-abandon-cdi' in lspec.cdi_options:
         vprint('WARNING: CREATING NON CDI EXECUTABLE AS REQUESTED')
         sys.exit(0)
-
-
 
     # Extract needed fake objects out of archives
     ar_fake_objs, ar_fixups = lib_utils.ar_extract_req_objs(verbose_linker_output, archives)
@@ -315,7 +313,7 @@ def main():
 
     try:
         cdi_spec = lspec.fixup(cdi_fixups)
-        eprint("cdi_spec: ", cdi_spec)
+        vvprint("cdi spec: ", ' '.join(cdi_spec))
         subprocess.check_call(['ld'] + cdi_spec)
     except subprocess.CalledProcessError:
         fatal_error("calling 'ld' with the following spec failed:\n\n{}"

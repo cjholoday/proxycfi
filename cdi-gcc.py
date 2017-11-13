@@ -106,8 +106,13 @@ def print_cdi_help():
     print ''
 
     print '--cdi-quiet'
-    print 'Supress all output from cdi-gcc.py, cdi-as.py, and cdi-ld.py'
+    print 'Supress all output from cdi-gcc.py and cdi-ld.py'
     print ''
+
+    print '--cdi-verbose'
+    print 'Print out extra information in cdi-ld'
+    print ''
+
 
     print '--cdi-converter-quiet'
     print 'Print all output to log file at PATH instead of to stdout/stderr'

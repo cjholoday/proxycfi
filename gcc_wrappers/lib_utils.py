@@ -12,6 +12,7 @@ import common.elf
 
 from common.eprint import eprint
 from common.eprint import vprint
+from common.eprint import vvprint
 from error import fatal_error
 
 def ar_extract_req_objs(verbose_output, archives):
@@ -260,7 +261,7 @@ def sl_trace_bin(binary, is_shared):
 
 
     lib_addr_pairs = []
-    eprint("traced output:", traced_output)
+    vvprint("traced output:", traced_output)
     for line in traced_output.splitlines():
         # format of trace output: [symlink path] => [actual elf path] ([load addr])
         symlink = line.split()[0]
@@ -277,7 +278,7 @@ def sl_trace_bin(binary, is_shared):
             # linux-vdso.so then it won't be handled by cdi-ld.py. However, 
             # they really do deserve to get burned for their naming abuse
             continue
-        eprint("traced output line:", line)
+        vvprint("traced output line:", line)
         addr = int(line.split()[-1].lstrip('(').rstrip(')'), 16)
         lib_addr_pairs.append((path, addr))
     return lib_addr_pairs

@@ -10,6 +10,7 @@ import copy
 
 from common.eprint import eprint
 from common.eprint import vprint
+from common.eprint import vvprint
 
 def gen_cfg(asm_file_descrs, plt_sites, options):
     """Generate cfg from a list of asm files. Produce funct names for each description
@@ -86,7 +87,7 @@ def gen_cfg(asm_file_descrs, plt_sites, options):
                 # Potential targets are evaluated in that order
                 
                 try:
-                    eprint('flow: {} -> {} (name: {})'.format(
+                    vvprint('flow: {} -> {} (name: {})'.format(
                         funct.uniq_label, cfg.funct(target_name).uniq_label,
                         target_name))
                     dir_call_site.targets[0] = cfg.funct(target_name)
@@ -96,7 +97,7 @@ def gen_cfg(asm_file_descrs, plt_sites, options):
 
                 try:
                     dir_call_site.targets[0] = cfg.funct(descr.ul(target_name))
-                    eprint('flow: {} -> {} (name: {})'.format(
+                    vvprint('flow: {} -> {} (name: {})'.format(
                         funct.uniq_label, cfg.funct(descr.ul(target_name)).uniq_label,
                         descr.ul(target_name)))
                 except KeyError:
@@ -324,15 +325,14 @@ def build_ret_dicts(cfg, options):
                             indirect_indicator = '*'
 
                         # Print a star if this site can go to more than one target
-                        eprint('fflow: {} -{}> {}'
+                        vvprint('fflow: {} -{}> {}'
                                 .format(funct.uniq_label, indirect_indicator,  target.uniq_label))
                     increment_dict(call_dict, target.uniq_label, beg_multiplicity)
 
         for target_label, multiplicity in call_dict.iteritems():
             try:
-                if options['--verbose']:
-                    eprint('rflow: {} <- {}'
-                           .format(funct.uniq_label, cfg.funct(target_label).uniq_label))
+                vvprint('rflow: {} <- {}'
+                        .format(funct.uniq_label, cfg.funct(target_label).uniq_label))
                 cfg.funct(target_label).ret_dict[funct.uniq_label] = multiplicity
             except KeyError:
                 eprint("warning: function cannot be found: " + target_label)
@@ -364,7 +364,7 @@ def parse_cdi_metadata(cfg, asm_descr, options):
                 if line == '\n':
                     state = 'normal'
                     continue
-                vprint(line[2:-1]) # don't print newline or '#')
+                vvprint(line[2:-1]) # don't print newline or '#')
                 loc, type_sig = line.split()[1], line.split()[2]
                 funct_name = loc.split(':')[3]
 
@@ -407,7 +407,7 @@ def parse_cdi_metadata(cfg, asm_descr, options):
                 if line == '\n':
                     state = 'normal'
                     continue
-                vprint(line [2:-1]) # don't print newline or '#'
+                vvprint(line [2:-1]) # don't print newline or '#'
 
                 loc, type_sig = line.split()[1], line.split()[2]
                 loc_list = loc.split(':')

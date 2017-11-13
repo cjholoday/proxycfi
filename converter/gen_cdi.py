@@ -11,6 +11,7 @@ from gen_cfg import gen_cfg
 from gen_cdi_asm import gen_cdi_asm
 from common.eprint import eprint
 from common.eprint import vprint
+from common.eprint import vvprint
 import common
 
 
@@ -68,12 +69,17 @@ if __name__ == "__main__":
     if options['--log']:
         common.eprint.STDOUT = common.eprint.STDERR = open(options['--log'], 'a')
     if options.get('--quiet'):
-        common.eprint.VERBOSE = False
+        common.eprint.QUIET = True
+    if options.get('--verbose'):
+        common.eprint.VERBOSE = True
+
     
     asm_filenames = options['asm_filenames']
     asm_file_descrs = []
+
+    vvprint("converter: discovering object files")
     for filename in asm_filenames:
-        vprint(filename)
+        vvprint('\t'+filename)
         asm_file_descrs.append(asm_parsing.AsmFileDescription(filename))
         asm_file_descrs[-1].check_filename()
 

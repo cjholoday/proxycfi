@@ -5,6 +5,7 @@ import jsonpickle
 import random
 
 from common.eprint import eprint
+from common.eprint import vvprint
 
 descr_path = ""
 STARTUP_FUNCTIONS = [                                                           
@@ -77,8 +78,6 @@ class FunctControlFlowGraph:
         try:
             # note that this handles aliases as well
             funct = self.funct(uniq_label)
-            eprint("funct id: ", funct)
-            eprint("non cdi ids: ", self.non_cdi_functs)
             return funct not in self.non_cdi_functs
         except KeyError:
             eprint("KEYERROR")
@@ -150,8 +149,7 @@ class FunctControlFlowGraph:
                 sys.exit(1)
         
         global descr_path # XXX debugging
-        eprint("\nadding alias: {} -> {} [{}]\n"
-                .format(alias, uniq_label, descr_path))
+        vvprint("\nadding alias: {} -> {} [{}]\n".format(alias, uniq_label, descr_path))
         descr_path = ""
 
         if alias in ['_init', 'libc_start_init']:

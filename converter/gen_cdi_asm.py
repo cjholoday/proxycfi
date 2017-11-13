@@ -16,6 +16,7 @@ import struct
 import obj_parse
 
 from common.eprint import eprint
+from common.eprint import vvprint
 from cdi_abort import cdi_abort
 
 # CDI Label Conventions
@@ -253,12 +254,11 @@ def convert_call_site(site, cfg, funct, asm_line, asm_dest,
             call = asm_line
             globl_decl = ''
         elif not options['--shared-library']:
-            eprint("inserting call for ", target_name)
             if options['--profile-gen'] or not cfg.ul_is_cdi(site.targets[0].uniq_label):
-                eprint("chose no proxy")
+                vvprint("chose no proxy")
                 call = asm_line
             else:
-                eprint("chose proxy")
+                vvprint("chose proxy")
                 proxy_ptr = site.targets[0].proxy_for(label.strip('"'))
                 call = '\tpushq ${}\n'.format(hex(proxy_ptr))
                 call += asm_line.replace('call', 'jmp', 1)
