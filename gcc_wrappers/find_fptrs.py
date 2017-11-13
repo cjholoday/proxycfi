@@ -7,6 +7,7 @@ from capstone import *
 
 from common import elfparse
 from common.eprint import eprint
+from common.eprint import vprint
 
 class Error(Exception):
     pass
@@ -54,7 +55,7 @@ def get_fptr_sites(binary_path, funct):
         if is_indirect_call(i):
             ret_addr = hex(i.address + i.size).rstrip('L')
             funct_offset = hex(i.address - funct.addr).rstrip('L')
-            print ('{} : {} + {} + {}'
+            vprint('{} : {} + {} + {}'
                     .format(ret_addr, funct.name, funct_offset, hex(i.size)))
         elif is_missing_funct_prologue and is_indirect_jmp(i):
             eprint("find_fptrs: warning: indirect jump in prologueless function"

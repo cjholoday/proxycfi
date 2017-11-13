@@ -7,6 +7,7 @@ import common.elf
 import struct
 import lib_utils
 
+from common.eprint import vprint
 from common.elf import strtab_grab
 from common.elf import strtab_startswith
 
@@ -26,10 +27,10 @@ def build_multtab(target_elf, lspec, globl_funct_mults, write_dir):
     In particular, multtab is written to [write_path]/cdi_multtab and
     libstrtab is written to [write_path]/cdi_libstrtab
     """
-    print '========= Multiplicity Table ========='
+    vprint('========= Multiplicity Table =========')
     for sym_str, mult in globl_funct_mults.iteritems():
-        print sym_str, mult.mult
-    print '======================================'
+        vprint(sym_str, mult.mult)
+    vprint('======================================')
     libstrtab = '\x00'
     with open(os.path.join(write_dir, 'cdi_multtab'), 'w') as multtab:
         elf_deps = target_elf.get_deps(lspec)

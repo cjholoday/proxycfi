@@ -13,6 +13,7 @@ import common.elf
 import multtab
 
 from common.eprint import eprint
+from common.eprint import vprint
 from common.elf import strtab_grab
 from common.elf import strtab_startswith
 
@@ -300,14 +301,13 @@ def fixup_plt(elf):
             if got_addr == cxa_finalize_got_addr:
                 # we signal by writing 0xCC to the last byte of the PLT entry
                 elf_file.seek(11, 1)
-                print 'hit\n\n\n\n\n\n\n'
                 elf_file.write('\xcc')
 
             # write the reloff from the GOT to the slow PLT
             elf_file.seek(slow_plt_sh.sh_addr + idx * 16 
                     + slow_to_got_reloff - got_sh.sh_addr + got_sh.sh_offset)
-            # print (hex(slow_plt_sh.sh_addr), idx, hex(slow_to_got_reloff),
-            #         hex(got_sh.sh_addr), hex(got_sh.sh_offset)
+            # vprint(hex(slow_plt_sh.sh_addr), idx, hex(slow_to_got_reloff),
+            #         hex(got_sh.sh_addr), hex(got_sh.sh_offset))
             elf_file.write(struct.pack('<q', slow_to_got_reloff * -1))
 
 def extract_plt_ret_addrs(elf):
@@ -338,7 +338,7 @@ def extract_plt_ret_addrs(elf):
             sym_str = strtab_grab(elf.dynstr, sym.st_name)
             entry_vaddr = plt_sh.sh_addr + plt_sh.sh_entsize * (len(ret_addrs) + 1)
             ret_addrs[sym_str] = entry_vaddr + 13 # after movabs, callq
-    print "len(ret_addrs) = %d, len(plt_relocs) = %d\n" % (len(ret_addrs), len(plt_relocs))
+    vprint("len(ret_addrs) = %d, len(plt_relocs) = %d\n" % (len(ret_addrs), len(plt_relocs)))
     # assert len(ret_addrs) == len(plt_relocs)
 
     dyn_relocs = elf.get_rela_relocs('.rela.dyn')

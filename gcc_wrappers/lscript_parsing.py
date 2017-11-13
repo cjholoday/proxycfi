@@ -5,6 +5,7 @@ import sys
 import collections
 
 from common.eprint import eprint
+from common.eprint import vprint
 from error import fatal_error
 
 class LinkerScriptSyntaxError(Exception):

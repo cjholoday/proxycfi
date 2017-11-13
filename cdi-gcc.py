@@ -6,6 +6,8 @@ import subprocess
 
 import common.elf
 from common.eprint import eprint
+from common.eprint import vprint
+import common
 
 ##############################################################################
 # cdi-gcc 
@@ -98,6 +100,21 @@ def print_cdi_help():
     print 'Compile statically with musl libc'
     print ''
 
+    print '--cdi-log-[path]'
+    print ('Print all output to log file at PATH instead of to stdout/stderr'
+            '. The converter will also print to this file')
+    print ''
+
+    print '--cdi-quiet'
+    print 'Supress all output from cdi-gcc.py, cdi-as.py, and cdi-ld.py'
+    print ''
+
+    print '--cdi-converter-quiet'
+    print 'Print all output to log file at PATH instead of to stdout/stderr'
+    print ''
+
+
+
 if __name__ == '__main__':
     gcc_opts = sys.argv[1:]
 
@@ -138,6 +155,12 @@ if __name__ == '__main__':
     if '--cdi-help' in cdi_options:
         print_cdi_help()
         sys.exit(0)
+    for opt in cdi_options:
+        if opt.startswith('--cdi-log-'):
+            log_fname = opt[len('--cdi-log-'):]
+            subprocess.check_call(['rm', '-f', log_fname])
+            common.eprint.STDOUT = common.eprint.STDERR = open(log_fname, 'a')
+
 
     try:
         # allow access to musl static compilation via command or the env

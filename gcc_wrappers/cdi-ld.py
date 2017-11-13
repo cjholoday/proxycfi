@@ -18,6 +18,7 @@ import elf_fixup
 
 from error import fatal_error
 from common.eprint import eprint
+from common.eprint import vprint
 import common.elf
 import run_profile
 
@@ -41,7 +42,7 @@ def main():
     lspec = spec.LinkerSpec(raw_ld_spec, fatal_error)
     if lspec.cdi_options:
         if '--cdi-spec' in lspec.cdi_options:
-            print ' '.join(lspec.raw())
+            vprint(' '.join(lspec.raw()))
             sys.exit(0)
 
     # filter out the converter options
@@ -99,7 +100,7 @@ def main():
     # create unsafe, non-cdi shared libraries. CDI shared libraries are for a 
     # future version
     #if lspec.target_is_shared:
-    #    print 'Building non-CDI shared library (CDI shared libraries not implemented yet)'
+    #    vprint('Building non-CDI shared library (CDI shared libraries not implemented yet)')
     #    sys.stdout.flush()
     #
     #    # stale files in .cdi can cause trouble
@@ -110,7 +111,7 @@ def main():
     #    normification_fixups += normify.fake_objs_normify(explicit_fake_objs)
     #    normification_fixups += normify.ar_normify(archives)
     #    normification_fixups += normify.sl_normify(lspec, lspec.sl_paths)
-    #    print "Linking shared library '{}'\n".format(lspec.target)
+    #    vprint("Linking shared library '{}'\n".format(lspec.target))
     #
     #    ld_command = ['ld'] + lspec.fixup(normification_fixups)
     #    try:
@@ -138,7 +139,7 @@ def main():
     ar_fake_objs = []
     ar_fixups = []
 
-    print 'Compiling normally to learn which objects are needed for archives...'
+    vprint('Compiling normally to learn which objects are needed for archives...')
     sys.stdout.flush()
 
     normification_fixups = []
@@ -172,8 +173,18 @@ def main():
 
 
     if '--cdi-abandon-cdi' in lspec.cdi_options:
-        print 'WARNING: CREATING NON CDI EXECUTABLE AS REQUESTED'
+        vprint('WARNING: CREATING NON CDI EXECUTABLE AS REQUESTED')
         sys.exit(0)
+
+    for opt in lspec.cdi_options:
+        if opt.startswith('--cdi-log-'):
+            log_fname = opt[len('--cdi-log-'):]
+            subprocess.check_call(['rm', '-f', log_fname])
+            common.eprint.STDOUT = common.eprint.STDERR = open(log_fname, 'a')
+    if '--cdi-quiet' in lspec.cdi_options:
+        common.eprint.VERBOSE = False
+
+
 
     # Extract needed fake objects out of archives
     ar_fake_objs, ar_fixups = lib_utils.ar_extract_req_objs(verbose_linker_output, archives)
@@ -243,7 +254,7 @@ def main():
     if lspec.target_is_shared: 
         lspec.converter_options.append('--shared-library')
 
-    print 'Converting fake objects to cdi-asm files: ' + ' '.join(fake_obj_paths)
+    vprint('Converting fake objects to cdi-asm files: ' + ' '.join(fake_obj_paths))
 
 
     if sl_load_addrs:
@@ -260,7 +271,7 @@ def main():
             ' '.join(converter_command)))
 
 
-    print 'Assembling cdi asm files...'
+    vprint('Assembling cdi asm files...')
     sys.stdout.flush()
 
     for fake_obj in fake_objs:
@@ -280,7 +291,7 @@ def main():
     else:
         target_type = 'executable'
 
-    print "Linking {} '{}'\n".format(target_type, lspec.target)
+    vprint("Linking {} '{}'\n".format(target_type, lspec.target))
     sys.stdout.flush()
 
     # assemble cdi_abort.cdi.s every time to avoid using a stale version
@@ -345,7 +356,7 @@ def main():
     # calls run_profiler.py on the object file generated to generate execution profile
     # re-runs gen_cdi.py with the profiled file.
     if not lspec.target_is_shared and '--cdi-profile' in lspec.cdi_options:
-        print "doingggggggggggggggggg profiling"
+        vprint("doingggggggggggggggggg profiling")
         profiler_command = run_profile.run_profile(lspec.target)
         profiled_file = lspec.target + '.profile'
         lspec.converter_options.remove('--profile-gen')
@@ -359,7 +370,7 @@ def main():
                 ' '.join(converter_command)))
 
 
-            print 'Assembling cdi asm files...'
+            vprint('Assembling cdi asm files...')
         sys.stdout.flush()
 
         for fake_obj in fake_objs:
@@ -379,7 +390,7 @@ def main():
         else:
             target_type = 'executable'
 
-        print "Linking {} '{}'\n".format(target_type, lspec.target)
+        vprint("Linking {} '{}'\n".format(target_type, lspec.target))
         sys.stdout.flush()
 
         # assemble cdi_abort.cdi.s every time to avoid using a stale version

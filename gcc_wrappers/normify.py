@@ -1,3 +1,5 @@
+import __init__
+
 import spec
 import subprocess
 import os
@@ -5,6 +7,7 @@ import sys
 
 import lib_utils
 from error import fatal_error
+from common.eprint import vprint
 
 def ar_normify(archives):
     """Creates non-CDI archives and returns a list of fixups
@@ -30,20 +33,20 @@ def ar_normify(archives):
 
         lines = subprocess.check_output(['ar', 'xv', ar_effective_path]).strip().split('\n')
         obj_fnames = map(lambda x: x[len('x - '):], lines)
-        print "CWD: ", os.getcwd()
-        print "Archive Info:"
-        print archive.path
-        print archive.fake_objs
-        print archive.thin
-        print obj_fnames
-        print "--------------"
+        vprint("CWD: ", os.getcwd())
+        vprint("Archive Info:")
+        vprint(archive.path)
+        vprint(archive.fake_objs)
+        vprint(archive.thin)
+        vprint(obj_fnames)
+        vprint("--------------")
 
         if not obj_fnames:
             continue
         empty = 0
         for obj_fname in obj_fnames:
             if obj_fname == '':
-                print "archive %s has an obj file with obj_fname = ''" % (archive.path)
+                vprint("archive %s has an obj file with obj_fname = ''" % (archive.path))
                 empty = 1
                 break
         if empty:
@@ -51,7 +54,7 @@ def ar_normify(archives):
         ar_fixups.append(spec.LinkerSpec.Fixup('ar', archive.fixup_idx, 
             '.cdi/' + os.path.basename(archive.path)))
         for obj_fname in obj_fnames:
-            print "obj_fname ", obj_fname
+            vprint("obj_fname ", obj_fname)
             if os.path.isfile(obj_fname):
                 with open(obj_fname, 'r') as fake_obj:
                     elf_signature = '\x7FELF'

@@ -2,9 +2,14 @@ import subprocess
 import sys
 import re
 import types
+import random
 import getopt
 from eprint import eprint
 from operator import attrgetter
+
+SIGNED_INT32_MIN = -1 * (1 << 31)
+SIGNED_INT32_MAX = (1 << 31) - 1
+
 
 class ExecSection:
     def __init__(self, name, size, file_offset, virtual_address, index):
@@ -33,16 +38,48 @@ class Function:
         self.file_offset = file_offset
         self.addr = virtual_address
 
+
+
+        # forbid pointer proxies with value 0
+        self.ptr_proxy_set = set()
+        self.ptr_proxy_set.add(0)
+        self.ptr_proxies = dict()
+
         # virtual addresses of all "return" jumps to this function
         self.incoming_flow = []
 
         assert type(self.size) is types.IntType
         assert type(self.file_offset) is types.IntType
         assert type(self.addr) is types.IntType
+        
+    def foffset(self, addr):
+        """Returns the file offset given an address within this function"""
+        return addr - self.addr + self.file_offset
     
     def contains_address(self, virtual_address):
         return (virtual_address >= self.addr and 
                 virtual_address < self.addr + self.size)
+
+    def proxy_for(self, rett):
+        """Returns a proxy ptr addr for returning from [this fn] -> [rett]
+        
+        rett should be the label at which execution will resume on return
+
+        proxy addresses are encoded using a signed 32 bit signed int because 
+        the GNU assembler requires constants be in that format
+        """
+        # if we've seen this return target before, return the same proxy
+        if rett in self.ptr_proxies:
+            return self.ptr_proxies[rett]
+
+        new_proxy = 0
+        while new_proxy in self.ptr_proxy_set:
+            new_proxy = random.randrange(SIGNED_INT32_MIN, SIGNED_INT32_MAX)
+        self.ptr_proxy_set.add(new_proxy)
+        self.ptr_proxies[rett] = new_proxy
+
+        return new_proxy
+
 class Rlt:
     def __init__(self, name, start_offset, virtual_address, size):
         self.name = name

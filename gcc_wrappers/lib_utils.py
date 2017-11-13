@@ -11,6 +11,7 @@ import fake_types
 import common.elf
 
 from common.eprint import eprint
+from common.eprint import vprint
 from error import fatal_error
 
 def ar_extract_req_objs(verbose_output, archives):
@@ -49,7 +50,7 @@ def ar_extract_req_objs(verbose_output, archives):
 
     # for code visibility, print all objects that are needed from archives
     for ar_path in objs_needed.keys():
-        print ':::: {} - {}'.format(ar_path, ' '.join(objs_needed[ar_path]))
+        vprint(':::: {} - {}'.format(ar_path, ' '.join(objs_needed[ar_path])))
 
     ar_fixups = []
     fake_objs = []
@@ -202,7 +203,7 @@ def sl_get_fptr_addrs(binary_path, symbol_ref, lib_load_addr):
             fptr_analysis = cached_analysis.readlines()
     else:
         try:
-            print 'generating and caching fptr analysis for {}'.format(binary_path)
+            vprint('generating and caching fptr analysis for {}'.format(binary_path))
             sys.stdout.flush()
 
             fptr_analysis = subprocess.check_output([find_fptrs_script, binary_path,

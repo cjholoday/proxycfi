@@ -1,3 +1,5 @@
+import __init__
+
 import argparse
 import os
 import sys
@@ -6,6 +8,7 @@ import re
 import subprocess
 
 
+from common.eprint import vprint
 import obj_parse
 
 # fix these paths to the absolute paths of the pin directory and pin tool directories respectively
@@ -22,7 +25,7 @@ def main():
     args = parser.parse_args()
 
     if not os.path.isfile(args.program):
-        print "-E-: executable program not found"
+        vprint("-E-: executable program not found")
         sys.exit(1)
 
     out_file = run_profile(args.program)#args.itrace, args.pedata, args.output, args.program)
@@ -88,7 +91,7 @@ def run_profile(program):
         count = exec_iptrs.count(ip)
         sled_count[sled] = count
     for sl,cnt in sled_count.iteritems():
-        print sl,cnt
+        vprint(sl,cnt)
     obj_parse.save_obj(sled_count,output_file )
     return output_file
 

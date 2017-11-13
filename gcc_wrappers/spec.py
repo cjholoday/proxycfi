@@ -7,6 +7,7 @@ import sys
 import lscript_parsing
 from error import fatal_error
 from common.eprint import eprint
+from common.eprint import vprint
 
 class LinkerSpec():
     class Fixup():
@@ -186,7 +187,7 @@ class LinkerSpec():
             except IOError:
                 try:
                     # this might capture an unintended library?
-                    print entry
+                    vprint(entry)
                     find_lib(entry, self)
                     return 'libstem' # could check that it is archive/sharedlib
                 except NoMatchingLibrary:
@@ -291,13 +292,9 @@ def find_lib(libstem, lspec):
         libstem = libstem[2:]
     elif libstem.startswith('lib') and (libstem.endswith('.a')
             or lib_utils.sl_chop_versioning(libstem).endswith('.so')):
-        # print path
-        # print find_lib.search_dirs
         for path in find_lib.search_dirs:
             candidate = '{}/{}'.format(path, libstem)
-            print candidate
             if os.path.isfile(candidate):
-                # print "found"
                 return os.path.abspath(candidate)
         else:
             raise NoMatchingLibrary(libstem)
