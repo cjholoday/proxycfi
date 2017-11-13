@@ -187,7 +187,6 @@ class LinkerSpec():
             except IOError:
                 try:
                     # this might capture an unintended library?
-                    vprint(entry)
                     find_lib(entry, self)
                     return 'libstem' # could check that it is archive/sharedlib
                 except NoMatchingLibrary:

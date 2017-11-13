@@ -9,6 +9,7 @@ import re
 import copy
 
 from common.eprint import eprint
+from common.eprint import vprint
 
 def gen_cfg(asm_file_descrs, plt_sites, options):
     """Generate cfg from a list of asm files. Produce funct names for each description
@@ -363,8 +364,7 @@ def parse_cdi_metadata(cfg, asm_descr, options):
                 if line == '\n':
                     state = 'normal'
                     continue
-                if options['--verbose']:
-                    print line[2:-1] # don't print newline or '#'
+                vprint(line[2:-1]) # don't print newline or '#')
                 loc, type_sig = line.split()[1], line.split()[2]
                 funct_name = loc.split(':')[3]
 
@@ -407,8 +407,7 @@ def parse_cdi_metadata(cfg, asm_descr, options):
                 if line == '\n':
                     state = 'normal'
                     continue
-                if options['--verbose']:
-                    print line [2:-1] # don't print newline or '#'
+                vprint(line [2:-1]) # don't print newline or '#'
 
                 loc, type_sig = line.split()[1], line.split()[2]
                 loc_list = loc.split(':')

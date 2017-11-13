@@ -10,6 +10,8 @@ import jsonpickle
 from gen_cfg import gen_cfg
 from gen_cdi_asm import gen_cdi_asm
 from common.eprint import eprint
+from common.eprint import vprint
+import common
 
 
 ############################
@@ -52,15 +54,26 @@ if __name__ == "__main__":
     parser.add_argument('--no-plt', action='store_true',
             help='if set, all functions must be static',
             dest='--no-plt')
+    parser.add_argument('--log', action='store',
+            help='if set, all non fatal output will go to the given file',
+            dest='--log')
+    parser.add_argument('--quiet', action='store_true',
+            help='if set, supress all non fatal output',
+            dest='--quiet')
 
     options = vars(parser.parse_args(sys.argv[1:]))
     if options.get('--help'):
         sys.exit(0)
+
+    if options['--log']:
+        common.eprint.STDOUT = common.eprint.STDERR = open(options['--log'], 'a')
+    if options.get('--quiet'):
+        common.eprint.VERBOSE = False
     
     asm_filenames = options['asm_filenames']
     asm_file_descrs = []
     for filename in asm_filenames:
-        print filename
+        vprint(filename)
         asm_file_descrs.append(asm_parsing.AsmFileDescription(filename))
         asm_file_descrs[-1].check_filename()
 

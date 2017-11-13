@@ -51,6 +51,17 @@ def main():
         if opt.startswith('--cdi-converter-'):
             lspec.converter_options.append('--' + opt[len('--cdi-converter-'):])
 
+    for opt in lspec.cdi_options:
+        if opt.startswith('--cdi-log-'):
+            log_fname = opt[len('--cdi-log-'):]
+            lspec.converter_options.extend(['--log', log_fname])
+
+            subprocess.check_call(['rm', '-f', log_fname])
+            common.eprint.STDOUT = common.eprint.STDERR = open(log_fname, 'a')
+    if '--cdi-quiet' in lspec.cdi_options:
+        common.eprint.VERBOSE = False
+
+
     archives = []
     for i, path in enumerate(lspec.ar_paths):
         # FIXME: This is VERY unportable
@@ -175,14 +186,6 @@ def main():
     if '--cdi-abandon-cdi' in lspec.cdi_options:
         vprint('WARNING: CREATING NON CDI EXECUTABLE AS REQUESTED')
         sys.exit(0)
-
-    for opt in lspec.cdi_options:
-        if opt.startswith('--cdi-log-'):
-            log_fname = opt[len('--cdi-log-'):]
-            subprocess.check_call(['rm', '-f', log_fname])
-            common.eprint.STDOUT = common.eprint.STDERR = open(log_fname, 'a')
-    if '--cdi-quiet' in lspec.cdi_options:
-        common.eprint.VERBOSE = False
 
 
 

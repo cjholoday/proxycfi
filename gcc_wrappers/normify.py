@@ -33,13 +33,13 @@ def ar_normify(archives):
 
         lines = subprocess.check_output(['ar', 'xv', ar_effective_path]).strip().split('\n')
         obj_fnames = map(lambda x: x[len('x - '):], lines)
-        vprint("CWD: ", os.getcwd())
-        vprint("Archive Info:")
-        vprint(archive.path)
-        vprint(archive.fake_objs)
-        vprint(archive.thin)
-        vprint(obj_fnames)
-        vprint("--------------")
+        #vprint("CWD: ", os.getcwd())
+        #vprint("Archive Info:")
+        #vprint(archive.path)
+        #vprint(archive.fake_objs)
+        #vprint(archive.thin)
+        #vprint(obj_fnames)
+        #vprint("--------------")
 
         if not obj_fnames:
             continue
@@ -54,7 +54,6 @@ def ar_normify(archives):
         ar_fixups.append(spec.LinkerSpec.Fixup('ar', archive.fixup_idx, 
             '.cdi/' + os.path.basename(archive.path)))
         for obj_fname in obj_fnames:
-            vprint("obj_fname ", obj_fname)
             if os.path.isfile(obj_fname):
                 with open(obj_fname, 'r') as fake_obj:
                     elf_signature = '\x7FELF'
