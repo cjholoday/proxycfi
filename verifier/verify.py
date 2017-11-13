@@ -2,11 +2,16 @@
 
 import __init__
 
+import struct
 import bisect
 import sys
 import binascii
 import types
 import collections
+import tempfile
+import shutil
+import os
+
 from common import elfparse
 from common.eprint import eprint
 from capstone import *
@@ -49,6 +54,9 @@ class Flow:
     def __init__(self, src, dst, type):
         self.src = src
         self.dst = dst
+
+        # Used to coordinate proxy generation between callers and callees
+        self.ret_addr = None
 
         # Should be 'call', 'jump', 'loop', 'ret', or 'plt'
         self.type = type
@@ -122,10 +130,25 @@ class Verifier:
             if not in_sorted_list(instr_addrs, flow.dst):
                 self.set_insecure(MiddleOfInstructionJump(self, flow,
                     "the rogue jump goes back into '{}'".format(src_funct)))
+        else:
+            if self.rewrite_proxies and not src_funct.name.startswith('_CDI_RLT_'):
+                new_proxy = src_funct.proxy_for(flow.dst)
+                foffset = src_funct.foffset(flow.src) - 4
+                print('proxy: ', new_proxy, ', offset: ', foffset)
+                self.rewritten_exe.seek(foffset)
+                self.rewritten_exe.write(struct.pack('<i', new_proxy))
 
         # check if this jump is acting like a function call
         if target_funct.addr == flow.dst:
             assert target_funct.verified
+            if self.rewrite_proxies and target_funct.name != '_CDI_abort':
+                new_proxy = target_funct.proxy_for(flow.ret_addr)
+                foffset = src_funct.foffset(flow.src) - 4
+                print('proxy: ', new_proxy, ', offset: ', foffset)
+                self.rewritten_exe.seek(foffset)
+                self.rewritten_exe.write(struct.pack('<i', new_proxy))
+
+
 
         # keep track of the returns so that we can check if they go
         # to the middle of instructions later on, after the breadth first search
@@ -272,7 +295,9 @@ class Verifier:
                     # Indirect calls and jumps have a * after the instruction and before the location
                     # which raises a value error exception in the casting
                     addr = int(i.op_str,16)
-                    yield Flow(i.address, addr, 'jump')
+                    flow = Flow(i.address, addr, 'jump')
+                    flow.ret_addr = i.address + i.size
+                    yield flow
 
                 except ValueError:
                     if prev_instr and prev_instr.mnemonic == 'movabs':
@@ -478,6 +503,7 @@ if __name__ == "__main__":
     # defaults
     exit_on_insecurity = True
     print_instr_as_decoded = False
+    rewrite_proxies = True
 
     # options can flip defaults
     if ('-c', '') in optlist:
@@ -486,6 +512,8 @@ if __name__ == "__main__":
         IGNORE_RET_FROM_MAIN = True
     if ('-p', '') in optlist:
         print_instr_as_decoded = True
+    if ('-r', '') in optlist:
+        rewrite_proxies = True
     if ('-h', '') in optlist:
         print_help()
         sys.exit(0)
@@ -509,10 +537,27 @@ if __name__ == "__main__":
             plt_size, plt_entry_size, tramtab_start_addr, tramtab_size, 
             exit_on_insecurity, print_instr_as_decoded)
 
+    verifier.rewrite_proxies = False
+    if rewrite_proxies:
+        verifier.rewrite_proxies = True
+
+        verifier.temp_dir = tempfile.mkdtemp()
+        rewritten_exe_path = os.path.join(verifier.temp_dir, binary.name)
+        verifier.rewritten_exe_path = rewritten_exe_path
+        shutil.copy2(args[0], rewritten_exe_path)
+
+        print(rewritten_exe_path)
+
+        verifier.rewritten_exe = open(rewritten_exe_path, 'rb+')
 
     if verifier.judge():
+        if rewrite_proxies:
+            shutil.copy2(verifier.rewritten_exe_path, args[0])
+            shutil.rmtree(verifier.temp_dir)
         sys.exit(0)
     else:
+        if rewrite_proxies:
+            shutil.rmtree(verifier.temp_dir)
         sys.exit(1)
 
 

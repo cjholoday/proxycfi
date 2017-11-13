@@ -195,7 +195,9 @@ def convert_to_cdi(site, funct, asm_line, asm_dest, cfg,
         sled_id_faucet, abort_data, dwarf_loc, options):
     """Converts asm_line to cdi compliant code then writes it to asm_dest"""
 
-    if site.group == site.CALL_SITE:
+    if not funct.is_cdi:
+        asm_dest.write(asm_line)
+    elif site.group == site.CALL_SITE:
         convert_call_site(site, cfg, funct, asm_line, asm_dest, 
                 sled_id_faucet, abort_data, dwarf_loc, options)
     elif site.group == site.RETURN_SITE:

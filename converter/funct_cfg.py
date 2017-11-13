@@ -7,6 +7,34 @@ import random
 from common.eprint import eprint
 
 descr_path = ""
+STARTUP_FUNCTIONS = [                                                           
+        'start_c',                                                              
+        '__libc_start_main',                                                    
+        'libc_start_main',                                                      
+        '__init_libc',                                                          
+        'static_init_tls',                                                      
+        '__copy_tls',                                                           
+        '__init_tp',                                                            
+        '__set_thread_area',                                                    
+        'dummy1',                                                               
+        '__libc_start_init',                                                    
+        'libc_start_init',                                                      
+        '_init',                                                                
+        'frame_dummy',                                                          
+        'register_tm_clones',                                                   
+        '__libc_csu_init'  # GLIBC only                                         
+]                                                                               
+CLEANUP_FUNCTIONS = [                                                           
+        'exit',                                                                 
+        'dummy',                                                                
+        '__libc_exit_fini',                                                     
+        'libc_exit_fini',                                                       
+        '__do_global_dtors_aux',                                                
+        'deregister_tm_clones',                                                 
+        '_fini',                                                                
+        '__libc_csu_fini' # GLIBC only                                          
+]                               
+WHITELIST = STARTUP_FUNCTIONS + CLEANUP_FUNCTIONS
 
 class FunctControlFlowGraph:
     """A CFG class with functions as vertices instead of basic blocks
@@ -207,11 +235,17 @@ class Function:
         # contains all proxy pointers (int32) that have been used for this function
         # this is used to prevent collisions between proxies used to return in 
         # this function. Proxies may collide with other functions' proxies
-        self.ptr_proxy_set = set()
+        self.ptr_proxy_set = set() # TODO: remove this
 
         # forbid pointer proxies with value 0
         self.ptr_proxy_set.add(0)
 
+        # True if the function is compiled to be CDI compliant. This won't be 
+        # true for startup/cleanup functions. These functions are oustide of our
+        # threat model. CDI functions cannot use proxies with non-cdi functions
+        self.is_cdi = True
+        if asm_name in WHITELIST:
+            self.is_cdi = False
 
     def proxy_for(self, rett):
         """Returns a proxy ptr addr for returning from [this fn] -> [rett]
