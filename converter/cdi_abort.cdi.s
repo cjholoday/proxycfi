@@ -37,24 +37,6 @@ _CDI_abort:
         syscall                             # print newline
 .abort:
         movq    $39, %rax                  
-		nop
-		nop
-		nop
-		nop
-		nop
-		nop
-		nop
-		nop
-		nop
-		nop
-		nop
-		nop
-		nop
-		nop
-		nop
-		nop
-		cmpq    $-0x381c9261, -8(%rsp)
-		pushq $0xffffff
         syscall                             # get pid
         movq    %rax, %rdi
         movq    $62, %rax

@@ -80,7 +80,6 @@ class FunctControlFlowGraph:
             funct = self.funct(uniq_label)
             return funct not in self.non_cdi_functs
         except KeyError:
-            eprint("KEYERROR")
             return True
 
     def size(self):

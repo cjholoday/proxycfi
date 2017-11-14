@@ -196,9 +196,7 @@ def convert_to_cdi(site, funct, asm_line, asm_dest, cfg,
         sled_id_faucet, abort_data, dwarf_loc, options):
     """Converts asm_line to cdi compliant code then writes it to asm_dest"""
 
-    if not funct.is_cdi:
-        asm_dest.write(asm_line)
-    elif site.group == site.CALL_SITE:
+    if site.group == site.CALL_SITE:
         convert_call_site(site, cfg, funct, asm_line, asm_dest, 
                 sled_id_faucet, abort_data, dwarf_loc, options)
     elif site.group == site.RETURN_SITE:
@@ -242,8 +240,6 @@ def convert_call_site(site, cfg, funct, asm_line, asm_dest,
             globl_decl = '.globl\t' + label + '\n'
 
         call = ''
-        if funct.asm_name == 'libc_exit_fini':
-            eprint('XXXXXXXXXXXXXX _fini:', target_name)
 
         try:
             libc_exit_fini = cfg.funct('__libc_exit_fini')
@@ -255,14 +251,13 @@ def convert_call_site(site, cfg, funct, asm_line, asm_dest,
             globl_decl = ''
         elif not options['--shared-library']:
             if options['--profile-gen'] or not cfg.ul_is_cdi(site.targets[0].uniq_label):
-                vvprint("chose no proxy")
+                vvprint("chose no proxy\n")
                 call = asm_line
             else:
-                vvprint("chose proxy")
+                vvprint("chose proxy\n")
                 proxy_ptr = site.targets[0].proxy_for(label.strip('"'))
                 call = '\tpushq ${}\n'.format(hex(proxy_ptr))
                 call += asm_line.replace('call', 'jmp', 1)
-            eprint("")
         else:
             # TODO: use proxy pointers with shared libraries
             target = cfg.funct(site.targets[0].uniq_label)
