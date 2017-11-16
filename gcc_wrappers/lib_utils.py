@@ -58,6 +58,7 @@ def ar_extract_req_objs(verbose_output, archives):
     ar_handled = dict() # maps { ar_realpath -> was_already_handled}
     for archive in archives:
         # ignore duplicate archives
+        vvprint("archive.realpath", os.path.realpath(archive.path))
         if ar_handled.get(os.path.realpath(archive.path)):
             ar_fixups.append(spec.LinkerSpec.Fixup('ar', archive.fixup_idx, ''))
             continue
@@ -82,23 +83,40 @@ def ar_extract_req_objs(verbose_output, archives):
                 ar_effective_path = '../' + archive.path
 
             try:
-                quoted_objs = map(lambda fn: pipes.quote('.cdi/' + fn), obj_fnames)
-                subprocess.check_call('cd .cdi; ar x {} {}'
+               quoted_objs = map(lambda fn: pipes.quote('.cdi/' + fn), obj_fnames)
+               vvprint("before subprocess call 1") 
+               sys.stdout.flush()
+               sys.stderr.flush()
+               subprocess.check_call('cd .cdi; ar x {} {}'
                         .format(pipes.quote(ar_effective_path), ' '.join(quoted_objs)), shell=True)
+               vvprint("after subprocess call 1") 
+               sys.stdout.flush()
+               sys.stderr.flush()
             except subprocess.CalledProcessError:
                 fatal_error("cannot extract '{}' from non-thin archive '{}'"
                         .format( "' '".join(obj_fnames), archive.path))
-
+            vvprint("obj_fnames:", obj_fnames)
+            sys.stdout.flush()
+            sys.stderr.flush()
             for fname in obj_fnames:
                 qualified_fname = '{}__{}'.format(os.path.basename(archive.path), fname)
                 if not qualified_fname.endswith('.fake.o'):
                     qualified_fname = chop_suffix(qualified_fname) + '.fake.o'
+                vvprint("before subprocess call 2",fname) 
+                sys.stdout.flush()
+                sys.stderr.flush()
                 subprocess.check_call(['mv', '.cdi/' + fname, '.cdi/' + qualified_fname])
+                vvprint("after subprocess call 2", fname)
+                sys.stdout.flush()
+                sys.stderr.flush()
                 fake_objs.append(fake_types.FakeObjectFile('.cdi/' + qualified_fname))
 
                 # By link time, the fake object will be assembled into a '.o'
                 # file. We need to fixup with the new object file
                 ar_fixup.replacement.append('.cdi/' + qualified_fname.replace('.fake.o', '.cdi.o'))
+            vvprint("done appending fake_objs")
+            sys.stdout.flush()
+            sys.stderr.flush()
         ar_fixups.append(ar_fixup)
     return fake_objs, ar_fixups
 

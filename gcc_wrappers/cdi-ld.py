@@ -189,13 +189,18 @@ def main():
 
     # Extract needed fake objects out of archives
     ar_fake_objs, ar_fixups = lib_utils.ar_extract_req_objs(verbose_linker_output, archives)
+    
+    vvprint("Done extracting fake_objs!")
+    sys.stdout.flush()
+    sys.stderr.flush()
+ #   if not lspec.target_is_shared and lib_utils.sl_aslr_is_enabled(lspec.target):
+ #       fatal_error("load addresses aren't deterministic. Disable ASLR"
+ #               " (this can be done with "
+ #               "'echo 0 | sudo tee /proc/sys/kernel/randomize_va_space')")
 
-    if not lspec.target_is_shared and lib_utils.sl_aslr_is_enabled(lspec.target):
-        fatal_error("load addresses aren't deterministic. Disable ASLR"
-                " (this can be done with "
-                "'echo 0 | sudo tee /proc/sys/kernel/randomize_va_space')")
-
-
+    vvprint("after checking shared and aslr!!")
+    sys.stdout.flush()
+    sys.stderr.flush() 
 
     # Find all function pointer calls from shared libraries back into the 
     # executable code. We need jumps back to the shared libraries, even if those
