@@ -1,0 +1,6 @@
+Gotcha List:
+
+...
+1. VDSOs:
+    - Disabled VDSOs system wide to bypass the problem of having virtual shared objects in static compilations.
+    - Credit: https://stackoverflow.com/questions/8280014/disabling-vsyscalls-in-linux
