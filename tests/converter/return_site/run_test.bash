@@ -13,7 +13,7 @@ cdi_flags="-g --save-temps -fno-jump-tables"
 cdi-gcc $cdi_flags main.c formulas.c calc.c -o out
 
 # Verify that the executable is CDI compliant
-"$VERIFY" -i out
+"$VERIFY" -ir out
 check "verification failed" || exit 1
 
 # Check that the output is correct

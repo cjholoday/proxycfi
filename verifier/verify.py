@@ -570,12 +570,12 @@ if __name__ == "__main__":
         print_help()
         sys.exit(1)
 
-    optlist, args = getopt(sys.argv[1:], 'cphi')
+    optlist, args = getopt(sys.argv[1:], 'cphir')
     
     # defaults
     exit_on_insecurity = True
     print_instr_as_decoded = False
-    rewrite_proxies = True
+    rewrite_proxies = False
 
     # options can flip defaults
     if ('-c', '') in optlist:
