@@ -147,24 +147,24 @@ class Verifier:
                 self.set_insecure(MiddleOfInstructionJump(self, flow,
                     "the rogue jump goes back into '{}'".format(src_funct)))
             if self.rewrite_proxies and target_funct.addr != flow.dst:
-                print 'buffering rewrite for {:x} -> {:x}'.format(flow.src, flow.dst)
+                # print 'buffering rewrite for {:x} -> {:x}'.format(flow.src, flow.dst)
                 proxy_foffset = src_funct.foffset(flow.src) - 4
-                print 'foffset: {}'.format(proxy_foffset)
+                # print 'foffset: {}'.format(proxy_foffset)
                 def rewrite_proxy():
-                    print('in callback')
-                    print 'overwriting recursive jump for {}'.format(src_funct.name)
-                    print 'addr: {:x} -> {:x}'.format(flow.src, flow.dst)
                     new_proxy = src_funct.proxy_for(flow.dst)
-                    print('proxy: {:x}'.format(new_proxy))
                     proxy_foffset = src_funct.foffset(flow.src) - 4
                     self.rewritten_exe.seek(proxy_foffset)
-                    print('foffset: {}'.format(proxy_foffset))
-                    print ":".join("{:02x}".format(ord(c)) for c in struct.pack('<i', new_proxy))
+                    #print('in callback')
+                    #print 'overwriting recursive jump for {}'.format(src_funct.name)
+                    #print 'addr: {:x} -> {:x}'.format(flow.src, flow.dst)
+                    #print('proxy: {:x}'.format(new_proxy))
+                    #print('foffset: {}'.format(proxy_foffset))
+                    #print ":".join("{:02x}".format(ord(c)) for c in struct.pack('<i', new_proxy))
                     self.rewritten_exe.write(struct.pack('<i', new_proxy))
                     self.rewritten_exe.seek(proxy_foffset)
                     proof = struct.unpack('<i', self.rewritten_exe.read(4))
 
-                    print 'wrote it: {:x}'.format(proof[0])
+                    # print 'wrote it: {:x}'.format(proof[0])
 
                 src_funct.proxy_rewrites.append(ProxyRewrite(
                     proxy_foffset, flow.dst, rewrite_proxy
@@ -268,27 +268,26 @@ class Verifier:
                     prev_instr = None
                     pprev_instr = None
                     for instr in md.disasm(buff, funct.addr):
-                        print 'rewrite.dst_addr: {:x}'.format(rewrite.dst_addr)
+                        # print 'rewrite.dst_addr: {:x}'.format(rewrite.dst_addr)
                         while instr.address == rewrite.dst_addr:
-                            print 'funct: {}'.format(funct.name)
-                            print('pprev_instr: {} {}'.format(
-                                pprev_instr.mnemonic, pprev_instr.op_str))
-                            print('prev_instr: {} {}'.format(
-                                prev_instr.mnemonic, prev_instr.op_str))
-                            print('instr: {} {}'.format(
-                                instr.mnemonic, instr.op_str))
+                            #print 'funct: {}'.format(funct.name)
+                            #print('pprev_instr: {} {}'.format(
+                            #    pprev_instr.mnemonic, pprev_instr.op_str))
+                            #print('prev_instr: {} {}'.format(
+                            #    prev_instr.mnemonic, prev_instr.op_str))
+                            #print('instr: {} {}'.format(
+                            #    instr.mnemonic, instr.op_str))
                             if (prev_instr and pprev_instr
                                     and prev_instr.mnemonic in JMP_LIST 
                                     and pprev_instr.mnemonic == 'push'):
-                                print 'checking for proxy match'
                                 proxy = int(pprev_instr.op_str, 16)
-                                print '{:x} vs {:x}'.format(proxy, rewrite.old_proxy)
-                                print 'foffset: {}'.format(rewrite.old_proxy_foffset)
+                                #print '{:x} vs {:x}'.format(proxy, rewrite.old_proxy)
+                                #print 'foffset: {}'.format(rewrite.old_proxy_foffset)
                                 if proxy == rewrite.old_proxy:
                                     rewrite.callback()
                             rewrite = next(rewrite_iter)
-                            print('')
-                        print('')
+                            # print('')
+                        # print('')
                         pprev_instr = prev_instr
                         prev_instr = instr
                 except StopIteration:
