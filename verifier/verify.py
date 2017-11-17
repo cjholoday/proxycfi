@@ -50,6 +50,15 @@ CLEANUP_FUNCTIONS = [
 ]
 WHITELIST = STARTUP_FUNCTIONS + CLEANUP_FUNCTIONS
 
+JMP_LIST = ["jo","jno","jb","jnae","jc","jnb","jae","jnc","jz","je","jnz",
+        "jne","jbe","jna","jnbe","ja","js","jns","jp","jpe","jnp","jpo","jl",
+        "jnge","jnl","jge","jle","jng","jnle","jg","jecxz","jrcxz","jmp","jmpe"]
+ 
+CALL_LIST = ["call","callf", "callq"]
+
+LOOP_LIST = ["loopz","loopnz", "loope","loopne", "loop"]
+
+
 class Flow:
     def __init__(self, src, dst, type):
         self.src = src
@@ -60,6 +69,13 @@ class Flow:
 
         # Should be 'call', 'jump', 'loop', 'ret', or 'plt'
         self.type = type
+
+class ProxyRewrite:
+    def __init__(self, old_proxy_foffset, dst_addr, callback):
+        
+        self.old_proxy_foffset = old_proxy_foffset
+        self.dst_addr = dst_addr
+        self.callback = callback
 
 # functor used to avoid excessive parameter passing
 class Verifier:
@@ -130,6 +146,29 @@ class Verifier:
             if not in_sorted_list(instr_addrs, flow.dst):
                 self.set_insecure(MiddleOfInstructionJump(self, flow,
                     "the rogue jump goes back into '{}'".format(src_funct)))
+            if self.rewrite_proxies and target_funct.addr != flow.dst:
+                print 'buffering rewrite for {:x} -> {:x}'.format(flow.src, flow.dst)
+                proxy_foffset = src_funct.foffset(flow.src) - 4
+                print 'foffset: {}'.format(proxy_foffset)
+                def rewrite_proxy():
+                    print('in callback')
+                    print 'overwriting recursive jump for {}'.format(src_funct.name)
+                    print 'addr: {:x} -> {:x}'.format(flow.src, flow.dst)
+                    new_proxy = src_funct.proxy_for(flow.dst)
+                    print('proxy: {:x}'.format(new_proxy))
+                    proxy_foffset = src_funct.foffset(flow.src) - 4
+                    self.rewritten_exe.seek(proxy_foffset)
+                    print('foffset: {}'.format(proxy_foffset))
+                    print ":".join("{:02x}".format(ord(c)) for c in struct.pack('<i', new_proxy))
+                    self.rewritten_exe.write(struct.pack('<i', new_proxy))
+                    self.rewritten_exe.seek(proxy_foffset)
+                    proof = struct.unpack('<i', self.rewritten_exe.read(4))
+
+                    print 'wrote it: {:x}'.format(proof[0])
+
+                src_funct.proxy_rewrites.append(ProxyRewrite(
+                    proxy_foffset, flow.dst, rewrite_proxy
+                ))
         else:
             if self.rewrite_proxies and not src_funct.name.startswith('_CDI_RLT_'):
                 new_proxy = src_funct.proxy_for(flow.dst)
@@ -213,6 +252,48 @@ class Verifier:
         return self.secure
 
     def check_cross_funct_flow(self, funct):
+        if self.rewrite_proxies and funct.proxy_rewrites:
+            with open(self.binary.name, 'r') as binary:
+                for rewrite in funct.proxy_rewrites:
+                    binary.seek(rewrite.old_proxy_foffset)
+                    rewrite.old_proxy = struct.unpack('<i', binary.read(4))[0]
+
+                binary.seek(funct.file_offset)
+                buff = binary.read(int(funct.size))
+                md = Cs(CS_ARCH_X86, CS_MODE_64)
+
+                rewrite_iter = iter(funct.proxy_rewrites)
+                rewrite = next(rewrite_iter)
+                try:
+                    prev_instr = None
+                    pprev_instr = None
+                    for instr in md.disasm(buff, funct.addr):
+                        print 'rewrite.dst_addr: {:x}'.format(rewrite.dst_addr)
+                        while instr.address == rewrite.dst_addr:
+                            print 'funct: {}'.format(funct.name)
+                            print('pprev_instr: {} {}'.format(
+                                pprev_instr.mnemonic, pprev_instr.op_str))
+                            print('prev_instr: {} {}'.format(
+                                prev_instr.mnemonic, prev_instr.op_str))
+                            print('instr: {} {}'.format(
+                                instr.mnemonic, instr.op_str))
+                            if (prev_instr and pprev_instr
+                                    and prev_instr.mnemonic in JMP_LIST 
+                                    and pprev_instr.mnemonic == 'push'):
+                                print 'checking for proxy match'
+                                proxy = int(pprev_instr.op_str, 16)
+                                print '{:x} vs {:x}'.format(proxy, rewrite.old_proxy)
+                                print 'foffset: {}'.format(rewrite.old_proxy_foffset)
+                                if proxy == rewrite.old_proxy:
+                                    rewrite.callback()
+                            rewrite = next(rewrite_iter)
+                            print('')
+                        print('')
+                        pprev_instr = prev_instr
+                        prev_instr = instr
+                except StopIteration:
+                    pass # all rewrites are finished
+
         instr_addrs = self.instr_addrs(funct)
         for flow in funct.incoming_flow:
             if not in_sorted_list(instr_addrs, flow.dst):
@@ -268,14 +349,6 @@ class Verifier:
         addresses = []
         plt_calls = []
 
-        jmp_list = ["jo","jno","jb","jnae","jc","jnb","jae","jnc","jz","je","jnz",
-                "jne","jbe","jna","jnbe","ja","js","jns","jp","jpe","jnp","jpo","jl",
-                "jnge","jnl","jge","jle","jng","jnle","jg","jecxz","jrcxz","jmp","jmpe"]
-         
-        call_list = ["call","callf", "callq"]
-
-        loop_list = ["loopz","loopnz", "loope","loopne", "loop"]
-
         # Insecure instructions list
         returns = ["ret", "retf", "iret", "retq", "iretq"]
         
@@ -290,7 +363,7 @@ class Verifier:
             addresses.append(int(i.address))
             if self.print_instr_as_decoded:
                 print("0x%x:\t%s\t%s" %(i.address, i.mnemonic, i.op_str))
-            if i.mnemonic in jmp_list:
+            if i.mnemonic in JMP_LIST:
                 try:
                     # Indirect calls and jumps have a * after the instruction and before the location
                     # which raises a value error exception in the casting
@@ -309,7 +382,7 @@ class Verifier:
                             continue
                     self.set_insecure(IndirectJump(self, Flow(i.address, 0, 'jump'),
                             "indirect jmp/jcc"))
-            elif i.mnemonic in call_list:
+            elif i.mnemonic in CALL_LIST:
                 try:
                     addr = int(i.op_str,16)
                     yield Flow(i.address, addr, 'call')
@@ -327,7 +400,7 @@ class Verifier:
                     pass # ignore the return
                 else:
                     self.set_insecure(ReturnUsed(self, Flow(i.address, 0, 'ret'), None))
-            elif i.mnemonic in loop_list:
+            elif i.mnemonic in LOOP_LIST:
                 yield Flow(i.address, int(i.op_str, 16), 'loop')
             prev_instr = i
         if self.print_instr_as_decoded:

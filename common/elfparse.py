@@ -45,6 +45,10 @@ class Function:
         self.ptr_proxy_set.add(0)
         self.ptr_proxies = dict()
 
+        # a list tuples (old_proxy, new_proxy, addr, callback) where callback will rewrite a proxy
+        # if needed when called with the instruction before addr
+        self.proxy_rewrites = []
+
         # virtual addresses of all "return" jumps to this function
         self.incoming_flow = []
 
