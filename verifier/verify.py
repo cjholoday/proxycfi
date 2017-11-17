@@ -140,6 +140,7 @@ class Verifier:
                 return
             else:
                 self.set_insecure(OutOfObjectJump(self, flow, None))
+                return
 
         # check that jumps back into this funct don't go to middle of instrs
         if target_funct == src_funct:
@@ -170,7 +171,8 @@ class Verifier:
                     proxy_foffset, flow.dst, rewrite_proxy
                 ))
         else:
-            if self.rewrite_proxies and not src_funct.name.startswith('_CDI_RLT_'):
+            if self.rewrite_proxies and (not src_funct.name.startswith('_CDI_RLT_')
+                    and target_funct.name not in WHITELIST):
                 new_proxy = src_funct.proxy_for(flow.dst)
                 foffset = src_funct.foffset(flow.src) - 4
                 print('proxy: ', new_proxy, ', offset: ', foffset)
@@ -180,7 +182,8 @@ class Verifier:
         # check if this jump is acting like a function call
         if target_funct.addr == flow.dst:
             assert target_funct.verified
-            if self.rewrite_proxies and target_funct.name != '_CDI_abort':
+            if self.rewrite_proxies and (target_funct.name != '_CDI_abort'
+                    and target_funct.name not in WHITELIST):
                 new_proxy = target_funct.proxy_for(flow.ret_addr)
                 foffset = src_funct.foffset(flow.src) - 4
                 print('proxy: ', new_proxy, ', offset: ', foffset)
