@@ -2,6 +2,8 @@ import __init__
 
 import subprocess
 import os
+import shutil
+import tempfile
 import re
 import sys
 import pipes
@@ -75,6 +77,7 @@ def ar_extract_req_objs(verbose_output, archives):
                 fake_objs.append(fake_types.FakeObjectFile(corrected_fname))
         elif archive.path in objs_needed.keys():
             obj_fnames = objs_needed[archive.path]
+            vprint(obj_fnames)
 
             ar_effective_path = ''
             if archive.path.startswith('/'):
@@ -82,19 +85,66 @@ def ar_extract_req_objs(verbose_output, archives):
             else:
                 ar_effective_path = '../' + archive.path
 
-            try:
-               quoted_objs = map(lambda fn: pipes.quote('.cdi/' + fn), obj_fnames)
-               vvprint("before subprocess call 1") 
-               sys.stdout.flush()
-               sys.stderr.flush()
-               subprocess.check_call('cd .cdi; ar x {} {}'
-                        .format(pipes.quote(ar_effective_path), ' '.join(quoted_objs)), shell=True)
-               vvprint("after subprocess call 1") 
-               sys.stdout.flush()
-               sys.stderr.flush()
-            except subprocess.CalledProcessError:
-                fatal_error("cannot extract '{}' from non-thin archive '{}'"
-                        .format( "' '".join(obj_fnames), archive.path))
+            temp_dir = tempfile.mkdtemp()
+            quoted_objs = map(lambda fn: pipes.quote('.cdi/' + fn), obj_fnames)
+            vvprint("before subprocess call 1") 
+            sys.stdout.flush()
+            sys.stderr.flush()
+
+        
+            # maps obj_fname -> number of times it's been duplicated within this ar
+            # not in the map if not already duplicated
+            internal_dup_count = dict()
+ 
+            os.chdir('.cdi')
+            collision_matcher = re.compile(r'^[0-9]+_')
+            for obj_fname in obj_fnames:
+                vprint('handling {}'.format(obj_fname))
+                ar_output = subprocess.check_output(['ar', 'x', 
+                    ar_effective_path, obj_fname], stderr=subprocess.STDOUT)
+                vprint('ar_output: ', ar_output)
+
+                collided = False
+                if ar_output.startswith('no entry '):
+                    if collision_matcher.match(obj_fname):
+                        vprint('found duplicate: {}'.format(obj_fname))
+                        unique_fname = obj_fname
+                        default_fname = obj_fname[obj_fname.find('_') + 1:]
+
+                        known_mult = 1
+                        if default_fname in internal_dup_count:
+                            known_mult += internal_dup_count[default_fname]
+                            internal_dup_count[default_fname] += 1
+                            collided = True
+
+                        subprocess.check_call(['ar', 'xN', str(known_mult), 
+                            ar_effective_path, default_fname])
+                        subprocess.check_call(['mv', default_fname, unique_fname])
+                    else:
+                        fatal_error("unable to get obj '{}' from archive '{}'"
+                                .format(obj_fname, ar_effective_path))
+
+                # move them to a temp dir so that we can extract into this dir
+                # and avoid any overwrites via collision
+                temp_path = os.path.join(temp_dir, obj_fname)
+                subprocess.check_call(['mv', obj_fname, temp_path])
+
+                if not collided:
+                    try:
+                        internal_dup_count[obj_fname] += 1
+                    except KeyError:
+                        internal_dup_count[obj_fname] = 1
+            for obj_fname in obj_fnames:
+                temp_path = os.path.join(temp_dir, obj_fname)
+                subprocess.check_call(['mv', temp_path, obj_fname])
+
+            shutil.rmtree(temp_dir)
+            os.chdir('..')
+
+
+            vvprint("after subprocess call 1") 
+            sys.stdout.flush()
+            sys.stderr.flush()
             vvprint("obj_fnames:", obj_fnames)
             sys.stdout.flush()
             sys.stderr.flush()
@@ -109,6 +159,7 @@ def ar_extract_req_objs(verbose_output, archives):
                 vvprint("after subprocess call 2", fname)
                 sys.stdout.flush()
                 sys.stderr.flush()
+                vprint(qualified_fname)
                 fake_objs.append(fake_types.FakeObjectFile('.cdi/' + qualified_fname))
 
                 # By link time, the fake object will be assembled into a '.o'
