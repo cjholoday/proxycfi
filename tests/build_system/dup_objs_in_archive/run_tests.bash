@@ -12,6 +12,14 @@ cdi-gcc print2.c -c -o print.o
 check "print2.c failed to compile" || exit 1
 ar q print.a print.o
 
+cdi-gcc print3.c -c -o print.o
+check "print3.c failed to compile" || exit 1
+ar q print.a print.o
+
+cdi-gcc print4.c -c -o print.o
+check "print4.c failed to compile" || exit 1
+ar q print.a print.o
+
 cdi-gcc main.c print.a -o out --cdi-verbose
 check "main.c compilation with print.a failed" || exit 1
 

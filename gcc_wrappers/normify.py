@@ -10,6 +10,7 @@ import tempfile
 import lib_utils
 from error import fatal_error
 from common.eprint import vprint
+from common.eprint import vvprint
 
 def ar_normify(archives):
     """Creates non-CDI archives and returns a list of fixups
@@ -64,25 +65,29 @@ def ar_normify(archives):
 
         unique_obj_fnames = []
         for obj_fname in obj_fnames:
+            vvprint("normifying {}".format(obj_fname))
             ar_dir = os.path.dirname(ar_effective_path)
 
             default_fname = obj_fname
             unique_fname = default_fname
-            collision_idx = 0
+            known_mult = 1
             if default_fname in internally_duplicated:
                 to_path = os.path.join(temp_dir, default_fname)
                 subprocess.check_call(['mv', default_fname, to_path])
 
-                # we must do a while loop in case this naming system clashes
-                # with another object file. Unlikely but possible
-                collision_idx = n_collisions = internally_duplicated[unique_fname]
-                unique_fname = '{}_{}'.format(n_collisions, default_fname)
-                while unique_fname in internally_duplicated:
-                    n_collisions += 1
-                    unique_fname = '{}_{}'.format(n_collisions, default_fname)
-
+                known_mult += internally_duplicated[unique_fname]
+                unique_fname = '{}_{}'.format(
+                        known_mult, default_fname)
+                if unique_fname in internally_duplicated:
+                    # prepending a duplicate count may collide with other 
+                    # existing files. This is extremely unlikely but possible
+                    # TODO: handle this issue
+                    fatal_error("attempt to make '{}' unique caused collision with"
+                            " file '{}'".format(default_fname, unique_fname))
             
-            subprocess.check_call(['ar', 'xN', str(collision_idx+1), ar_effective_path, default_fname])
+            vvprint("unique_fname: {}".format(unique_fname))
+            vvprint("collision idx: {}".format(known_mult))
+            subprocess.check_call(['ar', 'xN', str(known_mult), ar_effective_path, default_fname])
             unique_obj_fnames.append(unique_fname)
 
             if default_fname in internally_duplicated:
@@ -101,9 +106,10 @@ def ar_normify(archives):
                     subprocess.check_call(['mv', unique_fname, correct_obj_fname])
                     subprocess.check_call(['as', correct_obj_fname, '-o', unique_fname])
             try:
-                internally_duplicated[unique_fname] += 1
+                #
+                internally_duplicated[default_fname] += 1
             except KeyError:
-                internally_duplicated[unique_fname] = 1
+                internally_duplicated[default_fname] = 1
 
         shutil.rmtree(temp_dir)
 
