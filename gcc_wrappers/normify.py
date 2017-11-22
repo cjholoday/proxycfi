@@ -3,7 +3,9 @@ import __init__
 import spec
 import subprocess
 import os
+import shutil
 import sys
+import tempfile
 
 import lib_utils
 from error import fatal_error
@@ -35,11 +37,11 @@ def ar_normify(archives):
         obj_fnames = map(lambda x: x[len('x - '):], lines)
         #vprint("CWD: ", os.getcwd())
         #vprint("Archive Info:")
-        #vprint(archive.path)
+        vprint(archive.path)
         #vprint(archive.fake_objs)
         #vprint(archive.thin)
-        #vprint(obj_fnames)
-        #vprint("--------------")
+        vprint(' '.join(obj_fnames))
+        vprint("--------------")
 
         if not obj_fnames:
             continue
@@ -53,22 +55,62 @@ def ar_normify(archives):
             continue
         ar_fixups.append(spec.LinkerSpec.Fixup('ar', archive.fixup_idx, 
             '.cdi/' + os.path.basename(archive.path)))
+
+        # maps obj_fname -> int (where int is the number of times this object
+        # has already been seen. Not in the map if not already seen)
+        internally_duplicated = dict()
+
+        temp_dir = tempfile.mkdtemp()
+
+        unique_obj_fnames = []
         for obj_fname in obj_fnames:
-            if os.path.isfile(obj_fname):
-                with open(obj_fname, 'r') as fake_obj:
+            ar_dir = os.path.dirname(ar_effective_path)
+
+            default_fname = obj_fname
+            unique_fname = default_fname
+            collision_idx = 0
+            if default_fname in internally_duplicated:
+                to_path = os.path.join(temp_dir, default_fname)
+                subprocess.check_call(['mv', default_fname, to_path])
+
+                # we must do a while loop in case this naming system clashes
+                # with another object file. Unlikely but possible
+                collision_idx = n_collisions = internally_duplicated[unique_fname]
+                unique_fname = '{}_{}'.format(n_collisions, default_fname)
+                while unique_fname in internally_duplicated:
+                    n_collisions += 1
+                    unique_fname = '{}_{}'.format(n_collisions, default_fname)
+
+            
+            subprocess.check_call(['ar', 'xN', str(collision_idx+1), ar_effective_path, default_fname])
+            unique_obj_fnames.append(unique_fname)
+
+            if default_fname in internally_duplicated:
+                subprocess.check_call(['mv', default_fname, unique_fname])
+
+                from_path = os.path.join(temp_dir, default_fname)
+                subprocess.check_call(['mv', from_path, default_fname])
+            if os.path.isfile(unique_fname): # XXX this should always be true
+                with open(unique_fname, 'r') as fake_obj:
                     elf_signature = '\x7FELF'
                     is_elf = fake_obj.read(4) == elf_signature
                 if is_elf:
                     continue # already real object file
                 else:
-                    correct_obj_fname = chop_suffix(obj_fname, '.') + '.fake.o'
-                    subprocess.check_call(['mv', obj_fname, correct_obj_fname])
-                    subprocess.check_call(['as', correct_obj_fname, '-o', obj_fname])
+                    correct_obj_fname = chop_suffix(unique_fname, '.') + '.fake.o'
+                    subprocess.check_call(['mv', unique_fname, correct_obj_fname])
+                    subprocess.check_call(['as', correct_obj_fname, '-o', unique_fname])
+            try:
+                internally_duplicated[unique_fname] += 1
+            except KeyError:
+                internally_duplicated[unique_fname] = 1
+
+        shutil.rmtree(temp_dir)
 
 
         # TODO handle case where two archives have diff path but same names
         assert os.path.basename(archive.path) not in archives
-        subprocess.check_call(['ar', 'rc', os.path.basename(archive.path)] + obj_fnames)
+        subprocess.check_call(['ar', 'cq', os.path.basename(archive.path)] + unique_obj_fnames)
     os.chdir('..')
     return ar_fixups
 
