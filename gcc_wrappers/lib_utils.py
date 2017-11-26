@@ -23,6 +23,8 @@ def ar_extract_req_objs(verbose_output, archives):
     Required objects are extracted into ./.cdi with the following format:
         libname.a__obj_name.fake.o
     """
+    vprint("VERBOSE OUTPUT")
+    vprint(verbose_output)
 
     # {archive path -> objs paths needed}
     objs_needed = dict()
@@ -97,43 +99,35 @@ def ar_extract_req_objs(verbose_output, archives):
             internal_dup_count = dict()
  
             os.chdir('.cdi')
-            collision_matcher = re.compile(r'^[0-9]+_')
+            collision_matcher = re.compile(r'^[0-9]+_DUP_')
             for obj_fname in obj_fnames:
                 vprint('handling {}'.format(obj_fname))
                 ar_output = subprocess.check_output(['ar', 'x', 
                     ar_effective_path, obj_fname], stderr=subprocess.STDOUT)
                 vprint('ar_output: ', ar_output)
 
-                collided = False
-                if ar_output.startswith('no entry '):
-                    if collision_matcher.match(obj_fname):
-                        vprint('found duplicate: {}'.format(obj_fname))
-                        unique_fname = obj_fname
-                        default_fname = obj_fname[obj_fname.find('_') + 1:]
+                # collided = False
+                if collision_matcher.match(obj_fname):
+                    vprint('found duplicate: {}'.format(obj_fname))
+                    unique_fname = obj_fname
+                    default_fname = obj_fname[obj_fname.find('_DUP_') + len('_DUP_'):]
+                    collision_idx = int(obj_fname[:obj_fname.find('_')])
 
-                        known_mult = 1
-                        if default_fname in internal_dup_count:
-                            known_mult += internal_dup_count[default_fname]
-                            internal_dup_count[default_fname] += 1
-                            collided = True
+                    # known_mult = 1
+                    # if default_fname in internal_dup_count:
+                    #     known_mult += internal_dup_count[default_fname]
+                    #     internal_dup_count[default_fname] += 1
+                    #     collided = True
 
-                        subprocess.check_call(['ar', 'xN', str(known_mult), 
-                            ar_effective_path, default_fname])
-                        subprocess.check_call(['mv', default_fname, unique_fname])
-                    else:
-                        fatal_error("unable to get obj '{}' from archive '{}'"
-                                .format(obj_fname, ar_effective_path))
+                    subprocess.check_call(['ar', 'xN', str(collision_idx), 
+                        ar_effective_path, default_fname])
+                    subprocess.check_call(['mv', default_fname, unique_fname])
 
                 # move them to a temp dir so that we can extract into this dir
                 # and avoid any overwrites via collision
                 temp_path = os.path.join(temp_dir, obj_fname)
                 subprocess.check_call(['mv', obj_fname, temp_path])
 
-                if not collided:
-                    try:
-                        internal_dup_count[obj_fname] += 1
-                    except KeyError:
-                        internal_dup_count[obj_fname] = 1
             for obj_fname in obj_fnames:
                 temp_path = os.path.join(temp_dir, obj_fname)
                 subprocess.check_call(['mv', temp_path, obj_fname])

@@ -76,7 +76,7 @@ def ar_normify(archives):
                 subprocess.check_call(['mv', default_fname, to_path])
 
                 known_mult += internally_duplicated[unique_fname]
-                unique_fname = '{}_{}'.format(
+                unique_fname = '{}_DUP_{}'.format(
                         known_mult, default_fname)
                 if unique_fname in internally_duplicated:
                     # prepending a duplicate count may collide with other 
