@@ -89,6 +89,35 @@ from cdi_abort import cdi_abort
 #   _CDI_callback_sled: specifies the beginning of the shared library callback sled
 #   _CDI_abort: points to a function that prints out sled debug info and exits
 
+STARTUP_FUNCTIONS = [                                                              
+        'start_c',                                                                 
+        '__libc_start_main',                                                       
+        'libc_start_main',                                                         
+        '__init_libc',                                                             
+        'static_init_tls',                                                         
+        '__copy_tls',                                                              
+        '__init_tp',                                                               
+        '__set_thread_area',                                                       
+        'dummy1',                                                                  
+        '__libc_start_init',                                                       
+        'libc_start_init',                                                         
+        '_init',                                                                   
+        'frame_dummy',                                                             
+        'register_tm_clones',                                                      
+        '__libc_csu_init'  # GLIBC only                                            
+]                                                                                  
+CLEANUP_FUNCTIONS = [                                                              
+        'exit',                                                                    
+        'dummy',                                                                   
+        '__libc_exit_fini',                                                        
+        'libc_exit_fini',                                                          
+        '__do_global_dtors_aux',                                                   
+        'deregister_tm_clones',                                                    
+        '_fini',                                                                   
+        '__libc_csu_fini' # GLIBC only                                             
+]                       
+WHITELIST = STARTUP_FUNCTIONS + CLEANUP_FUNCTIONS                                  
+
 def gen_cdi_asm(cfg, asm_file_descrs, plt_sites, options):
     """Writes cdi compliant assembly from cfg and assembly file descriptions"""
 
@@ -250,7 +279,7 @@ def convert_call_site(site, cfg, funct, asm_line, asm_dest,
             call = asm_line
             globl_decl = ''
         elif not options['--shared-library']:
-            if options['--profile-gen'] or not cfg.ul_is_cdi(site.targets[0].uniq_label):
+            if options['--profile-gen'] or not cfg.ul_is_cdi(site.targets[0].uniq_label) or funct.asm_name in WHITELIST:
                 vvprint("chose no proxy\n")
                 call = asm_line
             else:
@@ -323,7 +352,7 @@ def convert_call_site(site, cfg, funct, asm_line, asm_dest,
             call_sled += '\tcmpq\t$"_CDIX_F_{}", {}\n'.format(target_name, call_operand)
             call_sled += '\tjne\t1f\n'
             # eprint("inserting call for ", target_name)
-            if options['--profile-gen'] or not cfg.ul_is_cdi(target_name):
+            if options['--profile-gen'] or not cfg.ul_is_cdi(target_name) or funct.asm_name in WHITELIST:
                 # eprint("chose 'no proxy'")
                 call_sled += '\tcall\t"_CDIX_F_{}"\n'.format(target_name)
             else:
