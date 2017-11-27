@@ -16,6 +16,7 @@ import struct
 import obj_parse
 
 from common.eprint import eprint
+from common.eprint import vprint
 from common.eprint import vvprint
 from cdi_abort import cdi_abort
 
@@ -487,7 +488,11 @@ def convert_return_site(site, funct, asm_line, asm_dest, cfg,
             ret_sled += '"_CDIX_RREL32_{}_{}":\n'.format(
                     '1', sled_label)
         else:
-            if options['--profile-gen']:
+            target = sled_label
+            target = target[target.find('_TO_') + len('_TO_'):]
+            target = remove_multiplicity(target)
+            target = target[target.rfind('.') + 1:]
+            if options['--profile-gen'] or target in WHITELIST:
                 ret_sled += '\tcmpq\t$"{}", -8(%rsp)\n'.format(sled_label)
             else:
                 proxy_ptr = funct.proxy_for(sled_label.strip("'"))
@@ -548,3 +553,5 @@ def convert_plt_site(site, asm_line, funct, asm_dest, options):
 def fix_label(label):
     return label.replace('@PLT', '').replace('/', '__').replace('.fake.o', '.cdi.s')
 
+def remove_multiplicity(label):
+    return label[:label.rfind('_')]
