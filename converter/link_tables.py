@@ -86,36 +86,14 @@ def write_slow_plt(asm_dest, cfg):
 
 def write_rlt(cfg, plt_manager, asm_dest, sled_id_faucet, options):
     """Write the RLT to asm_dest"""
-
-    # maps (shared library uniq label, rlt return target) -> multiplicity
-    multiplicity = dict()
-
-    # maps shared library uniq label -> set of potential functions to which to return
-    rlt_return_targets = dict()
-
-    # populate the multiplicity and rlt_return_targets dicts
-    for plt_site in itertools.chain(*list(plt_manager.sites.values())):
-        call_return_pair = (plt_site.targets[0], plt_site.enclosing_funct_uniq_label)
-
-        if plt_site.targets[0] not in rlt_return_targets:
-            rlt_return_targets[plt_site.targets[0]] = set()
-        rlt_return_targets[call_return_pair[0]].add(call_return_pair[1])
-
-        try:
-            multiplicity[call_return_pair] += 1
-        except KeyError:
-            multiplicity[call_return_pair] = 1
-
-    # create an RLT entry for each shared library function
-
-    asm_dest.write('\t.section .cdi_rlt, "ax", @progbits\n')
-    
     rlt_relocation_id_faucet = 0
+    asm_dest.write('\t.section .cdi_rlt, "ax", @progbits\n')
     cdi_abort_data = ''
-    for sl_funct_uniq_label, rlt_target_set in rlt_return_targets.iteritems():
-        rlt_entry = ''
 
-        entry_label = '"_CDI_RLT_{}"'.format(fix_label(sl_funct_uniq_label))
+    # iterate by shared library unique labels
+    for sl_ul in plt_manager.sites.keys(): 
+        rlt_entry = ''
+        entry_label = '"_CDI_RLT_{}"'.format(fix_label(sl_ul))
 
         # reserve space for cdi-ld to store the associated PLT return address
         asm_dest.write('\t.align 8\n') # make sure PLT ret addr is aligned
@@ -124,38 +102,33 @@ def write_rlt(cfg, plt_manager, asm_dest, sled_id_faucet, options):
         asm_dest.write('\t.globl {}\n'.format(entry_label))
         asm_dest.write(entry_label + ':\n')
 
-        # Add sled entries for each RLT target
-        for rlt_target in rlt_target_set:
-            i = 1
-            while i <= multiplicity[(sl_funct_uniq_label, rlt_target)]:
-                sled_label = '"_CDIX_PLT_{}_TO_{}_{}"'.format(
-                        fix_label(sl_funct_uniq_label), fix_label(rlt_target) , str(i))
-                if options['--shared-library']:
-                    # we must do this because putting the 'lea' here will require
-                    # a relocation if the symbol is outside this assembly file, 
-                    # which the linker will complain about. Instead, we do the 
-                    # relocation ourselves in cdi-ld. 
-                    
-                    rlt_entry += '\t.byte 0x4c\n'
-                    rlt_entry += '\t.byte 0x8d\n'
-                    rlt_entry += '\t.byte 0x1d\n'
-                    rlt_entry += '\t.long 0x00\n'
-                    rlt_entry += '"_CDIX_RREL32_{}_{}:\n'.format(
-                            str(rlt_relocation_id_faucet), sled_label[1:])
-                    rlt_entry += '\tcmpq\t%r11, -8(%rsp)\n'
-                    rlt_relocation_id_faucet += 1
+        # link all return targets
+        for plt_site in plt_manager.sites[sl_ul]:
+            if options['--shared-library']:
+                # we must do this because putting the 'lea' here will require
+                # a relocation if the symbol is outside this assembly file, 
+                # which the linker will complain about. Instead, we do the 
+                # relocation ourselves later on in cdi-ld. 
+                
+                rlt_entry += '\t.byte 0x4c\n'
+                rlt_entry += '\t.byte 0x8d\n'
+                rlt_entry += '\t.byte 0x1d\n'
+                rlt_entry += '\t.long 0x00\n'
+                rlt_entry += '"_CDIX_RREL32_{}_{}:\n'.format(
+                        str(rlt_relocation_id_faucet), plt_site.label[1:])
+                rlt_entry += '\tcmpq\t%r11, -8(%rsp)\n'
+                rlt_relocation_id_faucet += 1
 
-                    # we must do this relocation ourselves too
-                    rlt_entry += '\t.byte 0x0f\n'
-                    rlt_entry += '\t.byte 0x84\n'
-                    rlt_entry += '\t.long 0x00\n'
-                    rlt_entry += '"_CDIX_RREL32_{}_{}:\n'.format(
-                            str(rlt_relocation_id_faucet), sled_label[1:])
-                    rlt_relocation_id_faucet += 1
-                else:
-                    rlt_entry += '\tcmpq\t$' + sled_label + ', -8(%rsp)\n'
-                    rlt_entry += '\tje\t' + sled_label + '\n'
-                i += 1
+                # we must do this relocation ourselves too
+                rlt_entry += '\t.byte 0x0f\n'
+                rlt_entry += '\t.byte 0x84\n'
+                rlt_entry += '\t.long 0x00\n'
+                rlt_entry += '"_CDIX_RREL32_{}_{}:\n'.format(
+                        str(rlt_relocation_id_faucet), plt_site.label[1:])
+                rlt_relocation_id_faucet += 1
+            else:
+                rlt_entry += '\tcmpq\t$' + plt_site.label + ', -8(%rsp)\n'
+                rlt_entry += '\tje\t' + plt_site.label + '\n'
 
         code, data = cdi_abort(sled_id_faucet(), '',
             asm_parsing.DwarfSourceLoc(), False, options)
@@ -431,6 +404,7 @@ def write_typetab(asm_dest, type_objs, type_attr, on_type_used, on_type_exhauste
             asm_dest.write('\t.string "{}"\n'.format(curr_type))
         on_type_used(type_obj)
     on_type_exhausted()
+
 def fix_label(label):
     return label.replace('@PLT', '').replace('/', '__').replace('.fake.o', '.cdi.s')
 

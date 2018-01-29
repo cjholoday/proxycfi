@@ -273,12 +273,20 @@ class PltManager:
         # maps [external funct name] -> [proxy set]
         self.proxy_manager = {}
 
+        self.site_id_faucet = 0
+
     def add_site(self, site):
+        """Assigns proxy to site. Updates self.sites. Assigns unique site label"""
         if len(site.targets) != 1:
             eprint("gen_cdi: error: PLT site has invalid number of targets: {}"
                     .format(len(site.targets)))
             sys.exit(1)
+
         target = site.targets[0]
+        site.label = '"_CDIX_PLT_{}_TO_{}_{}"'.format(
+                fix_label(target), fix_label(site.enclosing_funct_uniq_label),
+                str(self.site_id_faucet))
+        self.site_id_faucet += 1
 
         try:
             self.sites[target].append(site)
@@ -337,8 +345,16 @@ class Site:
         # targets are of "Function" type. len(targets) == 1 for a direct call site 
         self.targets = targets 
 
+        # if a PLT site, this is filled with the associated label
+        self.label = None
+
+        # if a PLT site, this is filled with a pointer proxy
+        self.proxy = None
+
         if dwarf_loc.valid():
             self.src_line_num = dwarf_loc.line_num
         else:
             self.src_line_num = ''
 
+def fix_label(label):
+    return label.replace('@PLT', '').replace('/', '__').replace('.fake.o', '.cdi.s')

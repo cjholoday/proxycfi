@@ -532,23 +532,12 @@ def convert_indir_jmp_site(site, funct, asm_line, asm_dest):
     pass
 
 def convert_plt_site(site, asm_line, funct, asm_dest, options):
-    if not hasattr(funct, 'plt_call_multiplicity'):
-        funct.plt_call_multiplicity = dict()
-
-    try:
-        funct.plt_call_multiplicity[(site.targets[0], funct.uniq_label)] += 1
-    except KeyError:
-        funct.plt_call_multiplicity[(site.targets[0], funct.uniq_label)] = 1
-
-    # create label for RLT to return to
-    rlt_return_label = ('"_CDIX_PLT_{}_TO_{}_{}"'
-            .format(fix_label(site.targets[0]), fix_label(funct.uniq_label), 
-                str(funct.plt_call_multiplicity[(site.targets[0], funct.uniq_label)])))
+    return_label = site.label
 
     globl_decl = ''
     if not options['--shared-library']:
-        globl_decl = '.globl\t' + rlt_return_label + '\n'
-    asm_dest.write(asm_line + globl_decl + rlt_return_label + ':\n') 
+        globl_decl = '.globl\t{}\n'.format(return_label)
+    asm_dest.write(asm_line + globl_decl + return_label + ':\n') 
 
 def fix_label(label):
     return label.replace('@PLT', '').replace('/', '__').replace('.fake.o', '.cdi.s')
