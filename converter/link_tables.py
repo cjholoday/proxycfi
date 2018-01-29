@@ -1,6 +1,5 @@
 import __init__
 
-import funct_cfg
 
 import copy
 import operator
@@ -10,11 +9,15 @@ import sys
 import re
 import os
 import struct
+import itertools
+
+
+import funct_cfg
 
 from common.eprint import eprint
 from cdi_abort import cdi_abort
 
-def write_linkage_tables(asm_dest, cfg, sled_id_faucet, plt_sites, options):
+def write_linkage_tables(asm_dest, cfg, sled_id_faucet, plt_manager, options):
     fptr_sites = []
     for funct in cfg:
         for site in funct.sites:
@@ -26,7 +29,7 @@ def write_linkage_tables(asm_dest, cfg, sled_id_faucet, plt_sites, options):
     if options['--sl-fptr-addrs']:
         write_callback_sled(asm_dest, options)
 
-    write_rlt(cfg, plt_sites, asm_dest, sled_id_faucet, options)
+    write_rlt(cfg, plt_manager, asm_dest, sled_id_faucet, options)
 
     if options['--shared-library']:
         page_size = subprocess.check_output(['getconf', 'PAGESIZE'])
@@ -81,7 +84,7 @@ def write_slow_plt(asm_dest, cfg):
         asm_dest.write('\tcallq {}@PLT\n'.format(got_name))
 
 
-def write_rlt(cfg, plt_sites, asm_dest, sled_id_faucet, options):
+def write_rlt(cfg, plt_manager, asm_dest, sled_id_faucet, options):
     """Write the RLT to asm_dest"""
 
     # maps (shared library uniq label, rlt return target) -> multiplicity
@@ -91,7 +94,7 @@ def write_rlt(cfg, plt_sites, asm_dest, sled_id_faucet, options):
     rlt_return_targets = dict()
 
     # populate the multiplicity and rlt_return_targets dicts
-    for plt_site in plt_sites:
+    for plt_site in itertools.chain(*list(plt_manager.sites.values())):
         call_return_pair = (plt_site.targets[0], plt_site.enclosing_funct_uniq_label)
 
         if plt_site.targets[0] not in rlt_return_targets:

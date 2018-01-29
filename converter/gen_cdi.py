@@ -3,9 +3,10 @@
 import __init__
 import sys
 import argparse
-
-import asm_parsing
 import jsonpickle
+
+import funct_cfg
+import asm_parsing
 
 from gen_cfg import gen_cfg
 from gen_cdi_asm import gen_cdi_asm
@@ -83,8 +84,8 @@ if __name__ == "__main__":
         asm_file_descrs.append(asm_parsing.AsmFileDescription(filename))
         asm_file_descrs[-1].check_filename()
 
-    plt_sites = []
-    cfg = gen_cfg(asm_file_descrs, plt_sites, options)
+    plt_manager = funct_cfg.PltManager()
+    cfg = gen_cfg(asm_file_descrs, plt_manager, options)
     # cfg.print_json_to('cdi_cfg.json')
 
-    gen_cdi_asm(cfg, asm_file_descrs, plt_sites, options)
+    gen_cdi_asm(cfg, asm_file_descrs, plt_manager, options)

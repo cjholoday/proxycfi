@@ -119,7 +119,7 @@ CLEANUP_FUNCTIONS = [
 ]                       
 WHITELIST = STARTUP_FUNCTIONS + CLEANUP_FUNCTIONS                                  
 
-def gen_cdi_asm(cfg, asm_file_descrs, plt_sites, options):
+def gen_cdi_asm(cfg, asm_file_descrs, plt_manager, options):
     """Writes cdi compliant assembly from cfg and assembly file descriptions"""
 
     sled_id_faucet = funct_cfg.SledIdFaucet()
@@ -183,7 +183,7 @@ def gen_cdi_asm(cfg, asm_file_descrs, plt_sites, options):
             src_line = asm_src.readline()
         if not link_tables.write_linkage_tables.done:
             link_tables.write_linkage_tables(asm_dest, cfg, 
-                    sled_id_faucet, plt_sites, options)
+                    sled_id_faucet, plt_manager, options)
             link_tables.write_linkage_tables.done = True
         asm_dest.write(stack_section_decl)
 

@@ -12,12 +12,10 @@ from common.eprint import eprint
 from common.eprint import vprint
 from common.eprint import vvprint
 
-def gen_cfg(asm_file_descrs, plt_sites, options):
+def gen_cfg(asm_file_descrs, plt_manager, options):
     """Generate cfg from a list of asm files. Produce funct names for each description
 
     asm_file_descrs should be a list containing objects of type 'AsmFileDescription'
-    plt_sites should be empty and will be filled with all site that call the PLT
-
     """
 
     cfg = funct_cfg.FunctControlFlowGraph()
@@ -102,7 +100,7 @@ def gen_cfg(asm_file_descrs, plt_sites, options):
                         descr.ul(target_name)))
                 except KeyError:
                     dir_call_site.group = dir_call_site.PLT_SITE
-                    plt_sites.append(dir_call_site)
+                    plt_manager.add_site(dir_call_site)
                     if options['--verbose']:
                         eprint("Found PLT target '{}' in function '{}'"
                                 .format(dir_call_site.targets[0], funct.uniq_label))

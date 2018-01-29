@@ -260,11 +260,40 @@ class Function:
         new_proxy = 0
         while new_proxy in self.ptr_proxy_set:
             new_proxy = random.randrange(SIGNED_INT32_MIN, SIGNED_INT32_MAX)
-        new_proxy 
         self.ptr_proxy_set.add(new_proxy)
         self.ptr_proxies[rett] = new_proxy
 
         return new_proxy
+
+class PltManager:
+    def __init__(self):
+        # maps [external funct name] -> [a list of all associated sites]
+        self.sites = {}
+
+        # maps [external funct name] -> [proxy set]
+        self.proxy_manager = {}
+
+    def add_site(self, site):
+        if len(site.targets) != 1:
+            eprint("gen_cdi: error: PLT site has invalid number of targets: {}"
+                    .format(len(site.targets)))
+            sys.exit(1)
+        target = site.targets[0]
+
+        try:
+            self.sites[target].append(site)
+        except:
+            # forbid 0 as a proxy
+            self.proxy_manager[target] = set([0])
+            self.sites[target] = [site]
+
+        proxies_taken = self.proxy_manager[target]
+
+        new_proxy = 0
+        while new_proxy in proxies_taken:
+            new_proxy = random.randrange(SIGNED_INT32_MIN, SIGNED_INT32_MAX)
+        proxies_taken.add(new_proxy)
+        site.proxy = new_proxy
 
 class FptrCall:
     def __init__(self, type_sig, src_line_num):
