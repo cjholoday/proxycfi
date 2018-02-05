@@ -579,7 +579,7 @@ class FunctLabelInterceptor:
         # maps function object to a globally agreed upon proxy
         self.fp_proxies = dict()
 
-        self.matcher = re.compile(r'\$[a-zA-Z]+[a-zA-Z0-9_]*')
+        self.matcher = re.compile(r'\$[a-zA-Z_]+[a-zA-Z0-9_]*')
         self.end_label_matcher = re.compile(r'[^a-zA-Z0-9_]+')
 
     def __call__(self, asm_line, asm_filename):
