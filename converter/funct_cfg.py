@@ -245,6 +245,11 @@ class Function:
         if asm_name in WHITELIST:
             self.is_cdi = False
 
+        # contains the global proxy used to identify this function
+        # set when the address of this function is taken, or when a fptr
+        # sled is being generated with this function as a target
+        self.fp_proxy = None
+
     def proxy_for(self, rett):
         """Returns a proxy ptr addr for returning from [this fn] -> [rett]
         

@@ -4,6 +4,7 @@ import funct_cfg
 import link_tables
 
 import copy
+import random
 import operator
 import asm_parsing
 import string
@@ -119,11 +120,18 @@ CLEANUP_FUNCTIONS = [
 ]                       
 WHITELIST = STARTUP_FUNCTIONS + CLEANUP_FUNCTIONS                                  
 
+FP_WHITELIST = [
+        'main'
+]
+
+
 def gen_cdi_asm(cfg, asm_file_descrs, plt_manager, options):
     """Writes cdi compliant assembly from cfg and assembly file descriptions"""
 
     sled_id_faucet = funct_cfg.SledIdFaucet()
     link_tables.write_linkage_tables.done = False
+
+    label_interceptor = FunctLabelInterceptor(cfg)
 
     for descr in asm_file_descrs:
         asm_parsing.DwarfSourceLoc.wipe_filename_mapping()
@@ -137,7 +145,7 @@ def gen_cdi_asm(cfg, asm_file_descrs, plt_manager, options):
         asm_line_num = 1
         for funct in functs:
             num_lines_to_write = funct.asm_line_num - asm_line_num
-            write_lines(num_lines_to_write, asm_src, asm_dest, dwarf_loc)
+            write_lines(num_lines_to_write, asm_src, asm_dest, dwarf_loc, label_interceptor)
             asm_line_num = funct.asm_line_num
 
             # unique labels are always global so that even static functions
@@ -153,7 +161,7 @@ def gen_cdi_asm(cfg, asm_file_descrs, plt_manager, options):
             funct.label_fixed_count = dict()
             for site in funct.sites:
                 num_lines_to_write = site.asm_line_num - asm_line_num
-                write_lines(num_lines_to_write, asm_src, asm_dest, dwarf_loc)
+                write_lines(num_lines_to_write, asm_src, asm_dest, dwarf_loc, label_interceptor)
 
                 line_to_fix = asm_src.readline()
                 asm_line_num = site.asm_line_num + 1
@@ -213,13 +221,13 @@ def cdi_asm_name(asm_name):
     else:
         assert False
 
-def write_lines(num_lines, asm_src, asm_dest, dwarf_loc):
+def write_lines(num_lines, asm_src, asm_dest, dwarf_loc, transform_line):
     """Writes from file obj asm_src to file obj asm_dest num_lines lines"""
     i = 0
     while i < num_lines:
         asm_line = asm_src.readline()
         asm_parsing.update_dwarf_loc(asm_line, dwarf_loc)
-        asm_dest.write(asm_line)
+        asm_dest.write(transform_line(asm_line, asm_dest.name))
         i += 1
 
 def convert_to_cdi(site, funct, asm_line, asm_dest, cfg, 
@@ -245,6 +253,37 @@ def convert_to_cdi(site, funct, asm_line, asm_dest, cfg,
 def increment_dict(dictionary, key, start = 1):
     dictionary[key] = dictionary.get(key, start - 1) + 1
     return dictionary[key]
+
+reg_map = {
+        'rax': 'eax',
+        'rcx': 'ecx',
+        'rdx': 'edx',
+        'rbx': 'ebx',
+        'rsp': 'esp',
+        'rbp': 'ebp',
+        'rsi': 'esi',
+        'rdi': 'edi',
+}
+
+def reg_64_to_32(register):
+    """Returns a 32 bit register given a 64 or 32 bit version"""
+    percent = ''
+    if register.startswith('%'):
+        percent = '%'
+        register = register[1:]
+
+
+    print '|{}|'.format(register)
+    
+    # check if already 32 bit
+    if register.startswith('e') or register.endswith('d'):
+        return register
+
+    try:
+        return percent + reg_map[register]
+    except KeyError:
+        return percent + register + 'd'
+
 
 def convert_call_site(site, cfg, funct, asm_line, asm_dest, 
         sled_id_faucet, abort_data, dwarf_loc, options):
@@ -350,10 +389,14 @@ def convert_call_site(site, cfg, funct, asm_line, asm_dest,
                     target.rel_id_faucet, target_name)
             target.rel_id_faucet += 1
         else:
-            call_sled += '\tcmpq\t$"_CDIX_F_{}", {}\n'.format(target_name, call_operand)
+            # create a fp proxy if needed
+            if target.fp_proxy is None:
+                target.fp_proxy = random.randrange(SIGNED_INT32_MIN, SIGNED_INT32_MAX)
+            call_sled += '\tcmpl\t${}, {}\n'.format(hex(target.fp_proxy),
+                    reg_64_to_32(call_operand))
             call_sled += '\tjne\t1f\n'
             # eprint("inserting call for ", target_name)
-            if options['--profile-gen'] or not cfg.ul_is_cdi(target_name) or funct.asm_name in WHITELIST:
+            if options['--profile-gen'] or target is cfg.funct('main') or not cfg.ul_is_cdi(target_name) or funct.asm_name in WHITELIST:
                 # eprint("chose 'no proxy'")
                 call_sled += '\tcall\t"_CDIX_F_{}"\n'.format(target_name)
             else:
@@ -527,6 +570,66 @@ def convert_return_site(site, funct, asm_line, asm_dest, cfg,
 
     abort_data.append(data)
     asm_dest.write(ret_sled)
+
+class FunctLabelInterceptor:
+    def __init__(self, cfg):
+        # needed to know which labels are function labels or aliases
+        self.cfg = cfg
+
+        # maps function object to a globally agreed upon proxy
+        self.fp_proxies = dict()
+
+        self.matcher = re.compile(r'\$[a-zA-Z]+[a-zA-Z0-9_]*')
+        self.end_label_matcher = re.compile(r'[^a-zA-Z0-9_]+')
+
+    def __call__(self, asm_line, asm_filename):
+        """Returns a line with all function labels rewritten with a proxy"""
+        match = self.matcher.search(asm_line)
+        if match is None:
+            return asm_line
+        match_idx = match.start()
+
+        prefix, remaining = asm_line[:match.start()], asm_line[match.start():]
+        end_label_match = self.end_label_matcher.search(remaining[1:])
+        if end_label_match is None:
+            eprint("error: expected end to label in '{}'".format(asm_line))
+            sys.exit(1)
+
+        # account for previously truncated $
+        match_idx = end_label_match.start() + 1 
+        label, suffix = remaining[1:match_idx], remaining[match_idx:]
+
+        # mov   $foo,   %rax
+        # AAAAAA BBBCCCCCCCC
+        #
+        # prefix = A
+        # label  = B
+        # suffix = C
+
+        if label in FP_WHITELIST:
+            return asm_line
+
+        try:
+            funct = self.cfg.funct(label)
+        except KeyError:
+            try:
+                uniq_label = fix_label('{}.{}'.format(asm_filename, label))
+                funct = self.cfg.funct(uniq_label)
+            except KeyError:
+                eprint("no function hit for label: '{}'".format(label))
+                return asm_line
+
+        eprint("function hit for label: '{}'".format(label))
+        if funct.fp_proxy is None:
+            funct.fp_proxy = random.randrange(SIGNED_INT32_MIN, SIGNED_INT32_MAX)
+        eprint('filename: {}'.format(asm_filename))
+        eprint('old line: {}'.format(asm_line[:-1]))
+        eprint('{}${}{}'.format(prefix, hex(funct.fp_proxy), suffix))
+        return '{}${}{}'.format(prefix, hex(funct.fp_proxy), suffix)
+
+SIGNED_INT32_MIN = -1 * (1 << 31)
+SIGNED_INT32_MAX = (1 << 31) - 1
+
 
 def convert_indir_jmp_site(site, funct, asm_line, asm_dest):
     pass

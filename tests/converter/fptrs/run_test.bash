@@ -33,7 +33,8 @@ if [ "$?" != 0 ]; then
 fi
 
 # instrumentation in this way is not supported by musl
-if [ "$CDI_MUSL_STATIC" != 1 ] && [ "$CDI_DISABLE_INSTRUMENTATION" != 1 ]; then
+# disable instrumentation
+if [ 0 && "$CDI_MUSL_STATIC" != 1 ] && [ "$CDI_DISABLE_INSTRUMENTATION" != 1 ]; then
 
     # Get non-CDI trace
     gcc $cdi_flags -finstrument-functions main.c formulas.c calc.c -o out \
