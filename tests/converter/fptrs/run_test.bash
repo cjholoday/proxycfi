@@ -34,27 +34,27 @@ fi
 
 # instrumentation in this way is not supported by musl
 # disable instrumentation
-if [ 0 && "$CDI_MUSL_STATIC" != 1 ] && [ "$CDI_DISABLE_INSTRUMENTATION" != 1 ]; then
-
-    # Get non-CDI trace
-    gcc $cdi_flags -finstrument-functions main.c formulas.c calc.c -o out \
-        ../../../instrumentation/instrumentation.c
-    ./out > output
-    "$addr_translate" out trace_table.out > funct_table2.out
-    mv trace.out trace2.out
-
-    # Get CDI trace
-    cdi-gcc $cdi_flags -finstrument-functions main.c formulas.c calc.c -o out \
-        ../../../instrumentation/instrumentation.c
-    ./out > output
-    "$addr_translate" out trace_table.out > funct_table1.out
-    mv trace.out trace1.out
-
-
-    # Check that the traces are identical
-    "$diff_trace" out trace1.out funct_table1.out trace2.out funct_table2.out
-    if [ "$?" != 0 ]; then
-        echo ERROR: The CDI trace is different than the non-CDI trace!
-        exit 1
-    fi
-fi
+#if [ 0 && "$CDI_MUSL_STATIC" != 1 ] && [ "$CDI_DISABLE_INSTRUMENTATION" != 1 ]; then
+#
+#    # Get non-CDI trace
+#    gcc $cdi_flags -finstrument-functions main.c formulas.c calc.c -o out \
+#        ../../../instrumentation/instrumentation.c
+#    ./out > output
+#    "$addr_translate" out trace_table.out > funct_table2.out
+#    mv trace.out trace2.out
+#
+#    # Get CDI trace
+#    cdi-gcc $cdi_flags -finstrument-functions main.c formulas.c calc.c -o out \
+#        ../../../instrumentation/instrumentation.c
+#    ./out > output
+#    "$addr_translate" out trace_table.out > funct_table1.out
+#    mv trace.out trace1.out
+#
+#
+#    # Check that the traces are identical
+#    "$diff_trace" out trace1.out funct_table1.out trace2.out funct_table2.out
+#    if [ "$?" != 0 ]; then
+#        echo ERROR: The CDI trace is different than the non-CDI trace!
+#        exit 1
+#    fi
+#fi

@@ -83,13 +83,21 @@ from cdi_abort import cdi_abort
 #          | [tdd for return tram] := R_ || [uniq_label of funct]
 #          | [tdd for call   tram] := C_ || [fptype]
 #          | 
-#  --------+------------
+#  PROXY   | Marks the following line binary data as needing of fixup for fptr
+#          | proxy rewriting. This is used both when the taking the address of 
+#          | a function and when comparing fptr proxies
+#          | [tdd] := [rewrite type] || _ || [sequence num] || _ || function label
+#          | [rewrite type ] := MOVL or MOVQ or CMP or QUAD
+#----------+------------
 #
 # Special labels:
 #   _CDI_tramtab: specifies the beginning of the trampoline tables. The SLT
 #                  tramtab comes first, then the function pointer tramtab
 #   _CDI_callback_sled: specifies the beginning of the shared library callback sled
 #   _CDI_abort: points to a function that prints out sled debug info and exits
+
+# used for the [sequence num] in PROXY type labels
+PROXY_SEQ = 0
 
 STARTUP_FUNCTIONS = [                                                              
         'start_c',                                                                 
@@ -393,6 +401,11 @@ def convert_call_site(site, cfg, funct, asm_line, asm_dest,
             # create a fp proxy if needed
             if target.fp_proxy is None:
                 target.fp_proxy = random.randrange(SIGNED_INT32_MIN, SIGNED_INT32_MAX)
+
+            call_sled += '_CDI_PROXY_CMP_{}_{}:\n'.format(hex(PROXY_SEQ)[2:], target.asm_name)
+            global PROXY_SEQ
+            PROXY_SEQ += 1
+
             call_sled += '\tcmpl\t${}, {}\n'.format(hex(target.fp_proxy),
                     reg_64_to_32(call_operand))
             call_sled += '\tjne\t1f\n'
@@ -656,11 +669,26 @@ class FunctLabelInterceptor:
         eprint('old line: {}'.format(asm_line[:-1]))
 
         dollar = ''
+        rewrite_label = '_CDI_PROXY_'
         if is_code_match:
             dollar = '$'
+            if 'movl' in prefix:
+                rewrite_label += 'MOVL'
+            elif 'movq' in prefix:
+                rewrite_label += 'MOVQ'
+            else:
+                eprint("gen_cdi: error: no movl or movq in address taken code: '{}'".format(asm_line))
+        else:
+            rewrite_label += 'QUAD'
+        rewrite_label += '_' + hex(PROXY_SEQ)[2:] + '_'
+        rewrite_label += funct.asm_name # use funct to sidestep aliases
+        rewrite_label += ':\n'
+
+        global PROXY_SEQ
+        PROXY_SEQ += 1
 
         eprint('new line: {}{}{}{}'.format(prefix, dollar, hex(funct.fp_proxy), suffix))
-        return '{}{}{}{}'.format(prefix, dollar, hex(funct.fp_proxy), suffix)
+        return '{}{}{}{}{}'.format(rewrite_label, prefix, dollar, hex(funct.fp_proxy), suffix)
 
 SIGNED_INT32_MIN = -1 * (1 << 31)
 SIGNED_INT32_MAX = (1 << 31) - 1
