@@ -187,7 +187,7 @@ def gen_cdi_asm(cfg, asm_file_descrs, plt_manager, options):
             if stack_section_decl_matcher.match(src_line):
                 stack_section_decl = src_line
             else:
-                asm_dest.write(src_line)
+                asm_dest.write(label_interceptor(src_line, asm_dest.name))
             src_line = asm_src.readline()
         if not link_tables.write_linkage_tables.done:
             link_tables.write_linkage_tables(asm_dest, cfg, 
