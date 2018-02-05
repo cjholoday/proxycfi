@@ -579,28 +579,56 @@ class FunctLabelInterceptor:
         # maps function object to a globally agreed upon proxy
         self.fp_proxies = dict()
 
-        self.matcher = re.compile(r'\$[a-zA-Z_]+[a-zA-Z0-9_]*')
-        self.end_label_matcher = re.compile(r'[^a-zA-Z0-9_]+')
+        # intercepts function label use like 'mov $foo, %rax\n'
+        self.code_matcher = re.compile(r'\$[a-zA-Z_]+[a-zA-Z0-9_]*')
+
+        # intercepts function label use like '.quad foo\n'
+        self.data_matcher = re.compile(r'\s*\.quad\s+[a-zA-Z_]\w*\s*$')
+        self.end_label_matcher = re.compile(r'[^a-zA-Z0-9_$]+')
 
     def __call__(self, asm_line, asm_filename):
         """Returns a line with all function labels rewritten with a proxy"""
-        match = self.matcher.search(asm_line)
-        if match is None:
-            return asm_line
-        match_idx = match.start()
+        match = self.code_matcher.search(asm_line)
+        is_code_match = True
 
-        prefix, remaining = asm_line[:match.start()], asm_line[match.start():]
-        end_label_match = self.end_label_matcher.search(remaining[1:])
+        label_idx = None
+        if match is None:
+            is_code_match = False
+            match = self.data_matcher.search(asm_line)
+            if match is None:
+                return asm_line
+            vprint('found funct label used in data')
+            # find the label position
+            vprint('whats left: "{}"'.format(asm_line[asm_line.find('.quad') + len('.quad'):]))
+            for idx in range(asm_line.find('.quad') + len('.quad'), len(asm_line)):
+                if asm_line[idx] not in string.whitespace:
+                    label_idx = idx
+                    break
+            else:
+                eprint("gen_cdi: error: no label found in '{}'".format(asm_line))
+                sys.exit(1)
+            vprint(asm_line[label_idx:])
+        else:
+            label_idx = match.start()
+
+        prefix, remaining = asm_line[:label_idx], asm_line[label_idx:]
+        end_label_match = self.end_label_matcher.search(remaining)
         if end_label_match is None:
             eprint("error: expected end to label in '{}'".format(asm_line))
             sys.exit(1)
 
-        # account for previously truncated $
-        match_idx = end_label_match.start() + 1 
-        label, suffix = remaining[1:match_idx], remaining[match_idx:]
+        match_idx = end_label_match.start()
+        label, suffix = remaining[:match_idx], remaining[match_idx:]
+        if label.startswith('$'):
+            label = label[1:]
+
 
         # mov   $foo,   %rax
         # AAAAAA BBBCCCCCCCC
+        #
+        # (or)
+        # .quad foo
+        # AAAAAABBBCCCCCCC...
         #
         # prefix = A
         # label  = B
@@ -610,6 +638,7 @@ class FunctLabelInterceptor:
             return asm_line
 
         try:
+            vprint("checking for function label on '{}'".format(label))
             funct = self.cfg.funct(label)
         except KeyError:
             try:
@@ -624,8 +653,13 @@ class FunctLabelInterceptor:
             funct.fp_proxy = random.randrange(SIGNED_INT32_MIN, SIGNED_INT32_MAX)
         eprint('filename: {}'.format(asm_filename))
         eprint('old line: {}'.format(asm_line[:-1]))
-        eprint('{}${}{}'.format(prefix, hex(funct.fp_proxy), suffix))
-        return '{}${}{}'.format(prefix, hex(funct.fp_proxy), suffix)
+
+        dollar = ''
+        if is_code_match:
+            dollar = '$'
+
+        eprint('{}{}{}{}'.format(prefix, dollar, hex(funct.fp_proxy), suffix))
+        return '{}{}{}{}'.format(prefix, dollar, hex(funct.fp_proxy), suffix)
 
 SIGNED_INT32_MIN = -1 * (1 << 31)
 SIGNED_INT32_MAX = (1 << 31) - 1
