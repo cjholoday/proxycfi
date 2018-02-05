@@ -133,6 +133,9 @@ def gen_cdi_asm(cfg, asm_file_descrs, plt_manager, options):
 
     label_interceptor = FunctLabelInterceptor(cfg)
 
+    cfg.print_uniq_labels()
+    cfg.print_aliases()
+
     for descr in asm_file_descrs:
         asm_parsing.DwarfSourceLoc.wipe_filename_mapping()
         dwarf_loc = asm_parsing.DwarfSourceLoc()
@@ -187,7 +190,7 @@ def gen_cdi_asm(cfg, asm_file_descrs, plt_manager, options):
             if stack_section_decl_matcher.match(src_line):
                 stack_section_decl = src_line
             else:
-                asm_dest.write(label_interceptor(src_line, asm_dest.name))
+                asm_dest.write(label_interceptor(src_line, asm_src.name))
             src_line = asm_src.readline()
         if not link_tables.write_linkage_tables.done:
             link_tables.write_linkage_tables(asm_dest, cfg, 
@@ -227,7 +230,7 @@ def write_lines(num_lines, asm_src, asm_dest, dwarf_loc, transform_line):
     while i < num_lines:
         asm_line = asm_src.readline()
         asm_parsing.update_dwarf_loc(asm_line, dwarf_loc)
-        asm_dest.write(transform_line(asm_line, asm_dest.name))
+        asm_dest.write(transform_line(asm_line, asm_src.name))
         i += 1
 
 def convert_to_cdi(site, funct, asm_line, asm_dest, cfg, 
@@ -273,8 +276,6 @@ def reg_64_to_32(register):
         register = register[1:]
 
 
-    print '|{}|'.format(register)
-    
     # check if already 32 bit
     if register.startswith('e') or register.endswith('d'):
         return register
@@ -638,17 +639,17 @@ class FunctLabelInterceptor:
             return asm_line
 
         try:
-            vprint("checking for function label on '{}'".format(label))
             funct = self.cfg.funct(label)
         except KeyError:
             try:
-                uniq_label = fix_label('{}.{}'.format(asm_filename, label))
+                uniq_label = '{}.{}'.format(asm_filename, label)
+                vprint("checking for function with ul: '{}'".format(uniq_label))
                 funct = self.cfg.funct(uniq_label)
             except KeyError:
-                eprint("no function hit for label: '{}'".format(label))
+                eprint("warning: XXX: NO FUNCTION HIT FOR LABEL: '{}'".format(label))
                 return asm_line
 
-        eprint("function hit for label: '{}'".format(label))
+        eprint("FUNCTION HIT FOR LABEL: '{}'".format(label))
         if funct.fp_proxy is None:
             funct.fp_proxy = random.randrange(SIGNED_INT32_MIN, SIGNED_INT32_MAX)
         eprint('filename: {}'.format(asm_filename))
@@ -658,7 +659,7 @@ class FunctLabelInterceptor:
         if is_code_match:
             dollar = '$'
 
-        eprint('{}{}{}{}'.format(prefix, dollar, hex(funct.fp_proxy), suffix))
+        eprint('new line: {}{}{}{}'.format(prefix, dollar, hex(funct.fp_proxy), suffix))
         return '{}{}{}{}'.format(prefix, dollar, hex(funct.fp_proxy), suffix)
 
 SIGNED_INT32_MIN = -1 * (1 << 31)
