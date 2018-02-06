@@ -4,8 +4,10 @@ import re
 import types
 import random
 import getopt
+import struct
 from eprint import eprint
 from operator import attrgetter
+from capstone import *
 
 SIGNED_INT32_MIN = -1 * (1 << 31)
 SIGNED_INT32_MAX = (1 << 31) - 1
@@ -185,6 +187,106 @@ def gather_functions(binary_name, exec_sections):
         i += 1
     return functions
 
+class FptrProxyRewrite:
+    # maps function label to corresponding global proxy. Function pointers only
+    fptr_proxies = dict()
+    proxies_taken = set([0])
+    verifier = None
+    
+    def __init__(self, label, instr_addr, type):
+        self.type = type
+        self.instr_addr = instr_addr
+        self.label = label
+
+    def rewrite(self):
+        exe = FptrProxyRewrite.verifier.rewritten_exe
+        target_funct = FptrProxyRewrite.verifier.enclosing_funct(self.instr_addr)
+        foffset = target_funct.foffset(self.instr_addr)
+
+        if self.type == 'QUAD':
+            exe.seek(foffset)
+            exe.write(struct.pack('<q', self.proxy_for(self.label)))
+            return
+
+        exe.seek(foffset)
+        buf = exe.read(16)
+
+        md = Cs(CS_ARCH_X86, CS_MODE_64)
+        instr = next(md.disasm(buf,self.instr_addr))
+
+        exe.seek(foffset + instr.size - 4)
+        exe.write(struct.pack('<i', self.proxy_for(self.label)))
+
+    def proxy_for(self, label):
+        try:
+            match = FptrProxyRewrite.fptr_proxies[label]
+            return match
+        except KeyError:
+            new_proxy = 0
+            while new_proxy in FptrProxyRewrite.proxies_taken:
+                new_proxy = random.randrange(SIGNED_INT32_MIN, SIGNED_INT32_MAX)
+            FptrProxyRewrite.proxies_taken.add(new_proxy)
+            FptrProxyRewrite.fptr_proxies[label] = new_proxy
+            return new_proxy
+
+def gather_fptr_proxy_rewrites(binary_name, exec_sections):
+    """Outputs a list of functions from the ExecSections passed
+    
+    exec_sections should be a list of ExecSections
+    binary_name should be a string path for the executable being analyzed
+    """
+    label_matcher = re.compile('_CDI_PROXY_(CMP|MOVQ|MOVL)_([0-9a-f]+)_(\w+)')
+    functions = []
+
+    try:
+        readelf_text = subprocess.check_output(['readelf', '--wide', '-s', binary_name])
+    except subprocess.CalledProcessError as e:
+        eprint('FATAL ERROR: Cannot use readelf -s on ' + binary_name)
+        sys.exit(1)
+    
+    table_lines = readelf_text.splitlines()
+
+    # Ignore the dynamic symbol table because everything in the
+    # the dynamic symbol table is also in the regular symbol table
+    symtab_idx = 0
+    for i in range(len(table_lines)):
+        symbols = table_lines[i].split()
+        if len(symbols) >= 2 and symbols[2] == "'.symtab'":
+            symtab_idx = i + 2 # skip table header
+            break
+    else:
+        eprint('FATAL ERROR: Symbol table (".symtab") not found in ' + binary_name)
+        sys.exit(1)
+
+    fptr_rewrites = []
+    for i in range(symtab_idx, len(table_lines)):
+        symbols = table_lines[i].split()
+        if len(symbols) <= 7:
+            continue
+        label = symbols[7]
+        if not label.startswith('_CDI_PROXY_'):
+            continue
+
+        foffset = 0
+        in_ex_sec = False
+        for es in exec_sections:
+            index = symbols[6]
+            section_index = int(es.elf_index.strip("'"))
+            if index == section_index:
+                sect_offset = int(symbols[1], 16) - es.virtual_address
+                foffset = es.file_offset + sect_offset
+                break
+        match = label_matcher.match(label)
+        if match is None:
+            eprint("verifier: error: no match on label '{}'".format(label))
+            sys.exit(1)
+
+        rewrite_type = match.group(1)
+        funct_label = match.group(3)
+        fptr_rewrites.append(FptrProxyRewrite(funct_label, int(symbols[1], 16), rewrite_type))
+
+    return fptr_rewrites
+    
 
 def gather_rlts(binary_name, exec_sections, rlt_start_addr, rlt_section_offset, rlt_section_size):
     """Outputs a list of functions from the ExecSections passed

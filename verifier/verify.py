@@ -17,7 +17,7 @@ from common.eprint import eprint
 from capstone import *
 from operator import attrgetter
 from getopt import getopt
-
+from common.elfparse import FptrProxyRewrite
 IGNORE_RET_FROM_MAIN = False
 
 
@@ -72,10 +72,10 @@ class Flow:
 
 class ProxyRewrite:
     def __init__(self, old_proxy_foffset, dst_addr, callback):
-        
         self.old_proxy_foffset = old_proxy_foffset
         self.dst_addr = dst_addr
         self.callback = callback
+
 
 # functor used to avoid excessive parameter passing
 class Verifier:
@@ -106,6 +106,9 @@ class Verifier:
                 'call': self.verify_call,
                 'loop': self.verify_loop
         }
+
+        # set to a list of rewrites needed to be done to fix fptr proxies
+        self.fptr_rewrites = []
 
     def set_insecure(self, insecure_flow):
         self.secure = False
@@ -251,6 +254,9 @@ class Verifier:
         # to supply all cross function jumps to funct.incoming_flow instances
         for funct in self.functions:
             self.check_cross_funct_flow(funct)
+
+        for rewrite in self.fptr_rewrites:
+            rewrite.rewrite()
         
         return self.secure
 
@@ -613,8 +619,10 @@ if __name__ == "__main__":
             exit_on_insecurity, print_instr_as_decoded)
 
     verifier.rewrite_proxies = False
+    rewrite_proxies = True
     if rewrite_proxies:
         verifier.rewrite_proxies = True
+        verifier.fptr_rewrites = elfparse.gather_fptr_proxy_rewrites(binary.name, exec_sections) 
 
         verifier.temp_dir = tempfile.mkdtemp()
         rewritten_exe_path = os.path.join(verifier.temp_dir, binary.name)
@@ -624,6 +632,7 @@ if __name__ == "__main__":
         print(rewritten_exe_path)
 
         verifier.rewritten_exe = open(rewritten_exe_path, 'rb+')
+        FptrProxyRewrite.verifier = verifier
 
     if verifier.judge():
         if rewrite_proxies:
