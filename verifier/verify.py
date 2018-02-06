@@ -255,8 +255,9 @@ class Verifier:
         for funct in self.functions:
             self.check_cross_funct_flow(funct)
 
-        for rewrite in self.fptr_rewrites:
-            rewrite.rewrite()
+        if self.rewrite_proxies:
+            for rewrite in self.fptr_rewrites:
+                rewrite.rewrite()
         
         return self.secure
 
@@ -446,7 +447,7 @@ class Verifier:
             	# op = i.op_str.split(',') # if we are checking the 'cmp'
                 flow = Flow(i.address, int(i.op_str,16), 'jump')
                 funct = self.enclosing_funct(flow.dst)
-                if funct == None:
+                if funct is None:
                     self.set_insecure(OutOfObjectJump(self, flow, None))
                 funct.incoming_flow.append(flow)
 
@@ -605,10 +606,11 @@ if __name__ == "__main__":
 
     binary = open(args[0], 'rb')
     exec_sections = elfparse.gather_exec_sections(binary.name)
+
     rlt_start_addr, rlt_start_offset, rlt_section_size = elfparse.rlt_addr(binary)
     plt_start_addr, plt_size, plt_entry_size, tramtab_start_addr, tramtab_size = elfparse.gather_plts_tram(binary)
 
-    functions =  elfparse.gather_functions (binary.name, exec_sections)
+    functions =  elfparse.gather_functions(binary.name, exec_sections)
     print "Functions:"
     for funct in functions:
         print '   {:30} at {}'.format(funct.name, hex(funct.addr))
@@ -622,7 +624,9 @@ if __name__ == "__main__":
     rewrite_proxies = True
     if rewrite_proxies:
         verifier.rewrite_proxies = True
-        verifier.fptr_rewrites = elfparse.gather_fptr_proxy_rewrites(binary.name, exec_sections) 
+
+        all_sections = elfparse.gather_exec_sections(binary.name, must_be_exec=False)
+        verifier.fptr_rewrites = elfparse.gather_fptr_proxy_rewrites(binary.name, all_sections) 
 
         verifier.temp_dir = tempfile.mkdtemp()
         rewritten_exe_path = os.path.join(verifier.temp_dir, binary.name)

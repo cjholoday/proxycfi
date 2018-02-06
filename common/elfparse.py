@@ -93,9 +93,8 @@ class Rlt:
         self.virtual_address = virtual_address
         self.size = size
 
-def gather_exec_sections(binary_name):
-    """Outputs a list of the executable sections found in file object <binary>
-    """
+def gather_exec_sections(binary_name, must_be_exec=True):
+    """Outputs a list of the executable sections found in file object <binary>"""
     
     raw_section_info = ''
     
@@ -122,7 +121,7 @@ def gather_exec_sections(binary_name):
 
     while i + 1 < len(raw_section_lines):
         extract_section(raw_section_lines[i], raw_section_lines[i + 1],
-                exec_sections)
+                exec_sections, must_be_exec)
         i += 2
 
     assert len(exec_sections) > 0
@@ -165,12 +164,15 @@ def gather_functions(binary_name, exec_sections):
                 offset = 0
                 in_ex_sec = False
                 for es in exec_sections:
-                    ind = symbols[6]
-                    section_index = re.search(r"\d+(\.\d+)?", es.elf_index).group(0)
-                    if ind == section_index:
-                        in_ex_sec = True
-                        offset = int(symbols[1], 16) - es.virtual_address
-                        file_offset = es.file_offset + offset
+                    try:
+                        ind = int(symbols[6])
+                        print es.elf_index
+                        if ind == es.elf_index:
+                            in_ex_sec = True
+                            offset = int(symbols[1], 16) - es.virtual_address
+                            file_offset = es.file_offset + offset
+                    except ValueError:
+                        pass # bad index
                 if in_ex_sec:
 
                     # function size is displayed in hex when very large
@@ -200,13 +202,14 @@ class FptrProxyRewrite:
 
     def rewrite(self):
         exe = FptrProxyRewrite.verifier.rewritten_exe
-        target_funct = FptrProxyRewrite.verifier.enclosing_funct(self.instr_addr)
-        foffset = target_funct.foffset(self.instr_addr)
-
         if self.type == 'QUAD':
+            foffset = self.foffset
             exe.seek(foffset)
             exe.write(struct.pack('<q', self.proxy_for(self.label)))
             return
+        target_funct = FptrProxyRewrite.verifier.enclosing_funct(self.instr_addr)
+        foffset = target_funct.foffset(self.instr_addr)
+
 
         exe.seek(foffset)
         buf = exe.read(16)
@@ -235,7 +238,7 @@ def gather_fptr_proxy_rewrites(binary_name, exec_sections):
     exec_sections should be a list of ExecSections
     binary_name should be a string path for the executable being analyzed
     """
-    label_matcher = re.compile('_CDI_PROXY_(CMP|MOVQ|MOVL)_([0-9a-f]+)_(\w+)')
+    label_matcher = re.compile('_CDI_PROXY_(CMP|MOVQ|MOVL|QUAD)_([0-9a-f]+)_(\w+)')
     functions = []
 
     try:
@@ -260,6 +263,7 @@ def gather_fptr_proxy_rewrites(binary_name, exec_sections):
 
     fptr_rewrites = []
     for i in range(symtab_idx, len(table_lines)):
+        print symbols 
         symbols = table_lines[i].split()
         if len(symbols) <= 7:
             continue
@@ -269,13 +273,17 @@ def gather_fptr_proxy_rewrites(binary_name, exec_sections):
 
         foffset = 0
         in_ex_sec = False
+        index = int(symbols[6])
         for es in exec_sections:
-            index = symbols[6]
-            section_index = int(es.elf_index.strip("'"))
-            if index == section_index:
+            if index == int(es.elf_index):
                 sect_offset = int(symbols[1], 16) - es.virtual_address
                 foffset = es.file_offset + sect_offset
+                print foffset
                 break
+        else:
+            eprint("verifier: error: no corresponding section found for idx '{}'".format(index))
+            sys.exit(1)
+            
         match = label_matcher.match(label)
         if match is None:
             eprint("verifier: error: no match on label '{}'".format(label))
@@ -283,7 +291,11 @@ def gather_fptr_proxy_rewrites(binary_name, exec_sections):
 
         rewrite_type = match.group(1)
         funct_label = match.group(3)
+
         fptr_rewrites.append(FptrProxyRewrite(funct_label, int(symbols[1], 16), rewrite_type))
+
+        # time pressure
+        fptr_rewrites[-1].foffset = foffset
 
     return fptr_rewrites
     
@@ -404,24 +416,30 @@ def rlt_addr(binary):
 # Helper Functions
 #############################
 
-def extract_section(line1, line2, section_list):
+def extract_section(line1, line2, section_list, exec_only):
     """Extracts ExecSection from the two lines in readelf that define it
 
     Returns ExecSection with '' as name if the lines define no ExecSection
     """
+    print line1
+    print line2
     
     idx_left_bound = line1.find('[')
     idx_right_bound = line1.find(']')
     if idx_left_bound == -1 or idx_right_bound == -1:
         return
     
-    section_index = repr(line1[idx_left_bound + 1:idx_right_bound])
+    try:
+        section_index = int(line1[idx_left_bound + 1:idx_right_bound])
+    except ValueError:
+        return
+
     if section_index == 0:
         return 
     
     line1_fields = line1[idx_right_bound + 1:].strip().split()
     line2_fields = line2.strip().split()
-    if 'X' not in line2_fields[2]:
+    if exec_only and 'X' not in line2_fields[2]:
         return 
     
     name = line1_fields[0];
