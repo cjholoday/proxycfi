@@ -621,7 +621,7 @@ if __name__ == "__main__":
             exit_on_insecurity, print_instr_as_decoded)
 
     verifier.rewrite_proxies = False
-    rewrite_proxies = True
+    rewrite_proxies = False # disable manually since oplist is acting weird
     if rewrite_proxies:
         verifier.rewrite_proxies = True
 
