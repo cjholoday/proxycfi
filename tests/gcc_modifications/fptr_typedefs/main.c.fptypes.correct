@@ -1,6 +1,6 @@
-main.c:14:5:int_printer_printer _CDIv_Zi
-main.c:18:5:int_printer_printer_printer1 _CDIv_ZPFviEi
-main.c:22:5:int_printer_printer_printer2 _CDIv_ZPFviEi
-main.c:32:5:main _CDIv_ZPFviEi
-main.c:33:5:main _CDIv_ZPFvPFviEiEPFviEi
-main.c:34:5:main _CDIv_ZPFvPFviEiEPFviEi
+main.c:14:5:int_printer_printer v_i
+main.c:18:5:int_printer_printer_printer1 v_PFviEi
+main.c:22:5:int_printer_printer_printer2 v_PFviEi
+main.c:32:5:main v_PFviEi
+main.c:33:5:main v_PFvPFviEiEPFviEi
+main.c:34:5:main v_PFvPFviEiEPFviEi

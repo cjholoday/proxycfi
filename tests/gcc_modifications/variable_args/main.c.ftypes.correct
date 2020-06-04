@@ -1,4 +1,4 @@
-main.c:4:5:add _CDIi_Z3addiz
-main.c:20:5:foo _CDIi_Z3fooPFiizEiii
-main.c:23:5:bar _CDIi_Z3barPFiizEiii
-main.c:27:5:main _CDIi_Z4mainv
+main.c:4:5:add i_iz
+main.c:20:5:foo i_PFiizEiii
+main.c:23:5:bar i_PFiizEiii
+main.c:27:5:main i_v

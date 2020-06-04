@@ -1,4 +1,4 @@
-main.c:8:6:foo _CDIv_Z3foo3Day
-main.c:13:6:bar _CDIv_Z3bar3Day
-main.c:18:6:baz _CDIv_Z3baz3Day
-main.c:24:5:main _CDIi_Z4mainv
+main.c:8:6:foo v_3Day
+main.c:13:6:bar v_3Day
+main.c:18:6:baz v_3Day
+main.c:24:5:main i_v

@@ -1,10 +1,16 @@
+import __init__
+
 import spec
 import subprocess
 import os
+import shutil
 import sys
+import tempfile
 
 import lib_utils
 from error import fatal_error
+from common.eprint import vprint
+from common.eprint import vvprint
 
 def ar_normify(archives):
     """Creates non-CDI archives and returns a list of fixups
@@ -20,8 +26,7 @@ def ar_normify(archives):
 
     os.chdir('.cdi')
     for archive in archives:
-        ar_fixups.append(spec.LinkerSpec.Fixup('ar', archive.fixup_idx, 
-            '.cdi/' + os.path.basename(archive.path)))
+
 
         ar_effective_path = ''
         if archive.path.startswith('/'):
@@ -31,21 +36,87 @@ def ar_normify(archives):
 
         lines = subprocess.check_output(['ar', 'xv', ar_effective_path]).strip().split('\n')
         obj_fnames = map(lambda x: x[len('x - '):], lines)
+        #vprint("CWD: ", os.getcwd())
+        #vprint("Archive Info:")
+        vprint(archive.path)
+        #vprint(archive.fake_objs)
+        #vprint(archive.thin)
+        vprint(' '.join(obj_fnames))
+        vprint("--------------")
+
+        if not obj_fnames:
+            continue
+        empty = 0
         for obj_fname in obj_fnames:
-            with open(obj_fname, 'r') as fake_obj:
-                elf_signature = '\x7FELF'
-                is_elf = fake_obj.read(4) == elf_signature
-            if is_elf:
-                continue # already real object file
-            else:
-                correct_obj_fname = chop_suffix(obj_fname, '.') + '.fake.o'
-                subprocess.check_call(['mv', obj_fname, correct_obj_fname])
-                subprocess.check_call(['as', correct_obj_fname, '-o', obj_fname])
+            if obj_fname == '':
+                vprint("archive %s has an obj file with obj_fname = ''" % (archive.path))
+                empty = 1
+                break
+        if empty:
+            continue
+        ar_fixups.append(spec.LinkerSpec.Fixup('ar', archive.fixup_idx, 
+            '.cdi/' + os.path.basename(archive.path)))
+
+        # maps obj_fname -> int (where int is the number of times this object
+        # has already been seen. Not in the map if not already seen)
+        internally_duplicated = dict()
+
+        temp_dir = tempfile.mkdtemp()
+
+        unique_obj_fnames = []
+        for obj_fname in obj_fnames:
+            vvprint("normifying {}".format(obj_fname))
+            ar_dir = os.path.dirname(ar_effective_path)
+
+            default_fname = obj_fname
+            unique_fname = default_fname
+            known_mult = 1
+            if default_fname in internally_duplicated:
+                to_path = os.path.join(temp_dir, default_fname)
+                subprocess.check_call(['mv', default_fname, to_path])
+
+                known_mult += internally_duplicated[unique_fname]
+                unique_fname = '{}_DUP_{}'.format(
+                        known_mult, default_fname)
+                if unique_fname in internally_duplicated:
+                    # prepending a duplicate count may collide with other 
+                    # existing files. This is extremely unlikely but possible
+                    # TODO: handle this issue
+                    fatal_error("attempt to make '{}' unique caused collision with"
+                            " file '{}'".format(default_fname, unique_fname))
+            
+            vvprint("unique_fname: {}".format(unique_fname))
+            vvprint("collision idx: {}".format(known_mult))
+            subprocess.check_call(['ar', 'xN', str(known_mult), ar_effective_path, default_fname])
+            unique_obj_fnames.append(unique_fname)
+
+            if default_fname in internally_duplicated:
+                subprocess.check_call(['mv', default_fname, unique_fname])
+
+                from_path = os.path.join(temp_dir, default_fname)
+                subprocess.check_call(['mv', from_path, default_fname])
+            if os.path.isfile(unique_fname): # XXX this should always be true
+                with open(unique_fname, 'r') as fake_obj:
+                    elf_signature = '\x7FELF'
+                    is_elf = fake_obj.read(4) == elf_signature
+                if is_elf:
+                    continue # already real object file
+                else:
+                    correct_obj_fname = chop_suffix(unique_fname, '.') + '.fake.o'
+                    subprocess.check_call(['mv', unique_fname, correct_obj_fname])
+                    subprocess.check_call(['as', correct_obj_fname, '-o', unique_fname])
+            try:
+                #
+                internally_duplicated[default_fname] += 1
+            except KeyError:
+                internally_duplicated[default_fname] = 1
+
+        shutil.rmtree(temp_dir)
 
 
         # TODO handle case where two archives have diff path but same names
         assert os.path.basename(archive.path) not in archives
-        subprocess.check_call(['ar', 'rc', os.path.basename(archive.path)] + obj_fnames)
+        subprocess.check_call(['ar', 'cq', os.path.basename(archive.path)] + unique_obj_fnames)
     os.chdir('..')
     return ar_fixups
 

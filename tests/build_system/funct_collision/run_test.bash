@@ -4,8 +4,15 @@
 # an identical function name
 rm -f *.o *.s *.json *.i *.ftypes *.fptypes
 
-cdi_flags="-g --save-temps -fno-jump-tables"
-cdi-gcc $cdi_flags main.c -L. -lprint1 -l print2 libprint3.a -o out
+cdi-gcc print1.c -c
+cdi-gcc print2.c -c
+cdi-gcc print3.c -c
+
+ar rcs libprint1.a print1.o
+ar rcs libprint2.a print2.o
+ar rcs libprint3.a print3.o
+
+cdi-gcc main.c -L. -lprint1 -l print2 libprint3.a -o out
 
 if [ "$?" != 0 ]; then
     echo ERROR: Compilation failed!

@@ -15,3 +15,8 @@ a.out
 *.vim
 
 **.cdi
+**.objdump
+**.itrace
+**.pkl
+**.txt
+**.gdb_history

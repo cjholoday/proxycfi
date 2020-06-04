@@ -1,0 +1,25 @@
+add()
+5 + 6 = 11
+
+add()
+add()
+3 + 2 = 5
+
+do_add_char1()
+add_char1()
+8 + 1 = 9
+
+add()
+1 + 2 = 3
+
+add_char1()
+5 + 7 = 12
+
+add()
+add()
+0 + 1 = 1
+
+do_main_add()
+main_add()
+9 + 7 = 16
+

@@ -1,0 +1,6 @@
+ctor1(): 1
+ctor2(): 3
+ctor3(): 6
+main(): 6
+dtor2(): 11
+dtor1(): 15

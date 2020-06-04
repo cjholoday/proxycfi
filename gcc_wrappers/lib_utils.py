@@ -1,11 +1,20 @@
+import __init__
+
 import subprocess
 import os
+import shutil
+import tempfile
 import re
 import sys
+import pipes
 
 import spec
 import fake_types
-from eprint import eprint
+import common.elf
+
+from common.eprint import eprint
+from common.eprint import vprint
+from common.eprint import vvprint
 from error import fatal_error
 
 def ar_extract_req_objs(verbose_output, archives):
@@ -14,6 +23,8 @@ def ar_extract_req_objs(verbose_output, archives):
     Required objects are extracted into ./.cdi with the following format:
         libname.a__obj_name.fake.o
     """
+    vprint("VERBOSE OUTPUT")
+    vprint(verbose_output)
 
     # {archive path -> objs paths needed}
     objs_needed = dict()
@@ -44,13 +55,14 @@ def ar_extract_req_objs(verbose_output, archives):
 
     # for code visibility, print all objects that are needed from archives
     for ar_path in objs_needed.keys():
-        print ':::: {} - {}'.format(ar_path, ' '.join(objs_needed[ar_path]))
+        vprint(':::: {} - {}'.format(ar_path, ' '.join(objs_needed[ar_path])))
 
     ar_fixups = []
     fake_objs = []
     ar_handled = dict() # maps { ar_realpath -> was_already_handled}
     for archive in archives:
         # ignore duplicate archives
+        vvprint("archive.realpath", os.path.realpath(archive.path))
         if ar_handled.get(os.path.realpath(archive.path)):
             ar_fixups.append(spec.LinkerSpec.Fixup('ar', archive.fixup_idx, ''))
             continue
@@ -67,6 +79,7 @@ def ar_extract_req_objs(verbose_output, archives):
                 fake_objs.append(fake_types.FakeObjectFile(corrected_fname))
         elif archive.path in objs_needed.keys():
             obj_fnames = objs_needed[archive.path]
+            vprint(obj_fnames)
 
             ar_effective_path = ''
             if archive.path.startswith('/'):
@@ -74,24 +87,81 @@ def ar_extract_req_objs(verbose_output, archives):
             else:
                 ar_effective_path = '../' + archive.path
 
-            os.chdir('.cdi')
-            try:
-                subprocess.check_call(['ar', 'x', ar_effective_path] + obj_fnames)
-            except subprocess.CalledProcessError:
-                fatal_error("cannot extract '{}' from non-thin archive '{}'"
-                        .format( "' '".join(obj_fnames), archive.path))
+            temp_dir = tempfile.mkdtemp()
+            quoted_objs = map(lambda fn: pipes.quote('.cdi/' + fn), obj_fnames)
+            vvprint("before subprocess call 1") 
+            sys.stdout.flush()
+            sys.stderr.flush()
 
+        
+            # maps obj_fname -> number of times it's been duplicated within this ar
+            # not in the map if not already duplicated
+            internal_dup_count = dict()
+ 
+            os.chdir('.cdi')
+            collision_matcher = re.compile(r'^[0-9]+_DUP_')
+            for obj_fname in obj_fnames:
+                vprint('handling {}'.format(obj_fname))
+                ar_output = subprocess.check_output(['ar', 'x', 
+                    ar_effective_path, obj_fname], stderr=subprocess.STDOUT)
+                vprint('ar_output: ', ar_output)
+
+                # collided = False
+                if collision_matcher.match(obj_fname):
+                    vprint('found duplicate: {}'.format(obj_fname))
+                    unique_fname = obj_fname
+                    default_fname = obj_fname[obj_fname.find('_DUP_') + len('_DUP_'):]
+                    collision_idx = int(obj_fname[:obj_fname.find('_')])
+
+                    # known_mult = 1
+                    # if default_fname in internal_dup_count:
+                    #     known_mult += internal_dup_count[default_fname]
+                    #     internal_dup_count[default_fname] += 1
+                    #     collided = True
+
+                    subprocess.check_call(['ar', 'xN', str(collision_idx), 
+                        ar_effective_path, default_fname])
+                    subprocess.check_call(['mv', default_fname, unique_fname])
+
+                # move them to a temp dir so that we can extract into this dir
+                # and avoid any overwrites via collision
+                temp_path = os.path.join(temp_dir, obj_fname)
+                subprocess.check_call(['mv', obj_fname, temp_path])
+
+            for obj_fname in obj_fnames:
+                temp_path = os.path.join(temp_dir, obj_fname)
+                subprocess.check_call(['mv', temp_path, obj_fname])
+
+            shutil.rmtree(temp_dir)
             os.chdir('..')
+
+
+            vvprint("after subprocess call 1") 
+            sys.stdout.flush()
+            sys.stderr.flush()
+            vvprint("obj_fnames:", obj_fnames)
+            sys.stdout.flush()
+            sys.stderr.flush()
             for fname in obj_fnames:
                 qualified_fname = '{}__{}'.format(os.path.basename(archive.path), fname)
                 if not qualified_fname.endswith('.fake.o'):
                     qualified_fname = chop_suffix(qualified_fname) + '.fake.o'
+                vvprint("before subprocess call 2",fname) 
+                sys.stdout.flush()
+                sys.stderr.flush()
                 subprocess.check_call(['mv', '.cdi/' + fname, '.cdi/' + qualified_fname])
+                vvprint("after subprocess call 2", fname)
+                sys.stdout.flush()
+                sys.stderr.flush()
+                vprint(qualified_fname)
                 fake_objs.append(fake_types.FakeObjectFile('.cdi/' + qualified_fname))
 
                 # By link time, the fake object will be assembled into a '.o'
                 # file. We need to fixup with the new object file
                 ar_fixup.replacement.append('.cdi/' + qualified_fname.replace('.fake.o', '.cdi.o'))
+            vvprint("done appending fake_objs")
+            sys.stdout.flush()
+            sys.stderr.flush()
         ar_fixups.append(ar_fixup)
     return fake_objs, ar_fixups
 
@@ -99,8 +169,12 @@ def sl_cdi_fixups(lspec, binary_path):
     """Returns a list of fixups for creating CDI shared libraries"""
 
     sl_cdi_paths = dict()
-    for sl_path, garbage in sl_trace_bin(binary_path):
+    for sl_path, garbage in sl_trace_bin(binary_path, lspec.target_is_shared):
         sl_realpath = os.path.realpath(sl_path)
+
+        if common.elf.is_cdi(sl_realpath):
+            sl_cdi_paths[sl_realpath] = sl_realpath
+            continue
 
         # Pending on CDI shared libraries being implemented:
         #
@@ -118,15 +192,13 @@ def sl_cdi_fixups(lspec, binary_path):
             sl_cdi_paths[sl_realpath] = candidate
             continue
 
-        if 'libcrypto' in sl_realpath:
-            sys.exit(1)
         symbol_ref = sl_symbol_ref(sl_realpath)
         if symbol_ref == sl_path:
             eprint("cdi-ld: warning: compiling against non-CDI shared library"
                     " '{}'".format(sl_path))
         else:
             eprint("cdi-ld: warning: compiling against non-CDI shared library"
-                    " '{}' with symbol reference '{}'".format(sl_path, symbol_ref))
+                    " '{}'\n\twith symbol reference '{}'".format(sl_path, symbol_ref))
 
     sl_fixups = []
     for idx, sl_path in enumerate(lspec.sl_paths):
@@ -180,7 +252,7 @@ def sl_symbol_ref(sl_path):
 def get_script_dir():
     return os.path.dirname(os.path.realpath(__file__))
 
-find_fptrs_script = get_script_dir() + '/../verifier/find_fptrs.py'
+find_fptrs_script = get_script_dir() + '/find_fptrs.py'
 def sl_get_fptr_addrs(binary_path, symbol_ref, lib_load_addr):
     cached_analysis_path = (get_script_dir() 
             + '/../cdi-gcc/cached_fptr_analysis/' 
@@ -195,7 +267,7 @@ def sl_get_fptr_addrs(binary_path, symbol_ref, lib_load_addr):
             fptr_analysis = cached_analysis.readlines()
     else:
         try:
-            print 'generating and caching fptr analysis for {}'.format(binary_path)
+            vprint('generating and caching fptr analysis for {}'.format(binary_path))
             sys.stdout.flush()
 
             fptr_analysis = subprocess.check_output([find_fptrs_script, binary_path,
@@ -220,16 +292,39 @@ def sl_get_fptr_addrs(binary_path, symbol_ref, lib_load_addr):
 
     return fptr_addrs
 
-def sl_trace_bin(execname):
+def sl_trace_bin(binary, is_shared):
     """Get pairs of (shared lib path, load address). 
 
     There must be an ELF executable CDI or otherwise already generated. Since
     a non-CDI executable is generated for archive analysis, this is always the
     case
+
+    If binary is a shared library, we must use ldd instead. IMPORTANT: ldd
+    fails to get an accurate load address, so any code that calls sl_trace_bin
+    with a shared library MUST NOT use the output for calculating 
+    library load addresses
     """
+
+    # short circuit if there are no sl dependencies at all. We use ldd for
+    # checking this because it doesn't run the exe if there are no dependencies
+    try:
+        ldd_trace = subprocess.check_output(['ldd', binary])
+        if ldd_trace.strip() in ['statically linked', 'not a dynamic executable']:
+            return []
+    except subprocess.CalledProcessError:
+        # ldd may also exit with failure
+        return []
+
+    traced_output = None
+    if is_shared:
+        traced_output = ldd_trace
+    else:
+        traced_output = subprocess.check_output(['./' + binary], 
+                env=dict(os.environ, **{'LD_TRACE_LOADED_OBJECTS':'1'}))
+
+
     lib_addr_pairs = []
-    traced_output = subprocess.check_output(['./' + execname], 
-            env=dict(os.environ, **{'LD_TRACE_LOADED_OBJECTS':'1'}))
+    vvprint("traced output:", traced_output)
     for line in traced_output.splitlines():
         # format of trace output: [symlink path] => [actual elf path] ([load addr])
         symlink = line.split()[0]
@@ -246,6 +341,7 @@ def sl_trace_bin(execname):
             # linux-vdso.so then it won't be handled by cdi-ld.py. However, 
             # they really do deserve to get burned for their naming abuse
             continue
+        vvprint("traced output line:", line)
         addr = int(line.split()[-1].lstrip('(').rstrip(')'), 16)
         lib_addr_pairs.append((path, addr))
     return lib_addr_pairs
@@ -279,8 +375,9 @@ def get_cdi_runtime_search_path_fixup(lspec):
     to the runtime path list at the start of the spec
     """
 
-    replacement = [lspec.entry_lists[lspec.entry_types[0]][0], 
-            '-rpath=/usr/local/cdi/lib', '-rpath=/usr/local/cdi/ulib']
+    replacement = ['-rpath=/usr/local/cdi/lib', '-rpath=/usr/local/cdi/ulib',
+            lspec.entry_lists[lspec.entry_types[0]][0]]
+
     return spec.LinkerSpec.Fixup(lspec.entry_types[0], 0, replacement)
 
 def st_vaddr(symbol, elf):
@@ -308,7 +405,7 @@ def get_restore_rt_vaddrs(lspec):
     """
 
     vaddrs = []
-    for sl_path, lib_load_addr in sl_trace_bin(lspec.target):
+    for sl_path, lib_load_addr in sl_trace_bin(lspec.target, lspec.target_is_shared):
         try:
             vaddrs.append(hex(int(st_vaddr('__restore_rt', sl_path), 16) + lib_load_addr))
         except KeyError:
@@ -320,8 +417,7 @@ def get_vaddr(symbol, execname):
     """Get virtual address of symbol from gdb"""
     gdb_process = subprocess.Popen(['gdb', execname], stderr=subprocess.PIPE, 
             stdout=subprocess.PIPE, stdin=subprocess.PIPE)
-    gdb_process.stdin.write('b main\nrun\ninfo addr {}\nq'.format(symbol))
-
+    gdb_process.stdin.write('set confirm off\nb main\nrun\ninfo addr {}\nq'.format(symbol))
     vaddr = gdb_process.communicate()[0].splitlines()[-2].split()[5]
 
     gdb_process.stdin.close()

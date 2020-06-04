@@ -8,11 +8,8 @@
         .string "\n"
 
 # parameters:
-#   %rsi: pointer to [quad][string of len size]
-#   %rax: unsafe target address
+#   %r11: pointer to [.quad len][string of len size]
 # 
-#   TODO: make this position independent
-#   TODO: print out the unsafe target
 _CDI_abort:
 .LFB0:
 	.cfi_startproc
@@ -21,8 +18,8 @@ _CDI_abort:
 	.cfi_offset 6, -16
 	movq	%rsp, %rbp
 	.cfi_def_cfa_register 6
-        pushq   %rsi                        # save specific sled info for later
-        movq    $.generic_msg, %rsi
+        pushq   %r11                        # save specific sled info for later
+        leaq    .generic_msg(%rip), %rsi
         movq    $.generic_msg_len, %rdx
         movq    $1, %rax                    # write
         movq    $2, %rdi                    # to stderr
@@ -36,7 +33,7 @@ _CDI_abort:
         movq    $1, %rax                    
         movq    $2, %rdi                   
         movq    $1, %rdx
-        movq    $.newline_char, %rsi
+        leaq    .newline_char(%rip), %rsi
         syscall                             # print newline
 .abort:
         movq    $39, %rax                  
@@ -48,3 +45,4 @@ _CDI_abort:
 	.cfi_endproc
 .LFE0:
 	.size	_CDI_abort, .-_CDI_abort
+        .long . - .abort

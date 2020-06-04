@@ -1,4 +1,4 @@
-extern void print(char *str);
+#include "print.h"
 
 void call_print(char *str) {
     void (*oper)(char *) = print;

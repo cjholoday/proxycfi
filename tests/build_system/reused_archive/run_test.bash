@@ -1,46 +1,25 @@
 #!/bin/bash
 
-rm -f *.o *.s *.json *.i *.ftypes *.fptypes output out
+cdi-gcc print.c -c
+check "compilation failed" || exit 1
 
-cdi_flags="-g --save-temps -fno-jump-tables"
-cdi-gcc $cdi_flags main.c libprint.a -o out
+ar rcs libprint.a print.o
 
-if [ "$?" != 0 ]; then
-    echo ERROR: Compilation failed!
-    exit 1
-fi
+cdi-gcc main.c libprint.a -o out
+check "(1) compilation failed" || exit 1
 
 ./out > output
-
-if [ "$?" != 0 ]; then
-    echo ERROR: Running the executable for the test failed!
-    exit 1
-fi
+check "(1) ./out exited with error" || exit 1
 
 diff output correct_output1
+check "(1) incorrect output" || exit 1
 
-if [ "$?" != 0 ]; then
-    echo ERROR: Incorrect output!
-    exit 1
-fi
-
+# now reuse it
 cdi-gcc $cdi_flags main_extended.c libprint.a -o out
-
-if [ "$?" != 0 ]; then
-    echo ERROR: Compilation failed!
-    exit 1
-fi
+check "(2) compilation failed"
 
 ./out > output
-
-if [ "$?" != 0 ]; then
-    echo ERROR: Running the executable for the test failed!
-    exit 1
-fi
+check "(2) ./out exited with error" || exit 1
 
 diff output correct_output2
-
-if [ "$?" != 0 ]; then
-    echo ERROR: Incorrect output!
-    exit 1
-fi
+check "(2) incorrect output" || exit 1

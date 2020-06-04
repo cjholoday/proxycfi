@@ -1,0 +1,5 @@
+How to build the pintool for the CDI-GCC profiler:
+edit build.sh as follows:
+PIN_ROOT=<Path to pin binary directory> 
+target=<intel64>  or <intel32> depending your architecture 
+

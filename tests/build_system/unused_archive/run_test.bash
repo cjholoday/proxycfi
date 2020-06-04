@@ -2,8 +2,10 @@
 
 rm -f *.o *.s *.json *.i *.ftypes *.fptypes output out
 
-cdi_flags="-g --save-temps -fno-jump-tables"
-cdi-gcc $cdi_flags main.c libunused.a -o out
+cdi-gcc unused.c -c
+ar rcs libunused.a unused.o
+
+cdi-gcc main.c libunused.a -o out
 
 if [ "$?" != 0 ]; then
     echo ERROR: Compilation failed!

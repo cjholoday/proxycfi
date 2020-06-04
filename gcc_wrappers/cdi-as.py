@@ -1,9 +1,11 @@
 #!/usr/bin/env python
+
+import __init__
 import sys
 import subprocess
 import os
 import re
-from eprint import eprint
+from common.eprint import eprint
 
 AS_ARG_REQUIRED_OPTIONS = ['--debug-prefix-map', '--defsym', '-I', '-o']
 
@@ -54,9 +56,8 @@ def get_dependencies(fname):
                     source_fnames.append(fname)
 
     if not is_debug_mode:
-        eprint("cdi-as: error: debug mode is disabled. Use '--save-temps', '-g',"
+        eprint("cdi-as: warning: debug mode is disabled. Use '--save-temps', '-g',"
                 " and '-fno-jump-tables' when compiling with CDI")
-        sys.exit(1)
 
     return (source_fnames, header_fnames)
 
@@ -97,6 +98,21 @@ as_spec = ' '.join(sys.argv[1:])
 input_asm_fname, output_obj_fname, as_spec_no_io = parse_as_spec(as_spec)
 input_src_fname_stem = input_asm_fname[:input_asm_fname.rfind('.')]
 fake_object = open(output_obj_fname, 'w')
+
+# support hardcoded typeinfo
+
+hardcoded_typeinfo = ''
+with open(input_asm_fname, 'r') as input_asm:
+    first_line = input_asm.readline()
+    if first_line == '# hardcoded_typeinfo\n':
+        line = ''
+        while line != '# assembly\n':
+            hardcoded_typeinfo += line
+            line = input_asm.readline()
+            if line == '':
+                eprint("cdi-as: error: unterminated hardcoded typeinfo section found")
+                sys.exit(1)
+
 
 fake_object.write('#<deff>\n')
 fake_object.write('# as_spec ' + as_spec + '\n')
@@ -143,11 +159,16 @@ for dep_fname in source_deps + header_deps:
         fptypes.close()
 
     if not dep_used:
-        eprint("cdi-as: warning: no ftypes/fptypes found with: '" + dep_fname + "'")
+        # We refrain from omitting this to output since it has yet to be useful
         fake_object.write('# warning no_type_info {}\n'.format(dep_fname))
 
+fake_object.write(hardcoded_typeinfo)
 fake_object.write('# assembly\n')
 
 # write the input assembly over to the fake object file.
-with open(input_asm_fname, 'r') as asm:
-    fake_object.write(''.join(asm.readlines()))
+with open(input_asm_fname, 'r') as input_asm:
+    if first_line == '# hardcoded_typeinfo\n':
+        line = ''
+        while line != '# assembly\n':
+            line = input_asm.readline()
+    fake_object.write(''.join(input_asm.readlines()))

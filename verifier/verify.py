@@ -1,21 +1,87 @@
 #!/usr/bin/env python
 
+import __init__
+
+import struct
 import bisect
-import elfparse
 import sys
 import binascii
 import types
-from eprint import eprint
+import collections
+import tempfile
+import shutil
+import os
+
+from common import elfparse
+from common.eprint import eprint
 from capstone import *
 from operator import attrgetter
 from getopt import getopt
-
+from common.elfparse import FptrProxyRewrite
 IGNORE_RET_FROM_MAIN = False
+
+
+STARTUP_FUNCTIONS = [
+        'start_c',
+        '__libc_start_main',
+        'libc_start_main',
+        '__init_libc',
+        'static_init_tls',
+        '__copy_tls',
+        '__init_tp',
+        '__set_thread_area',
+        'dummy1',
+        '__libc_start_init',
+        'libc_start_init',
+        '_init',
+        'frame_dummy',
+        'register_tm_clones',
+        '__libc_csu_init'  # GLIBC only
+]
+CLEANUP_FUNCTIONS = [
+        'exit',
+        'dummy',
+        '__libc_exit_fini',
+        'libc_exit_fini',
+        '__do_global_dtors_aux',
+        'deregister_tm_clones',
+        '_fini',
+        '__libc_csu_fini' # GLIBC only
+]
+WHITELIST = STARTUP_FUNCTIONS + CLEANUP_FUNCTIONS
+
+JMP_LIST = ["jo","jno","jb","jnae","jc","jnb","jae","jnc","jz","je","jnz",
+        "jne","jbe","jna","jnbe","ja","js","jns","jp","jpe","jnp","jpo","jl",
+        "jnge","jnl","jge","jle","jng","jnle","jg","jecxz","jrcxz","jmp","jmpe"]
+ 
+CALL_LIST = ["call","callf", "callq"]
+
+LOOP_LIST = ["loopz","loopnz", "loope","loopne", "loop"]
+
+
+class Flow:
+    def __init__(self, src, dst, type):
+        self.src = src
+        self.dst = dst
+
+        # Used to coordinate proxy generation between callers and callees
+        self.ret_addr = None
+
+        # Should be 'call', 'jump', 'loop', 'ret', or 'plt'
+        self.type = type
+
+class ProxyRewrite:
+    def __init__(self, old_proxy_foffset, dst_addr, callback):
+        self.old_proxy_foffset = old_proxy_foffset
+        self.dst_addr = dst_addr
+        self.callback = callback
+
 
 # functor used to avoid excessive parameter passing
 class Verifier:
-    def __init__(self, file_object, exec_sections, function_list, plt_start_addr,
-            plt_size, plt_entry_size, exit_on_insecurity, print_instr_as_decoded):
+    def __init__(self, file_object, exec_sections, functions, rlts, plt_start_addr,
+            plt_size, plt_entry_size, tramtab_start_addr, tramtab_size, exit_on_insecurity,
+             print_instr_as_decoded):
         self.binary = file_object
         self.exec_sections = exec_sections
         self.plt_start_addr = plt_start_addr
@@ -25,73 +91,143 @@ class Verifier:
         self.exit_on_insecurity = exit_on_insecurity
         self.print_instr_as_decoded = print_instr_as_decoded
         
-        self.function_list = sorted(function_list, 
-                key=attrgetter('virtual_address'))
+        self.functions = sorted(functions, 
+                key=attrgetter('addr'))
+        self.funct_addrs = map(lambda f: f.addr, self.functions)
+        self.rlts = rlts
+        self.tramtab_start_addr = tramtab_start_addr
+        self.tramtab_size = tramtab_size
+
+        # functions are processed breadth first
+        self.funct_q = collections.deque()
+
+        self.verification_handlers = {
+                'jump': self.verify_jump,
+                'call': self.verify_call,
+                'loop': self.verify_loop
+        }
+
+        # set to a list of rewrites needed to be done to fix fptr proxies
+        self.fptr_rewrites = []
+
+    def set_insecure(self, insecure_flow):
+        self.secure = False
+        insecure_flow.print_debug_info()
+        if self.exit_on_insecurity:
+            raise insecure_flow
+
 
     def verify(self, function):
         """Recursively verifies that function is CDI compliant"""
 
-        function.verified = True
+        # If we see a function on the whitelist, then a non-whitelisted function
+        # calls a whitelisted function. This should never happen because the 
+        # whitelisted functions should be disjointly used compared to normal functions
+        if function in WHITELIST:
+            eprint("verifier: error: attempting to verify function on whitelist")
+            sys.exit(1)
 
-        try:
-            functions_called = []
-            calls, jumps, loops, instruction_addresses = self.inspect(function,
-                    self.plt_start_addr, self.plt_size, self.plt_entry_size)
+        instr_addrs = self.instr_addrs(function)
+        for flow in self.inspect(function, self.plt_start_addr, 
+                self.plt_size, self.plt_entry_size):
+            self.verification_handlers[flow.type](flow, instr_addrs)
 
-            for addr in calls:
-                target_function = self.target_function(addr)
-                if target_function == None:
-                    raise InvalidFunctionCall(self.target_section(addr), function,
-                            '', addr, 'call targets no function but '
-                            'may point to whitespace between functions')
+    def verify_jump(self, flow, instr_addrs):
+        target_funct = self.enclosing_funct(flow.dst)
+        src_funct = self.enclosing_funct(flow.src)
 
-                if target_function.virtual_address != addr:
-                    raise InvalidFunctionCall(self.target_section(addr),
-                            function, '', addr)
+        if target_funct is None:
+            sect = self.enclosing_sect(flow.dst).name
+            if sect != '.text':
+                self.verify_sl_flow(flow, sect)
+                return
+            else:
+                self.set_insecure(OutOfObjectJump(self, flow, None))
+                return
 
-                functions_called.append(target_function)
+        # check that jumps back into this funct don't go to middle of instrs
+        if target_funct == src_funct:
+            if not in_sorted_list(instr_addrs, flow.dst):
+                self.set_insecure(MiddleOfInstructionJump(self, flow,
+                    "the rogue jump goes back into '{}'".format(src_funct)))
+            if self.rewrite_proxies and target_funct.addr != flow.dst:
+                # print 'buffering rewrite for {:x} -> {:x}'.format(flow.src, flow.dst)
+                proxy_foffset = src_funct.foffset(flow.src) - 4
+                # print 'foffset: {}'.format(proxy_foffset)
+                def rewrite_proxy():
+                    new_proxy = src_funct.proxy_for(flow.dst)
+                    proxy_foffset = src_funct.foffset(flow.src) - 4
+                    self.rewritten_exe.seek(proxy_foffset)
+                    #print('in callback')
+                    #print 'overwriting recursive jump for {}'.format(src_funct.name)
+                    #print 'addr: {:x} -> {:x}'.format(flow.src, flow.dst)
+                    #print('proxy: {:x}'.format(new_proxy))
+                    #print('foffset: {}'.format(proxy_foffset))
+                    #print ":".join("{:02x}".format(ord(c)) for c in struct.pack('<i', new_proxy))
+                    self.rewritten_exe.write(struct.pack('<i', new_proxy))
+                    self.rewritten_exe.seek(proxy_foffset)
+                    proof = struct.unpack('<i', self.rewritten_exe.read(4))
 
-            for addr in loops:
-                if not function.contains_address(addr):
-                    raise LoopOutOfFunction(self.target_section(addr),
-                            function, '', addr)
+                    # print 'wrote it: {:x}'.format(proof[0])
 
-                candidate_idx = bisect_left(instruction_addreses, addr)
-                if (candidate_idx == len(instruction_addresses) or 
-                        instruction_addresses[candidate_idx] != addr):
-                    raise MiddleOfInstructionLoopJump(self.target_section(addr),
-                            function, '', addr)
+                src_funct.proxy_rewrites.append(ProxyRewrite(
+                    proxy_foffset, flow.dst, rewrite_proxy
+                ))
+        else:
+            if self.rewrite_proxies and (not src_funct.name.startswith('_CDI_RLT_')
+                    and target_funct.name not in WHITELIST):
+                new_proxy = src_funct.proxy_for(flow.dst)
+                foffset = src_funct.foffset(flow.src) - 4
+                print('proxy: ', new_proxy, ', offset: ', foffset)
+                self.rewritten_exe.seek(foffset)
+                self.rewritten_exe.write(struct.pack('<i', new_proxy))
 
-            for addr in jumps:
-                target_function = self.target_function(addr)
+        # check if this jump is acting like a function call
+        if target_funct.addr == flow.dst:
+            assert target_funct.verified
+            if self.rewrite_proxies and (target_funct.name != '_CDI_abort'
+                    and target_funct.name not in WHITELIST):
+                new_proxy = target_funct.proxy_for(flow.ret_addr)
+                foffset = src_funct.foffset(flow.src) - 4
+                print('proxy: ', new_proxy, ', offset: ', foffset)
+                self.rewritten_exe.seek(foffset)
+                self.rewritten_exe.write(struct.pack('<i', new_proxy))
 
-                if target_function == None:
-                    raise OutOfObjectJump(self.target_section(addr), function,
-                            '', addr, 'jump may target whitespace '
-                            'between functions')
 
-                # check that jumps back into function don't go to middle of instrs
-                elif target_function == function:
-                    candidate_idx = bisect.bisect_left(instruction_addresses, addr)
-                    if (candidate_idx == len(instruction_addresses) or 
-                            instruction_addresses[candidate_idx] != addr):
-                        raise MiddleOfInstructionJump(self.target_section(addr),
-                                function, '', addr, 'the rogue jump '
-                                'goes back into ' + function.name)
 
-                # handle jumps to other functions at end of depth first search
-                else:
-                    target_function.incoming_returns.append(addr)
+        # keep track of the returns so that we can check if they go
+        # to the middle of instructions later on, after the breadth first search
+        target_funct.incoming_flow.append(flow)
 
-        except InsecureJump as insecurity:
-            self.secure = False
-            insecurity.print_debug_info()
-            if self.exit_on_insecurity:
-                raise
+    def verify_sl_flow(self, flow, sect):
+        if sect == '.plt':
+            if (flow.dst - self.plt_start_addr) % self.plt_entry_size != 0:
+                self.set_insecure(MiddleOfPltEntryJump(self, flow,
+                        'plt starts at ' + hex(self.plt_start_addr)))
+        elif sect == '.cdi_tramtab':
+            if (flow.dst - self.tramtab_start_addr) % 0x10 != 0:
+                self.set_insecure(MiddleOfTramtabEntryJump(self, flow, 
+                        'tramtab starts at ' + hex(self.tramtab_start_addr)))
 
-        for funct in functions_called:
-            if not funct.verified:
-                self.verify(funct)
+    def verify_call(self, flow, instr_addrs):
+        target_funct = self.target_funct(flow.dst)
+        if target_funct is None:
+            sect = self.enclosing_sect(flow.dst).name
+            if sect != '.text':
+                self.verify_sl_flow(flow, sect)
+            else:
+                self.set_insecure(InvalidFunctionCall(self, flow,
+                    "call doesn't target a function"))
+        else:
+            assert target_funct.verified
+
+    def verify_loop(self, flow, instr_addrs):
+        src_funct = self.enclosing_funct(flow.src)
+        if not src_funct.contains_address(flow.dst):
+            raise LoopOutOfFunction(self, flow, None)
+
+        if not in_sorted_list(instr_addrs, flow.dst):
+            raise MiddleOfInstructionLoopJump(self, flow, None)
 
     def judge(self):
         """Returns true iff the file object is CDI compliant
@@ -99,134 +235,109 @@ class Verifier:
         Wrapper for Verifier.verify 
         """
 
-        whitelist = ['__libc_csu_init', '__libc_csu_fini']
-        for funct in self.function_list:
-            # sections must have size > 0 to be considered
-            # NOTE: _fini and company have size 0 so they are not verified
-            if funct.name not in whitelist:
-                self.verify(funct)
+        for funct in self.functions:
+            funct.verified = True
+            if funct.name not in WHITELIST:
+                self.funct_q.append(funct)
+        
+        while self.funct_q:
+            funct = self.funct_q.popleft()
+            print("verifying function '{}'".format(funct.name))
+            self.verify(funct)
+
+        # check rlts
+        for r in self.rlts:
+            verifier.check_rlt(r)
 
         # check that incoming "return" jumps are valid
-        for funct in self.function_list:
-            try:
-                self.check_return_jumps_are_valid(funct)
-            except InsecureJump as insecurity:
-                insecurity.print_debug_info()
-                self.secure = False
+        # this MUST be done last because it relies on other verifier parts
+        # to supply all cross function jumps to funct.incoming_flow instances
+        for funct in self.functions:
+            self.check_cross_funct_flow(funct)
 
-        # verify shared library portion (TODO)
-        # verify .init, _start, etc. (TODO)
+        if self.rewrite_proxies:
+            for rewrite in self.fptr_rewrites:
+                rewrite.rewrite()
         
         return self.secure
 
-    def check_return_jumps_are_valid(self, funct):
-        if funct.incoming_returns == []:
-            return # no returns to check!
+    def check_cross_funct_flow(self, funct):
+        if self.rewrite_proxies and funct.proxy_rewrites:
+            with open(self.binary.name, 'r') as binary:
+                for rewrite in funct.proxy_rewrites:
+                    binary.seek(rewrite.old_proxy_foffset)
+                    rewrite.old_proxy = struct.unpack('<i', binary.read(4))[0]
 
-        instruction_addresses = self.instr_addresses(funct)
+                binary.seek(funct.file_offset)
+                buff = binary.read(int(funct.size))
+                md = Cs(CS_ARCH_X86, CS_MODE_64)
 
-        return_addr_iter = iter(sorted(funct.incoming_returns))
-        return_addr = return_addr_iter.next()
+                rewrite_iter = iter(funct.proxy_rewrites)
+                rewrite = next(rewrite_iter)
+                try:
+                    prev_instr = None
+                    pprev_instr = None
+                    for instr in md.disasm(buff, funct.addr):
+                        # print 'rewrite.dst_addr: {:x}'.format(rewrite.dst_addr)
+                        while instr.address == rewrite.dst_addr:
+                            #print 'funct: {}'.format(funct.name)
+                            #print('pprev_instr: {} {}'.format(
+                            #    pprev_instr.mnemonic, pprev_instr.op_str))
+                            #print('prev_instr: {} {}'.format(
+                            #    prev_instr.mnemonic, prev_instr.op_str))
+                            #print('instr: {} {}'.format(
+                            #    instr.mnemonic, instr.op_str))
+                            if (prev_instr and pprev_instr
+                                    and prev_instr.mnemonic in JMP_LIST 
+                                    and pprev_instr.mnemonic == 'push'):
+                                proxy = int(pprev_instr.op_str, 16)
+                                #print '{:x} vs {:x}'.format(proxy, rewrite.old_proxy)
+                                #print 'foffset: {}'.format(rewrite.old_proxy_foffset)
+                                if proxy == rewrite.old_proxy:
+                                    rewrite.callback()
+                            rewrite = next(rewrite_iter)
+                            # print('')
+                        # print('')
+                        pprev_instr = prev_instr
+                        prev_instr = instr
+                except StopIteration:
+                    pass # all rewrites are finished
 
-        valid_addr_iter = '0'
-        valid_addr = '0'
-        try:
-            valid_addr_iter = iter(instruction_addresses)
-            valid_addr = valid_addr_iter.next()
+        instr_addrs = self.instr_addrs(funct)
+        for flow in funct.incoming_flow:
+            if not in_sorted_list(instr_addrs, flow.dst):
+                self.set_insecure(MiddleOfInstructionJump(self, flow, None))
 
-        except StopIteration:
-            sys.stderr.write('ERROR: A function wants to jump to ' +
-                    funct.name + ' but ' + funct.name + ' has no instructions!\n')
-            sys.exit(1)
+        return
 
-        try:
-            # python requires a while true for manual iterating...
-            while True:
-                if valid_addr < return_addr:
-                    try:
-                        valid_addr = valid_addr_iter.next()
-                    except StopIteration:
-                        raise MiddleOfInstructionJump(
-                                self.target_section(funct.virtual_address),
-                                elfparse.Function('Unknown', 0, 0, 0), 'Unknown',
-                                return_addr, 'Jump goes to ' + funct.name)
-                elif valid_addr > return_addr:
-                        raise MiddleOfInstructionJump(
-                                self.target_section(funct.virtual_address),
-                                elfparse.Function('Unknown', 0, 0, 0), 'Unknown',
-                                return_addr, 'Jump goes to ' + funct.name)
-                else: # valid_addr == return_addr
-                    return_addr = return_addr_iter.next()
-        except StopIteration:
-            pass 
-
-    def target_function(self, virtual_address):
+    def target_funct(self, addr):
         """Returns a function that contains the address. Otherwise, None
         
-        Assumes the function list is sorted by virtual_address
-            (it's sorted in __init__)
+        Assumes that self.functions is sorted by addr
+        Assumes that self.funct_addrs is sorted and corresponds to self.functions
+        """
+        funct = self.enclosing_funct(addr)
+        if funct and funct.addr != addr:
+            funct = None
+        return funct
+
+    def enclosing_funct(self, addr):
+        """Returns the function in which the address belongs
+
         Note that addresses can be in whitespace between functions, if addr
         is in one of these whitespace areas, None will be returned
-
-        There really is no standard library function for this purpose"""
-
-        # candidate function found by modified binary search
-        candidate = None 
-        address = virtual_address
-        
-        left = 0
-        right = len(self.function_list) - 1
-        
-        # modified binary search: 
-        #   invariant: left_address <= max({f | function f contains address})
-        #   'larger' functions have larger addresses
-        #   invariant only makes sense if there is a function that contains address
-
-        # while size 3 subarray or larger
-        while (right - left >= 2):
-            middle = (right + left) / 2 
-
-            if address < self.function_list[middle].virtual_address:
-                right = middle - 1
-            elif address > self.function_list[middle].virtual_address:
-                # maintains invariant
-                left = middle 
-            else:
-                candidate = self.function_list[middle]
-                break
-
-        # case subarray of size 0
-        if left > right:
-            candidate = None
-
-        # case subarray of size 1
-        elif left == right:
-            if address >= self.function_list[left].virtual_address:
-                candidate = self.function_list[left]
-            else:
-                candidate = None
-
-        # case subarray size 2
-        elif left == right - 1:
-            if address >= self.function_list[right].virtual_address:
-                candidate = self.function_list[right]
-            elif address >= self.function_list[left].virtual_address:
-                candidate = self.function_list[left]
-            else:
-                candidate = None
-
-        # check that the address is in candidate's address range 
-        # address might be in the whitespace between functions!
-        if candidate == None:
-            # no candidate even found in the search so no containing function exists
+        """
+        idx = bisect.bisect_right(self.funct_addrs, addr)
+        if idx == 0:
             return None
-        elif address < candidate.virtual_address + candidate.size:
-            return candidate
+
+        cand = self.functions[idx - 1]
+        if addr >= cand.addr and addr < (cand.addr + cand.size):
+            return cand
         else:
-            # address in whitespace between functions
             return None
     
-    def target_section(self, virtual_address):
+    def enclosing_sect(self, virtual_address):
         """Returns section that the virtual_address is in
         
         Inefficient, but suitable for our purposes"""
@@ -234,7 +345,6 @@ class Verifier:
         for sect in self.exec_sections:
             if sect.contains_address(virtual_address):
                 return sect
-        return None
  
     def inspect(self, function, plt_start_addr, plt_size, plt_entry_size):
         """Returns a list of calls, jumps, loop addresses, and valid instr addresses as tuple
@@ -248,14 +358,6 @@ class Verifier:
         addresses = []
         plt_calls = []
 
-        jmp_list = ["jo","jno","jb","jnae","jc","jnb","jae","jnc","jz","je","jnz",
-                "jne","jbe","jna","jnbe","ja","js","jns","jp","jpe","jnp","jpo","jl",
-                "jnge","jnl","jge","jle","jng","jnle","jg","jecxz","jrcxz","jmp","jmpe"]
-         
-        call_list = ["call","callf", "callq"]
-
-        loop_list = ["loopz","loopnz", "loope","loopne", "loop"]
-
         # Insecure instructions list
         returns = ["ret", "retf", "iret", "retq", "iretq"]
         
@@ -265,78 +367,56 @@ class Verifier:
         md = Cs(CS_ARCH_X86, CS_MODE_64)
         if self.print_instr_as_decoded:
             print '--------------:  ' + function.name
-        prev_instruction = None
-        for i in md.disasm(buff, function.virtual_address):
+        prev_instr = None
+        for i in md.disasm(buff, function.addr):
             addresses.append(int(i.address))
             if self.print_instr_as_decoded:
                 print("0x%x:\t%s\t%s" %(i.address, i.mnemonic, i.op_str))
-            if i.mnemonic in jmp_list:
+            if i.mnemonic in JMP_LIST:
                 try:
                     # Indirect calls and jumps have a * after the instruction and before the location
                     # which raises a value error exception in the casting
                     addr = int(i.op_str,16)
-                    if addr >= plt_start_addr and addr <= plt_start_addr + plt_size:
-                        if (addr - plt_start_addr) % plt_entry_size != 0:
-                            raise MiddleOfPltEntryJump(target_section(function.virtual_address),
-                                    function, '', addr, 'plt starts at ' + hex(plt_start_addr))
+                    flow = Flow(i.address, addr, 'jump')
+                    flow.ret_addr = i.address + i.size
+                    yield flow
 
-                    else:
-                        jmps.append(addr)
                 except ValueError:
-                    if prev_instruction and prev_instruction.mnemonic == 'movabs':
-                        register = prev_instruction.op_str.split(', ')[0]
-                        mov_addr = prev_instruction.op_str.split(', ')[1]
+                    if prev_instr and prev_instr.mnemonic == 'movabs':
+                        register = prev_instr.op_str.split(', ')[0]
+                        mov_addr = prev_instr.op_str.split(', ')[1]
                         if i.op_str == register:
-                            jmps.append(addr)
-                            prev_instruction = i
+                            yield Flow(i.address, addr, 'jump')
+                            prev_instr = i
                             continue
-                    if self.exit_on_insecurity:
-                        raise IndirectJump(self.target_section(function.virtual_address),
-                                function, hex(int(i.address)), i.op_str, 'Indirect Jmp/Jcc')
-                    else:
-                        IndirectJump(self.target_section(function.virtual_address),
-                                function, hex(int(i.address)), i.op_str, 'Indirect Jmp/Jcc').print_debug_info()
-            elif i.mnemonic in call_list:
+                    self.set_insecure(IndirectJump(self, Flow(i.address, 0, 'jump'),
+                            "indirect jmp/jcc"))
+            elif i.mnemonic in CALL_LIST:
                 try:
                     addr = int(i.op_str,16)
+                    yield Flow(i.address, addr, 'call')
+
+                    # TODO: move to call handler
                     if addr >= plt_start_addr and addr <= plt_start_addr + plt_size:
                         if (addr - plt_start_addr) % plt_entry_size != 0:
-                            raise MiddleOfPltEntryJump(target_section(function.virtual_address),
+                            raise MiddleOfPltEntryJump(enclosing_sect(function.addr),
                                     function, '', addr, 'plt starts at ' + hex(plt_start_addr))
-
-                    else:
-                        calls.append(addr)
                 except ValueError:
-                    if self.exit_on_insecurity:
-                        raise IndirectCall(self.target_section(function.virtual_address),
-                                function, hex(int(i.address)), i.op_str, 'Indirect Call')
-                    else:
-                        IndirectCall(self.target_section(function.virtual_address), 
-                                function, hex(int(i.address)), i.op_str, 'Indirect Call').print_debug_info()
+                    self.set_insecure(IndirectCall(self, Flow(i.address, 0, 'call'), None))
 
             elif i.mnemonic in returns:
                 if function.name == 'main' and IGNORE_RET_FROM_MAIN:
-                    # ignore the return
-                    pass
-
-                elif self.exit_on_insecurity:
-                    raise IndirectJump(self.target_section(function.virtual_address), 
-                            function, hex(int(i.address)), i.op_str, 'Return Instruction')
+                    pass # ignore the return
                 else:
-                    IndirectJump(self.target_section(function.virtual_address),
-                            function, hex(int(i.address)), i.op_str, 'Return Instruction').print_debug_info()
-
-
-            elif i.mnemonic in loop_list:
-                loops.append(int(i.op_str, 16))
-            prev_instruction = i
+                    self.set_insecure(ReturnUsed(self, Flow(i.address, 0, 'ret'), None))
+            elif i.mnemonic in LOOP_LIST:
+                yield Flow(i.address, int(i.op_str, 16), 'loop')
+            prev_instr = i
         if self.print_instr_as_decoded:
             print '--------------:  ' + function.name + '\n'
 
-        return calls, jmps, loops, addresses
 
-
-    def instr_addresses(self, function):
+    def instr_addrs(self, function):
         """Returns a list of valid instr addresses for a function
         
         """
@@ -345,10 +425,32 @@ class Verifier:
         file.seek(function.file_offset)
         buff = file.read(int(function.size))
         md = Cs(CS_ARCH_X86, CS_MODE_64)
-        for i in md.disasm(buff, function.virtual_address):
+        for i in md.disasm(buff, function.addr):
             addresses.append(int(i.address))
             
         return addresses
+
+
+    def check_rlt(self, rlt):
+        """ Check if the jmp address of rlt entry is not following a direct call to plt
+
+        """
+        file = open(self.binary.name, 'rb')
+        file.seek(rlt.start_offset)
+        buff = file.read(int(rlt.size))
+        md = Cs(CS_ARCH_X86, CS_MODE_64)
+       	if self.print_instr_as_decoded:
+        	print '--------------:  ' + rlt.name
+
+        for i in md.disasm(buff, rlt.virtual_address):
+            if i.mnemonic == 'je':
+            	# op = i.op_str.split(',') # if we are checking the 'cmp'
+                flow = Flow(i.address, int(i.op_str,16), 'jump')
+                funct = self.enclosing_funct(flow.dst)
+                if funct is None:
+                    self.set_insecure(OutOfObjectJump(self, flow, None))
+                funct.incoming_flow.append(flow)
+
 #############################
 # Exception Types
 #############################
@@ -356,89 +458,108 @@ class Verifier:
 class Error(Exception):
     pass
 
-class InsecureJump(Error):
-    def __init__(self, section, function, site_address, jump_address, message = ''):
-        self.section = section
-        self.function = function
-        self.site_address = site_address
-        self.jump_address = jump_address
-        self.message = message
+class InsecureFlow(Error):
+    def __init__(self, verifier, flow, msg):
+        src_sect = verifier.enclosing_sect(flow.src)
+        dst_sect = verifier.enclosing_sect(flow.dst)
 
-        if type(self.site_address) is types.IntType:
-            self.site_address = hex(self.site_address)
-            
-        if type(self.jump_address) is types.IntType:
-            self.jump_address = hex(self.jump_address)
+        self.src_sect_name = '?'
+        if src_sect:
+            self.src_sect_name = src_sect.name
+
+        self.dst_sect_name = '?'
+        if dst_sect:
+            self.dst_sect_name = dst_sect.name
+
+        src_funct = verifier.enclosing_funct(flow.src)
+        dst_funct = verifier.enclosing_funct(flow.dst)
+
+        def get_funct_loc(funct, addr):
+            if funct == None:
+                return ''
+            else:
+                return '{} (0x{:x} + 0x{:x})'.format(funct.name,
+                        funct.addr, addr - funct.addr)
+        self.flow_src = get_funct_loc(src_funct, flow.src)
+        self.flow_dst = get_funct_loc(dst_funct, flow.dst)
+
+        self.msg = msg
+        if self.msg == None:
+            self.msg = ''
+
+        self.flow = flow
 
     def print_debug_info(self):
-        print 'Insecure jump details: '
-        print '\tsection: \t' + self.section.name
-        print '\tfunction: \t' + self.function.name
-        print '\tsite address: \t' + self.site_address
-        print '\tjump address: \t' + self.jump_address
-        print '\tmessage: \t' + self.message + '\n'
+        print 'Insecure Flow Details:'
+        if self.flow.dst == 0:
+            print '\tsections:  {} -> *'.format(self.src_sect_name)
+            print '\taddrs:     0x{:x} -> *'.format(self.flow.src)
+        else:
+            print '\tsections:  {} -> {}'.format(self.src_sect_name, self.dst_sect_name)
+            print '\taddrs:     0x{:x} -> 0x{:x}'.format(self.flow.src, self.flow.dst)
+        print '\tflow src:  {}'.format(self.flow_src)
+        print '\tflow dst:  {}'.format(self.flow_dst)
+        print '\tmessage:   {}'.format(self.msg)
+        print ''
 
-class Return(InsecureJump):
-    """Exception for return instruction"""
-
+class ReturnUsed(InsecureFlow):
     def print_debug_info(self):
         print '--RETURN INSTRUCTION--'
-        InsecureJump.print_debug_info(self)
+        InsecureFlow.print_debug_info(self)
 
-class MiddleOfPltEntryJump(InsecureJump):
-    """Exception for jump to middle of PLT"""
-
+class MiddleOfPltEntryJump(InsecureFlow):
     def print_debug_info(self):
         print '--JUMP TO MIDDLE OF PLT ENTRY--'
-        InsecureJump.print_debug_info(self)
-class IndirectCall(InsecureJump):
-    """Exception for unconstrained indirect jump"""
-    
+        InsecureFlow.print_debug_info(self)
+class MiddleOfTramtabEntryJump(InsecureFlow):
+    def print_debug_info(self):
+        print '--JUMP TO MIDDLE OF TRAMTAB ENTRY--'
+        InsecureFlow.print_debug_info(self)
+class IndirectCall(InsecureFlow):
     def print_debug_info(self):
         print '--INDIRECT CALL--'
-        InsecureJump.print_debug_info(self)
+        InsecureFlow.print_debug_info(self)
 
-class IndirectJump(InsecureJump):
-    """Exception for unconstrained indirect jump"""
-    
+class IndirectJump(InsecureFlow):
     def print_debug_info(self):
         print '--INDIRECT JUMP--'
-        InsecureJump.print_debug_info(self)
+        InsecureFlow.print_debug_info(self)
 
-class MiddleOfInstructionJump(InsecureJump):
-    """Exception for jump pointing to the middle of an instruction"""
-    
+class MiddleOfInstructionJump(InsecureFlow):
     def print_debug_info(self):
         print '--MIDDLE OF INSTRUCTION JUMP--'
-        InsecureJump.print_debug_info(self)
+        InsecureFlow.print_debug_info(self)
 
-class InvalidFunctionCall(InsecureJump):
-    """Exception for a call instruction pointing anywhere but start of function"""
-    
+class InvalidFunctionCall(InsecureFlow):
     def print_debug_info(self):
         print '--CALL DOESN\'T POINT TO START OF FUNCTION--'
-        InsecureJump.print_debug_info(self)
+        InsecureFlow.print_debug_info(self)
 
-class OutOfObjectJump(InsecureJump):
-    """Exception for a jump out of the same code object"""
-    
+class OutOfObjectJump(InsecureFlow):
     def print_debug_info(self):
         print '--JUMP TO OUTSIDE OF OBJECT--'
-        InsecureJump.print_debug_info(self)
+        InsecureFlow.print_debug_info(self)
 
-class LoopOutOfFunction(InsecureJump):
-    """Exception for a loop jump that points out of the function it's in"""
-
+class LoopOutOfFunction(InsecureFlow):
     def print_debug_info(self):
         print '--LOOP JUMP TO OUT OF FUNCTION--'
-        InsecureJump.print_debug_info(self)
+        InsecureFlow.print_debug_info(self)
 
-class MiddleOfInstructionLoopJump(InsecureJump):
-    """Exception for a loop jump that points to the middle of an instruction"""
-
+class MiddleOfInstructionLoopJump(InsecureFlow):
     def print_debug_info(self):
         print '--LOOP JUMP POINTS TO MIDDLE OF INSTRUCTION--'
-        InsecureJump.print_debug_info(self)
+        InsecureFlow.print_debug_info(self)
+
+class RltNotAfterDirectCall(InsecureFlow):
+    def print_debug_info(self):
+        print '--RLT JUMP DOESN"T POINT AFTER A DIRECT CALL--'
+        InsecureFlow.print_debug_info(self)
+
+def in_sorted_list(l, val):
+    candidate_idx = bisect.bisect_left(l, val)
+    if candidate_idx == len(l):
+        return False
+    return l[candidate_idx] == val
 
 #############################
 # Script
@@ -459,11 +580,12 @@ if __name__ == "__main__":
         print_help()
         sys.exit(1)
 
-    optlist, args = getopt(sys.argv[1:], 'cphi')
+    optlist, args = getopt(sys.argv[1:], 'cphir')
     
     # defaults
     exit_on_insecurity = True
     print_instr_as_decoded = False
+    rewrite_proxies = False
 
     # options can flip defaults
     if ('-c', '') in optlist:
@@ -472,6 +594,8 @@ if __name__ == "__main__":
         IGNORE_RET_FROM_MAIN = True
     if ('-p', '') in optlist:
         print_instr_as_decoded = True
+    if ('-r', '') in optlist:
+        rewrite_proxies = True
     if ('-h', '') in optlist:
         print_help()
         sys.exit(0)
@@ -483,15 +607,45 @@ if __name__ == "__main__":
     binary = open(args[0], 'rb')
     exec_sections = elfparse.gather_exec_sections(binary.name)
 
-    functions = elfparse.gather_functions(binary.name, exec_sections)
-    plt_start_addr, plt_size, plt_entry_size = elfparse.gather_plts(binary)
+    rlt_start_addr, rlt_start_offset, rlt_section_size = elfparse.rlt_addr(binary)
+    plt_start_addr, plt_size, plt_entry_size, tramtab_start_addr, tramtab_size = elfparse.gather_plts_tram(binary)
+
+    functions =  elfparse.gather_functions(binary.name, exec_sections)
+    print "Functions:"
+    for funct in functions:
+        print '   {:30} at {}'.format(funct.name, hex(funct.addr))
+    rlts = elfparse.gather_rlts (binary.name, exec_sections, rlt_start_addr, rlt_start_offset, rlt_section_size)
     
-    verifier = Verifier(binary, exec_sections, functions, plt_start_addr, 
-            plt_size, plt_entry_size, exit_on_insecurity, print_instr_as_decoded)
+    verifier = Verifier(binary, exec_sections, functions, rlts, plt_start_addr, 
+            plt_size, plt_entry_size, tramtab_start_addr, tramtab_size, 
+            exit_on_insecurity, print_instr_as_decoded)
+
+    verifier.rewrite_proxies = False
+    rewrite_proxies = False # disable manually since oplist is acting weird
+    if rewrite_proxies:
+        verifier.rewrite_proxies = True
+
+        all_sections = elfparse.gather_exec_sections(binary.name, must_be_exec=False)
+        verifier.fptr_rewrites = elfparse.gather_fptr_proxy_rewrites(binary.name, all_sections) 
+
+        verifier.temp_dir = tempfile.mkdtemp()
+        rewritten_exe_path = os.path.join(verifier.temp_dir, binary.name)
+        verifier.rewritten_exe_path = rewritten_exe_path
+        shutil.copy2(args[0], rewritten_exe_path)
+
+        print(rewritten_exe_path)
+
+        verifier.rewritten_exe = open(rewritten_exe_path, 'rb+')
+        FptrProxyRewrite.verifier = verifier
 
     if verifier.judge():
+        if rewrite_proxies:
+            shutil.copy2(verifier.rewritten_exe_path, args[0])
+            shutil.rmtree(verifier.temp_dir)
         sys.exit(0)
     else:
+        if rewrite_proxies:
+            shutil.rmtree(verifier.temp_dir)
         sys.exit(1)
 
 

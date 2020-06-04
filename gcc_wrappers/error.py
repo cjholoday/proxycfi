@@ -1,8 +1,12 @@
-from eprint import eprint
+import __init__
+from common.eprint import eprint
 import sys
+import subprocess
 
+original_path = ''
 restore_original_objects_fptr = None
 raw_ld_spec = None
+file_deleted_on_error = None
 def fatal_error(message):
     """Prints error message with the spec passed to cdi-ld.py and exits with error
 
@@ -10,9 +14,15 @@ def fatal_error(message):
     easy debugging. For this to work, error.restore_original_objects_fptr
     must be set
     """
+    global restore_original_objects_fptr
     eprint('\n----------------------------------------------\n'
             'cdi-ld: error: {}'.format(message))
     eprint('\nSpec passed to cdi-ld.py: {}'.format(' '.join(raw_ld_spec)))
     if restore_original_objects_fptr:
         restore_original_objects_fptr()
+
+    if file_deleted_on_error:
+        subprocess.check_call(['rm', file_deleted_on_error])
+
+    restore_original_objects_fptr = None
     sys.exit(1)

@@ -1,0 +1,18 @@
++===========================================================================
+| Compiling the CDI Loader               Colton Holoday (choloday@umich.edu)
++===========================================================================
+
+This guide is only tested on Ubuntu version 16.04 with GLIBC version 2.23. Make sure you have the correct version of glibc! 
+
+First compile GLIBC normally using the following configure:
+
+    [directory: cdi/cdi-loader]
+    mkdir -p dest && mkdir -p build && cd $_
+    ../glibc-2.23/configure --prefix="$(pwd)"/../dest
+    make 2> errlog.txt | tee makelog.txt
+
+Now run the recompile script in cdi/cdi-loader. Use this script every time you
+want to recompile GLIBC.
+
+    [directory: cdi/cdi-loader]
+    ./cdi_recompile.bash

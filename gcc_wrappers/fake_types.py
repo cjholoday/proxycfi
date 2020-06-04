@@ -1,3 +1,6 @@
+import __init__
+from common.eprint import eprint
+
 import subprocess
 import os
 

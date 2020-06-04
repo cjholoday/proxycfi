@@ -1,3 +1,4 @@
+import __init__
 import subprocess
 import lib_utils
 import os
@@ -5,6 +6,8 @@ import sys
 
 import lscript_parsing
 from error import fatal_error
+from common.eprint import eprint
+from common.eprint import vprint
 
 class LinkerSpec():
     class Fixup():
@@ -160,7 +163,7 @@ class LinkerSpec():
                 self.fatal_error("Unknown spec entry type '{}'".format(entry_type))
 
             if entry_type == 'cdi_options':
-                self.cdi_options = entry[len('--cdi-options='):].split(' ')
+                self.cdi_options = entry[len('--cdi-options='):].split('|')
             elif entry_type == 'misc':
                 if prev_entry == '-o':
                     self.target = entry
@@ -291,15 +294,15 @@ def find_lib(libstem, lspec):
         for path in find_lib.search_dirs:
             candidate = '{}/{}'.format(path, libstem)
             if os.path.isfile(candidate):
-                return os.path.realpath(candidate)
+                return os.path.abspath(candidate)
         else:
             raise NoMatchingLibrary(libstem)
     for path in find_lib.search_dirs:
         candidate_stem = '{}/lib{}'.format(path, libstem)
         if os.path.isfile(candidate_stem + '.so'):
-            return os.path.realpath(candidate_stem + '.so')
+            return os.path.abspath(candidate_stem + '.so')
         elif os.path.isfile(candidate_stem + '.a'):
-            return os.path.realpath(candidate_stem + '.a')
+            return os.path.abspath(candidate_stem + '.a')
     else:
         raise NoMatchingLibrary(libstem)
 
@@ -311,9 +314,16 @@ def chop_suffix(string, cutoff = ''):
 
 def gen_lib_search_dirs(linker_spec):
     # first find directories in which libraries are searched for
-    builtin_search_dirs = subprocess.check_output(
+    builtin_search_dirs_t = subprocess.check_output(
             '''$(which ld) --verbose | grep SEARCH_DIR | tr -s ' ;' '''
             ''' '\\n' | sed 's/^[^"]*"//g' | sed 's/".*$//g' ''', shell=True).split()
+    builtin_search_dirs = []
+    # fix paths strating with '='
+    for b in builtin_search_dirs_t:
+        if b[0] == '=':
+            builtin_search_dirs.append(b[1:])
+        else:
+            builtin_search_dirs.append(b)
     added_search_dirs = []
     prev = ''
     for word in linker_spec.raw():
@@ -330,7 +340,7 @@ def is_elf(mystery_file_path):
     with open(mystery_file_path, 'rb') as mystery_file:
         return mystery_file.read(len('\x7FELF')) == '\x7FELF'
 
-LD_ARG_REQUIRED_OPTIONS = ['-m', '-o', '-a', '-audit', '-A', '-b', '-c', '--depaudit', '-P', '-e', '--exclude-libs', '--exclude-modules-for-implib', '-f', '-F', '-G', '-h', '-l', '-L', '-O', '-R', '-T', '-dT', '-u', '-y', '-Y', '-z', '-assert', '-z', '--exclude-symbols', '--heap', '--image-base', '--major-image-version', '--major-os-version', '--major-subsystem-version', '--minor-image-version', '--minor-os-version', '--minor-subsystem-version', '--output-def', '--out-implib', '--dll-search-prefix', '--stack', '--subsystem', '--bank-window', '--got']
+LD_ARG_REQUIRED_OPTIONS = ['-m', '-o', '-a', '-audit', '-A', '-b', '-c', '--depaudit', '-P', '-e', '--exclude-libs', '--exclude-modules-for-implib', '-f', '-F', '-G', '-h', '-l', '-L', '-O', '-R', '-T', '-dT', '-u', '-y', '-Y', '-z', '-assert', '-z', '--exclude-symbols', '--heap', '--image-base', '--major-image-version', '--major-os-version', '--major-subsystem-version', '--minor-image-version', '--minor-os-version', '--minor-subsystem-version', '--output-def', '--out-implib', '--dll-search-prefix', '--stack', '--subsystem', '--bank-window', '--got', '-soname', '--soname']
 
 
 

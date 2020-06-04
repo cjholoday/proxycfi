@@ -1,5 +1,10 @@
+import __init__
+
 import sys
-from eprint import eprint
+import re
+
+
+from common.eprint import eprint
 
 class AsmFileDescription:
     def __init__(self, name):
@@ -7,6 +12,11 @@ class AsmFileDescription:
 
         # these unique define functions because we have their filename (above)
         self.funct_names = [] 
+
+        # will contain tuples of  (sym1, sym2) where '.set sym1, sym2' has
+        # been issued in this assembly file
+        self.set_cmds = []
+
 
     def check_filename(self):
         if self.filename[-2:] != '.s' and (
@@ -20,7 +30,12 @@ class AsmFileDescription:
     def src_filename(self):
         return self.filename[:-2] + '.c'
 
+    def ul(self, funct_name):
+        """Returns a unique label, which is used by the cfg"""
+        return self.filename + '.' + funct_name
 
+
+set_cmd_split_pattern = re.compile(r'[,\s]')
 def goto_next_funct(asm_file, line_num, dwarf_loc):
     """Moves file ptr to first instr of next funct. Returns name of said funct
 
@@ -36,7 +51,7 @@ def goto_next_funct(asm_file, line_num, dwarf_loc):
     prev_label = ''
     globl_decl = ''
 
-    symbol_tuples = []
+    set_cmds = []
 
     asm_line = asm_file.readline()
     line_num += 1
@@ -49,34 +64,18 @@ def goto_next_funct(asm_file, line_num, dwarf_loc):
             if first_word[-1] == ':':
                 if (first_word[:len('.LFB')] == '.LFB' 
                         and first_word[len('.LFB'):-1].isdigit()):
-                    return prev_label, line_num, prev_label == globl_decl, symbol_tuples
+                    return prev_label, line_num, prev_label == globl_decl, set_cmds
                 else:
                     prev_label = first_word[:-1]
             elif first_word == '.globl':
                 globl_decl = decode_line(asm_line, False)[2]
-            elif first_word == '.set' and asm_line[2][:2] == '_Z':
-                source = None
-                dest = None
-                # three cases:
-                #   1. dest, source
-                #   2. dest,source
-                #   3. dest , source
-                if asm_line[2][-1] == ',':
-                    dest = symbols[2][:-1]
-                    source = asm_line[3]
-                elif ',' in asm_line[2]:
-                    symbols = asm_line[2].split(',')
-                    dest = symbols[0]
-                    source = symbols[1]
-                else:
-                    dest = asm_line[2]
-                    source = asm_line[4]
-                symbol_tuples.append((dest, source))
-
+            elif first_word == '.set':
+                split = set_cmd_split_pattern.split(asm_line.strip())
+                set_cmds.append((split[1], split[2]))
         asm_line = asm_file.readline()
         line_num += 1
 
-    return '', line_num, False, symbol_tuples
+    return '', line_num, False, set_cmds
 
 class DwarfSourceLoc:
     # internal, don't touch

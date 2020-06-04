@@ -1,12 +1,19 @@
 #!/usr/bin/env python
 
-import argparse
+import __init__
 import sys
-import asm_parsing
+import argparse
 import jsonpickle
+
+import funct_cfg
+import asm_parsing
+
 from gen_cfg import gen_cfg
 from gen_cdi_asm import gen_cdi_asm
-from eprint import eprint
+from common.eprint import eprint
+from common.eprint import vprint
+from common.eprint import vvprint
+import common
 
 
 ############################
@@ -20,14 +27,12 @@ if __name__ == "__main__":
             help='filenames of assembly files to be converted to CDI')
     parser.add_argument('-v', '--verbose', action='store_true',
             help='prints out extra information', dest='--verbose')
-    parser.add_argument('-pg', '--profile-gen', metavar='PROFILE',
+    parser.add_argument('-pg', '--profile-gen', action='store_true',
             help='generates a profile for use next time in compilation.',
-            dest='--profile-gen', default='')
-    parser.add_argument('-pu', '--profile_use', action='store', dest='profile_use', type=str, default='')
-    parser.add_argument('-cl', '--clone_funct', action='store', dest='clone_funct', type=int, default=0)
-    parser.add_argument('-nn', '--no-narrowing', action='store_true',
-            help='if set, sleds won\'t be narrowed based on type signature',
-            dest='--no-narrowing')
+            dest='--profile-gen')
+    parser.add_argument('-pu', '--profile-use', type=str, metavar='PROFILE',
+            help='uses profile data to optimize the CDI sleds.',
+            dest='--profile-use', default='')
     parser.add_argument('-sl', '--shared-library', action='store_true',
             help='if set, generate code for use as a CDI shared library',
             dest='--shared-library')
@@ -45,21 +50,44 @@ if __name__ == "__main__":
     parser.add_argument('-nm', '--no-mystery-types', action='store_true',
             help='if set, manglings must not contain unknown types',
             dest='--no-mystery-types')
+    parser.add_argument('-np', '--no-fp-punt', action='store_true',
+            help='if set, function pointers must associated witha a type',
+            dest='--no-fp-punt')
+    parser.add_argument('--no-plt', action='store_true',
+            help='if set, all functions must be static',
+            dest='--no-plt')
+    parser.add_argument('--log', action='store',
+            help='if set, all non fatal output will go to the given file',
+            dest='--log')
+    parser.add_argument('--quiet', action='store_true',
+            help='if set, supress all non fatal output',
+            dest='--quiet')
 
     paa = parser.parse_args()
     options = vars(parser.parse_args(sys.argv[1:]))
 
     if options.get('--help'):
         sys.exit(0)
+
+    if options['--log']:
+        common.eprint.STDOUT = common.eprint.STDERR = open(options['--log'], 'a')
+    if options.get('--quiet'):
+        common.eprint.QUIET = True
+    if options.get('--verbose'):
+        common.eprint.VERBOSE = True
+
     
     asm_filenames = options['asm_filenames']
     asm_file_descrs = []
+
+    vvprint("converter: discovering object files")
     for filename in asm_filenames:
+        vvprint('\t'+filename)
         asm_file_descrs.append(asm_parsing.AsmFileDescription(filename))
         asm_file_descrs[-1].check_filename()
 
-    plt_sites = []
-    cfg = gen_cfg(asm_file_descrs, plt_sites, options)
+    plt_manager = funct_cfg.PltManager()
+    cfg = gen_cfg(asm_file_descrs, plt_manager, options)
     # cfg.print_json_to('cdi_cfg.json')
 
-    gen_cdi_asm(cfg, asm_file_descrs, plt_sites, options)
+    gen_cdi_asm(cfg, asm_file_descrs, plt_manager, options)
